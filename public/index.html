@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Viking vs Cleo</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Anton&family=Oswald:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/css/style.css" />
+  </head>
+  <body>
+    <div id="stage">
+      <canvas id="canvas"></canvas>
+
+      <!-- Overlays som ligger exakt ovanpa kartan -->
+      <div id="overlay">
+        <button id="leave" type="button" hidden>Return to menu</button>
+
+        <div id="scoreboard">
+          <div class="team cleo"><span class="label">Cleo</span><span class="pts" id="score-cleo">0</span></div>
+          <div class="match-clock" id="match-clock" aria-label="Match timer" hidden>6:00</div>
+          <div class="team viking"><span class="pts" id="score-viking">0</span><span class="label">Viking</span></div>
+        </div>
+
+        <div id="killfeed"></div>
+
+        <div id="respawn" hidden>
+          <div class="big">You died</div>
+          <div class="small">Respawning in <span id="respawn-timer">3.0</span>s</div>
+        </div>
+
+        <div id="fight-overlay" hidden>
+          <div id="fight-copy">5</div>
+        </div>
+
+        <div id="hud" hidden></div>
+        <div id="ability-tooltip" hidden></div>
+        <div id="achievement-toasts" aria-live="polite"></div>
+      </div>
+    </div>
+
+    <div id="intro" class="app-view">
+      <img class="intro-sprite intro-sprite-cleo" src="/assets/cleo/idle.png" alt="" />
+      <div class="intro-sprite intro-sprite-viking">
+        <img src="/assets/viking/idle.png" alt="" />
+      </div>
+      <form class="identity-card" id="intro-form">
+        <div class="intro-kicker">Enter the arena</div>
+        <h1 class="intro-logo">
+          <span class="cleo-word">Cleo</span>
+          <span class="vs-word">VS</span>
+          <span class="viking-word">Viking</span>
+        </h1>
+        <label class="field">
+          <span>Fighter name</span>
+          <input id="intro-name" type="text" maxlength="14" autocomplete="off" spellcheck="false" placeholder="Your name" />
+        </label>
+        <button id="intro-enter" type="submit">Enter</button>
+        <p class="err" id="intro-error"></p>
+      </form>
+    </div>
+
+    <div id="lobby" class="hidden app-view">
+      <div class="panel">
+        <section class="flow-screen" id="global-lobby" aria-labelledby="global-lobby-title">
+          <div class="screen-head">
+            <div>
+              <div class="screen-step">Step 02</div>
+              <h1 id="global-lobby-title">Lobby</h1>
+            </div>
+            <div class="screen-actions">
+              <span class="online-pill"><span></span><b id="lobby-player-name">Global lobby</b></span>
+              <button id="open-achievements" type="button">Achievements</button>
+              <button id="create-match" type="button">Create match</button>
+            </div>
+          </div>
+          <div class="lobby-grid">
+            <div class="match-list" id="match-list">
+              <div class="empty">No matches yet.</div>
+            </div>
+
+            <aside class="leaderboard" aria-label="Top fighters">
+              <div class="leaderboard-head">
+                <span class="leaderboard-title">&#127942; Top Fighters</span>
+                <span class="leaderboard-sub">This season</span>
+              </div>
+              <div class="leaderboard-body" id="lobby-board-body">
+                <div class="lb-empty">No stats yet.</div>
+              </div>
+            </aside>
+          </div>
+        </section>
+
+        <!-- Hover-popup for en leaderboard-rad -->
+        <div id="player-card" hidden></div>
+
+        <!-- Detaljerad spelarprofil (oppnas via klick i leaderboarden) -->
+        <section class="flow-screen" id="fighter-profile" hidden aria-labelledby="fighter-profile-name">
+          <div class="profile-topbar">
+            <button id="fighter-profile-back" type="button">&#9666; Back to lobby</button>
+            <span class="profile-kicker">Fighter profile</span>
+          </div>
+          <div class="profile-body">
+            <div class="profile-hero" id="fighter-profile-hero">
+              <img id="fighter-profile-img" src="/assets/cleo/idle.png" alt="" />
+              <div class="profile-hero-copy">
+                <div class="profile-hero-rank" id="fighter-profile-rank">Rank 1</div>
+                <div class="profile-hero-name" id="fighter-profile-name">Fighter</div>
+                <div class="profile-hero-rating">
+                  <span id="fighter-profile-rating">0</span>
+                  <span class="profile-hero-rating-label">rating pts</span>
+                </div>
+                <div class="profile-hero-record" id="fighter-profile-record">0 kills · 0 deaths</div>
+              </div>
+            </div>
+            <div class="profile-tiles" id="fighter-profile-tiles"></div>
+          </div>
+        </section>
+
+        <section class="flow-screen achievements-screen" id="achievements-view" hidden aria-labelledby="achievements-title">
+          <div class="ach-page-topbar">
+            <button id="achievements-back" type="button">Back</button>
+          </div>
+
+          <div class="ach-page-head">
+            <div>
+              <div class="ach-wordmark">
+                <span class="cleo-word">Cleo</span>
+                <span class="vs-word">vs</span>
+                <span class="viking-word">Viking</span>
+              </div>
+              <h1 id="achievements-title">Achievements</h1>
+              <div class="ach-subline" id="achievements-subline">Rare feats earn more glory</div>
+            </div>
+            <div class="ach-completion">
+              <div class="ach-completion-copy">
+                <div>Completion</div>
+                <span id="achievements-completion-label">0 of 0 unlocked</span>
+              </div>
+              <div class="ach-dial" id="achievements-dial"><span>0<small>%</small></span></div>
+            </div>
+          </div>
+
+          <div class="ach-stat-strip" id="achievements-stats"></div>
+
+          <div class="ach-filter-bar">
+            <div class="ach-chip-row" id="achievements-cat-filters"></div>
+            <div class="ach-chip-row" id="achievements-status-filters"></div>
+          </div>
+
+          <div class="ach-grid" id="achievements-grid"></div>
+          <div class="ach-empty" id="achievements-empty" hidden>No achievements match this filter</div>
+        </section>
+
+        <section class="flow-screen" id="match-room" hidden aria-labelledby="match-room-title">
+          <div class="match-lobby-view">
+            <div class="roster-pane">
+              <div class="screen-head compact">
+                <div>
+                  <h1 id="match-room-title">Match Lobby</h1>
+                  <div class="board-sub" id="match-room-phase">Waiting for players</div>
+                </div>
+              </div>
+              <div class="match-player-list" id="match-player-list"></div>
+            </div>
+
+            <div class="fighter-pane">
+              <div class="select-kicker">Choose your fighter <span>changing resets ready</span></div>
+              <div class="character-select" id="character-select" aria-label="Pick a character">
+                <button class="character-option cleo" type="button" data-character="cleo">
+                  <img src="/assets/cleo/idle.png" alt="" />
+                  <span class="character-name">Cleo</span>
+                  <span class="selected-mark">&#9670; Selected</span>
+                </button>
+                <button class="character-option viking" type="button" data-character="viking">
+                  <img src="/assets/viking/idle.png" alt="" />
+                  <span class="character-name">Viking</span>
+                  <span class="selected-mark">&#9670; Selected</span>
+                </button>
+              </div>
+              <div class="match-actions">
+                <button id="ready-toggle" type="button">Ready up</button>
+                <button id="start-match" type="button" hidden>Start match</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="map-vote" id="map-vote" hidden>
+            <div class="screen-head">
+              <div>
+                <div class="screen-step">Step 05 - Vote now</div>
+                <h1>Choose the arena</h1>
+              </div>
+              <div class="vote-clock">
+                <strong id="map-vote-timer">0:30</strong>
+                <span>until start - host breaks ties</span>
+              </div>
+            </div>
+            <div class="map-vote-list" id="map-vote-list"></div>
+            <div class="map-vote-foot">
+              <div class="map-timer-bar"><i></i></div>
+              <button id="map-lock" type="button">Lock in</button>
+            </div>
+          </div>
+
+          <div class="round-results" id="round-results" hidden>
+            <div class="result-wrap">
+              <div class="screen-step">Round over</div>
+              <div id="round-result-score" class="result-score">0 VS 0</div>
+              <div id="round-result-note" class="result-note"></div>
+              <div id="match-achievements-summary" class="match-achievements-summary" hidden></div>
+              <div class="round-actions">
+                <button id="leave-match" type="button">Finish match</button>
+                <button id="view-achievements-result" type="button">View achievements</button>
+                <button id="reset-match" type="button" hidden>New round</button>
+              </div>
+            </div>
+          </div>
+
+          <button id="leave-match-fallback" class="leave-match-fallback" type="button">Back to lobby</button>
+        </section>
+
+        <p class="err" id="lobby-error"></p>
+      </div>
+    </div>
+
+    <div id="conn" hidden>Connecting...</div>
+
+    <script type="module" src="/js/main.js"></script>
+  </body>
+</html>

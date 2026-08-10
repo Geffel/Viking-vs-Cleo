@@ -1,0 +1,30 @@
+# Beroenden
+node_modules/
+
+# Loggar
+npm-debug.log*
+yarn-error.log*
+logs/
+*.log
+
+# Genererade felsokningsbilder (preview-*.mjs, prepare-sprites.mjs)
+public/assets/**/_*.png
+
+# Spelardata som servern skriver under drift: profiler, poang och speltid.
+# Hor hemma pa maskinen som kor servern, inte i historiken.
+data/
+
+# Miljovariabler / hemligheter
+.env
+.env.*
+!.env.example
+
+# OS-skrap
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/
+.idea/
+*.swp

@@ -1,0 +1,33 @@
+{
+  "worldWidth": 59.41,
+  "worldHeight": 61.66,
+  "anchorX": 0.3003,
+  "anchorY": 0.9987,
+  "facing": "right",
+  "stunned": {
+    "file": "stunned.png",
+    "worldWidth": 59.33,
+    "worldHeight": 61.66,
+    "anchorX": 0.2978,
+    "anchorY": 1,
+    "facing": "right"
+  },
+  "idle": "idle.png",
+  "attack": {
+    "default": [
+      "attack1.png",
+      "attack2.png",
+      "attack3.png"
+    ],
+    "m1": [
+      "punch1.png",
+      "punch2.png",
+      "punch3.png"
+    ],
+    "m2": [
+      "kick1.png",
+      "kick2.png",
+      "kick3.png"
+    ]
+  }
+}

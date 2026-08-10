@@ -1,0 +1,43 @@
+{
+  "worldWidth": 68.97,
+  "worldHeight": 56.56,
+  "anchorX": 0.6524,
+  "anchorY": 0.9988,
+  "facing": "left",
+  "stunned": {
+    "file": "stunned.png",
+    "worldWidth": 76,
+    "worldHeight": 56.67,
+    "anchorX": 0.5921,
+    "anchorY": 1,
+    "facing": "left"
+  },
+  "stunnedAboveHead": "stunned_abovehead.png",
+  "shieldCharge": {
+    "file": "shield_charge.png",
+    "worldWidth": 106.67,
+    "worldHeight": 58,
+    "anchorX": 0.3812,
+    "anchorY": 0.9885,
+    "facing": "right"
+  },
+  "idle": "idle.png",
+  "attack": {
+    "default": [
+      "attack1.png",
+      "attack2.png",
+      "attack3.png"
+    ],
+    "m2": {
+      "files": [
+        "shield1.png",
+        "shield2.png"
+      ],
+      "worldWidth": 81,
+      "worldHeight": 53.33,
+      "anchorX": 0.5556,
+      "anchorY": 0.9938,
+      "facing": "left"
+    }
+  }
+}

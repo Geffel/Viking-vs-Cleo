@@ -1,0 +1,16 @@
+# Normalisera radbrytningar i text, LF i repot
+* text=auto eol=lf
+
+# Windows-skript ska ha CRLF lokalt
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binarfiler ror vi inte
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.mp3 binary
+*.ogg binary
+*.wav binary

@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Oswald:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  html, body { margin: 0; height: 100%; background: #05070f; }
+  * { box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #f2f5ff; -webkit-font-smoothing: antialiased; }
+  a { color: #ff4d9d; text-decoration: none; }
+  a:hover { color: #ffd166; }
+  img { display: block; }
+  ::selection { background: rgba(255,77,157,0.35); }
+  @keyframes vvc-bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+  @keyframes ma-toastin  { from { opacity: 0; transform: translateX(120%); } to { opacity: 1; transform: none; } }
+  @keyframes ma-toastout { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateX(120%); } }
+  @keyframes ma-icon { 0% { transform: scale(0.4) rotate(-12deg); opacity: 0; } 60% { transform: scale(1.15) rotate(3deg); } 100% { transform: scale(1) rotate(0); opacity: 1; } }
+  @keyframes ma-shine { 0% { transform: translateX(-140%); } 55%,100% { transform: translateX(360%); } }
+  @keyframes ma-timer { from { width: 100%; } to { width: 0%; } }
+  @keyframes ma-up { from { opacity: 0; transform: translateY(30px) scale(0.98); } to { opacity: 1; transform: none; } }
+  @keyframes ma-row { from { opacity: 0; transform: translateX(-18px); } to { opacity: 1; transform: none; } }
+  @keyframes ma-bar { from { width: 0; } }
+</style>
+</helmet>
+
+<div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:16px;padding:22px 18px 56px;background:radial-gradient(circle at 50% 0%, #0a0f1e, #05070f 72%);">
+
+  <!-- ===== CONTROL BAR ===== -->
+  <div style="display:flex;align-items:center;justify-content:space-between;width:1280px;max-width:100%;gap:16px;flex-wrap:wrap;">
+    <div style="display:flex;align-items:baseline;gap:11px;">
+      <span style="font-family:'Anton',sans-serif;font-size:22px;letter-spacing:0.06em;text-transform:uppercase;color:#ff4d9d;">Cleo</span>
+      <span style="font-family:'Oswald',sans-serif;font-weight:300;font-size:15px;color:rgba(242,245,255,0.4);">vs</span>
+      <span style="font-family:'Anton',sans-serif;font-size:22px;letter-spacing:0.06em;text-transform:uppercase;color:#4dc3ff;">Viking</span>
+      <span style="margin-left:8px;font-family:'Oswald',sans-serif;font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:rgba(242,245,255,0.35);">Achievement feedback</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <button onClick="{{ trigger }}" style="display:flex;align-items:center;gap:7px;padding:0 16px;height:34px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:#f2f5ff;font-family:'Oswald',sans-serif;font-size:12px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;cursor:pointer;clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px);">↑ Unlock one</button>
+      <button onClick="{{ play }}" style="display:flex;align-items:center;gap:7px;padding:0 16px;height:34px;background:rgba(255,209,102,0.14);border:1px solid rgba(255,209,102,0.5);color:#ffd166;font-family:'Oswald',sans-serif;font-size:12px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;cursor:pointer;clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px);">▶ Play match</button>
+      <button onClick="{{ showSummary }}" style="display:flex;align-items:center;gap:7px;padding:0 16px;height:34px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.16);color:#f2f5ff;font-family:'Oswald',sans-serif;font-size:12px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;cursor:pointer;clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px);">Match summary ▸</button>
+    </div>
+  </div>
+
+  <!-- ===== STAGE (mock in-game view) ===== -->
+  <div style="{{ stageStyle }}">
+    <img src="assets/arena_01.png" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:brightness(0.6);" />
+    <div style="position:absolute;inset:0;background:linear-gradient(180deg, rgba(5,7,15,0.25), rgba(5,7,15,0.55));"></div>
+    <img src="assets/cleo/idle.png" alt="" style="position:absolute;left:20%;bottom:15%;height:32%;image-rendering:pixelated;animation:vvc-bob 2.4s ease-in-out infinite;filter:drop-shadow(0 8px 16px rgba(0,0,0,0.6));" />
+    <div style="position:absolute;right:20%;bottom:15%;height:32%;transform:scaleX(-1);animation:vvc-bob 2.8s ease-in-out infinite;"><img src="assets/viking/idle.png" alt="" style="height:100%;image-rendering:pixelated;filter:drop-shadow(0 8px 16px rgba(0,0,0,0.6));" /></div>
+
+    <!-- HUD score chip (context) -->
+    <div style="position:absolute;top:16px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:14px;padding:8px 18px;background:rgba(5,7,15,0.7);border:1px solid rgba(255,255,255,0.12);clip-path:polygon(10px 0,calc(100% - 10px) 0,100% 100%,0 100%);">
+      <span style="font-family:'Anton',sans-serif;font-size:22px;color:#ff4d9d;font-variant-numeric:tabular-nums;">08</span>
+      <span style="font-family:'Oswald',sans-serif;font-size:11px;letter-spacing:0.16em;text-transform:uppercase;color:rgba(242,245,255,0.5);">Nile Delta · 1:12</span>
+      <span style="font-family:'Anton',sans-serif;font-size:22px;color:#4dc3ff;font-variant-numeric:tabular-nums;">06</span>
+    </div>
+
+    <!-- ===== TOAST STACK (top right) ===== -->
+    <div style="position:absolute;top:16px;right:16px;display:flex;flex-direction:column;gap:10px;width:308px;z-index:30;pointer-events:none;">
+      <sc-for list="{{ toasts }}" as="t" hint-placeholder-count="0">
+        <div style="{{ t.wrap }}">
+          <div style="{{ t.accentBar }}"></div>
+          <div style="position:absolute;inset:0;overflow:hidden;pointer-events:none;"><div style="{{ t.shine }}"></div></div>
+          <div style="position:relative;display:flex;align-items:center;gap:11px;padding:11px 13px 11px 15px;">
+            <div style="{{ t.iconFrame }}">
+              <img src="{{ t.icon }}" alt="" style="{{ t.iconStyle }}" />
+            </div>
+            <div style="min-width:0;flex:1;">
+              <div style="font-family:'Oswald',sans-serif;font-size:9.5px;font-weight:600;letter-spacing:0.16em;text-transform:uppercase;color:{{ t.rarityTone }};">{{ t.rarity }} unlocked</div>
+              <div style="font-family:'Oswald',sans-serif;font-weight:600;font-size:15px;line-height:1.1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ t.title }}</div>
+            </div>
+            <div style="flex:none;text-align:right;">
+              <div style="font-family:'Anton',sans-serif;font-size:18px;line-height:1;color:#ffd166;font-variant-numeric:tabular-nums;">+{{ t.pts }}</div>
+              <div style="font-family:'Oswald',sans-serif;font-size:8px;letter-spacing:0.14em;color:rgba(255,209,102,0.7);">GLORY</div>
+            </div>
+          </div>
+          <div style="height:3px;background:rgba(255,255,255,0.08);"><div style="{{ t.timerBar }}"></div></div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="position:absolute;bottom:14px;left:50%;transform:translateX(-50%);font-family:'Oswald',sans-serif;font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:rgba(242,245,255,0.4);">Live match preview · toasts appear top-right</div>
+
+    <!-- ===== POST-MATCH SUMMARY OVERLAY ===== -->
+    <sc-if value="{{ summaryOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:0;z-index:50;display:grid;place-items:center;padding:34px;background:radial-gradient(circle at 50% 20%, rgba(255,209,102,0.1), transparent 55%), rgba(5,7,15,0.9);animation:ma-up 0.45s cubic-bezier(0.2,0.85,0.3,1) both;">
+      <div style="width:560px;max-width:100%;background:#080d18;border:1px solid rgba(255,255,255,0.1);box-shadow:0 30px 80px rgba(0,0,0,0.7);clip-path:polygon(0 0,100% 0,100% calc(100% - 20px),calc(100% - 20px) 100%,0 100%);">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:20px 24px 16px;border-bottom:1px solid rgba(255,255,255,0.08);">
+          <div>
+            <div style="font-family:'Oswald',sans-serif;font-size:11px;letter-spacing:0.22em;text-transform:uppercase;color:rgba(242,245,255,0.5);">Match complete</div>
+            <div style="font-family:'Anton',sans-serif;font-size:46px;line-height:0.92;letter-spacing:0.02em;text-transform:uppercase;margin-top:3px;">Team <span style="color:#ff4d9d;text-shadow:0 0 28px rgba(255,77,157,0.45);">Cleo</span> wins</div>
+            <div style="margin-top:8px;display:inline-flex;align-items:center;gap:7px;font-family:'Oswald',sans-serif;font-size:12px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#ffd166;"><span style="width:6px;height:6px;background:#ffd166;transform:rotate(45deg);"></span>{{ earnedCount }} new achievement{{ plural }} earned</div>
+          </div>
+          <div style="text-align:right;flex:none;">
+            <div style="font-family:'Anton',sans-serif;font-size:38px;line-height:1;color:#ffd166;font-variant-numeric:tabular-nums;">+{{ earnedPts }}</div>
+            <div style="font-family:'Oswald',sans-serif;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:rgba(255,209,102,0.7);">glory points</div>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:9px;padding:16px 20px;max-height:340px;overflow:auto;">
+          <sc-for list="{{ earned }}" as="a" hint-placeholder-count="0">
+            <div style="{{ a.rowStyle }}">
+              <div style="{{ a.iconFrame }}"><img src="{{ a.icon }}" alt="" style="{{ a.iconStyle }}" /></div>
+              <div style="min-width:0;flex:1;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <b style="font-family:'Oswald',sans-serif;font-weight:600;font-size:16px;">{{ a.title }}</b>
+                  <span style="{{ a.tagStyle }}">{{ a.rarity }}</span>
+                </div>
+                <div style="margin-top:3px;font-size:12px;color:rgba(242,245,255,0.55);text-wrap:pretty;">{{ a.desc }}</div>
+                <div style="margin-top:6px;display:flex;align-items:center;gap:7px;font-size:10.5px;color:rgba(242,245,255,0.45);">
+                  <div style="flex:1;max-width:120px;height:4px;background:rgba(255,255,255,0.07);overflow:hidden;"><div style="{{ a.globalBar }}"></div></div>
+                  <span><b style="color:{{ a.rarityTone }};">{{ a.pct }}%</b> of fighters</span>
+                </div>
+              </div>
+              <div style="flex:none;text-align:right;"><div style="font-family:'Anton',sans-serif;font-size:20px;color:#ffd166;">+{{ a.pts }}</div></div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;gap:12px;padding:16px 24px 22px;border-top:1px solid rgba(255,255,255,0.08);">
+          <button onClick="{{ closeSummary }}" style="flex:1;padding:14px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.2);color:#f2f5ff;font-family:'Oswald',sans-serif;font-size:12px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;cursor:pointer;clip-path:polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px);">Close</button>
+          <button onClick="{{ closeSummary }}" style="flex:1.4;padding:14px;border:none;cursor:pointer;background:linear-gradient(120deg,#ffd166,#ff9f43);color:#05070f;font-family:'Anton',sans-serif;font-size:15px;letter-spacing:0.06em;text-transform:uppercase;clip-path:polygon(12px 0,100% 0,calc(100% - 12px) 100%,0 100%);">View all achievements ▸</button>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1320,&quot;height&quot;:820}}">
+class Component extends DCLogic {
+  state = { toasts: [], summaryOpen: false };
+  _nid = 0;
+
+  // achievements earned this match (drives both toasts and summary)
+  matchAchievements() {
+    return [
+      { id:'kebab', title:'Kebab King', desc:'Land 100 kebab projectiles on opponents.', icon:'assets/kebab.png', pts:20, pct:38.1 },
+      { id:'flawless', title:'Flawless Victory', desc:'Win a round without taking a single hit.', icon:'assets/viking/axe_throw.png', pts:40, pct:6.4 },
+      { id:'sun', title:'Sun Scorcher', desc:'Land 50 sun fireballs as Cleo.', icon:'assets/cleo/sun_fire_ball.png', pts:25, pct:19.7 },
+      { id:'streak', title:'Undefeated', desc:'Win 10 ranked matches in a row.', icon:'assets/viking/idle.png', pts:50, pct:0.8 },
+    ];
+  }
+
+  rarity(pct) {
+    if (pct < 2)  return { label:'Legendary', tone:'#c58bff' };
+    if (pct < 10) return { label:'Epic',      tone:'#ff4d9d' };
+    if (pct < 35) return { label:'Rare',      tone:'#4dc3ff' };
+    return { label:'Common', tone:'#9fb0d0' };
+  }
+
+  componentWillUnmount() { (this._timers||[]).forEach(clearTimeout); }
+
+  pushToast(a) {
+    const id = ++this._nid;
+    const dur = 4600;
+    const t = { ...a, _id: id, leaving: false, dur };
+    this.setState(s => ({ toasts: [...s.toasts, t] }));
+    this._timers = this._timers || [];
+    // begin exit
+    this._timers.push(setTimeout(() => {
+      this.setState(s => ({ toasts: s.toasts.map(x => x._id === id ? { ...x, leaving: true } : x) }));
+    }, dur - 420));
+    // remove
+    this._timers.push(setTimeout(() => {
+      this.setState(s => ({ toasts: s.toasts.filter(x => x._id !== id) }));
+    }, dur));
+  }
+
+  trigger() {
+    const list = this.matchAchievements();
+    this.pushToast(list[Math.floor(Math.random() * list.length)]);
+  }
+
+  play() {
+    this.setState({ summaryOpen: false });
+    const list = this.matchAchievements();
+    this._timers = this._timers || [];
+    list.forEach((a, i) => this._timers.push(setTimeout(() => this.pushToast(a), i * 1300)));
+    // auto-open summary after the sequence
+    this._timers.push(setTimeout(() => this.setState({ summaryOpen: true }), list.length * 1300 + 1400));
+  }
+
+  showSummary() { this.setState({ summaryOpen: true }); }
+  closeSummary() { this.setState({ summaryOpen: false }); }
+
+  renderVals() {
+    const toasts = this.state.toasts.map(t => {
+      const rar = this.rarity(t.pct);
+      return {
+        title: t.title, pts: t.pts, icon: t.icon, rarity: rar.label, rarityTone: rar.tone,
+        wrap: {
+          position:'relative', overflow:'hidden', pointerEvents:'auto',
+          background:'linear-gradient(180deg, ' + rar.tone + '1f, rgba(8,13,24,0.96))',
+          border:'1px solid ' + rar.tone + '66',
+          boxShadow:'0 12px 34px rgba(0,0,0,0.55), 0 0 22px ' + rar.tone + '2a',
+          backdropFilter:'blur(4px)',
+          clipPath:'polygon(0 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%)',
+          animation: (t.leaving ? 'ma-toastout 0.42s cubic-bezier(0.5,0,0.75,0) both' : 'ma-toastin 0.5s cubic-bezier(0.16,1,0.3,1) both'),
+        },
+        accentBar: { position:'absolute', left:0, top:0, bottom:0, width:'3px', background: rar.tone },
+        shine: { position:'absolute', top:0, bottom:0, left:0, width:'35%', background:'linear-gradient(105deg, transparent, rgba(255,255,255,0.16), transparent)', animation:'ma-shine 1.3s ease-out 0.2s both' },
+        iconFrame: {
+          position:'relative', width:'40px', height:'40px', flex:'none', display:'grid', placeItems:'center', overflow:'hidden',
+          background:'rgba(0,0,0,0.4)', border:'1px solid ' + rar.tone + '66', boxShadow:'inset 0 0 16px ' + rar.tone + '2a',
+          clipPath:'polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px)',
+        },
+        iconStyle: { maxHeight:'30px', maxWidth:'32px', imageRendering:'pixelated', filter:'drop-shadow(0 2px 5px ' + rar.tone + '66)', animation:'ma-icon 0.6s cubic-bezier(0.16,1,0.3,1) both' },
+        timerBar: { height:'100%', background: rar.tone, animation:'ma-timer ' + (t.dur/1000) + 's linear both' },
+      };
+    });
+
+    const earnedRaw = this.matchAchievements();
+    const earned = earnedRaw.map((a, i) => {
+      const rar = this.rarity(a.pct);
+      const globalW = Math.max(4, Math.round(Math.sqrt(a.pct / 100) * 100));
+      return {
+        title: a.title, desc: a.desc, icon: a.icon, pts: a.pts, pct: a.pct,
+        rarity: rar.label, rarityTone: rar.tone,
+        rowStyle: {
+          display:'flex', alignItems:'center', gap:'13px', padding:'12px 14px',
+          background:'linear-gradient(180deg,' + rar.tone + '12, rgba(255,255,255,0.02))',
+          border:'1px solid ' + rar.tone + '44', borderLeft:'3px solid ' + rar.tone,
+          clipPath:'polygon(0 0,100% 0,100% calc(100% - 9px),calc(100% - 9px) 100%,0 100%)',
+          animation:'ma-row 0.4s ease both', animationDelay:(i*0.09).toFixed(2)+'s',
+        },
+        iconFrame: {
+          width:'46px', height:'46px', flex:'none', display:'grid', placeItems:'center', overflow:'hidden',
+          background:'rgba(0,0,0,0.4)', border:'1px solid ' + rar.tone + '66', boxShadow:'inset 0 0 16px ' + rar.tone + '2a',
+          clipPath:'polygon(9px 0,100% 0,100% calc(100% - 9px),calc(100% - 9px) 100%,0 100%,0 9px)',
+        },
+        iconStyle: { maxHeight:'34px', maxWidth:'36px', imageRendering:'pixelated', filter:'drop-shadow(0 2px 6px ' + rar.tone + '66)' },
+        tagStyle: {
+          padding:'2px 9px', fontFamily:"'Oswald',sans-serif", fontSize:'9px', fontWeight:700, letterSpacing:'0.12em', textTransform:'uppercase',
+          color: rar.label === 'Common' ? 'rgba(242,245,255,0.7)' : '#05070f',
+          background: rar.label === 'Common' ? 'rgba(255,255,255,0.08)' : rar.tone,
+          clipPath:'polygon(5px 0,100% 0,calc(100% - 5px) 100%,0 100%)',
+        },
+        globalBar: { height:'100%', width: globalW + '%', background: rar.tone, opacity:0.8, animation:'ma-bar 0.7s ease both' },
+      };
+    });
+
+    return {
+      stageStyle: {
+        position:'relative', width:'1280px', maxWidth:'100%', aspectRatio:'16 / 9',
+        borderRadius:'16px', overflow:'hidden', border:'1px solid rgba(255,255,255,0.08)',
+        boxShadow:'0 30px 90px rgba(0,0,0,0.75)', background:'#05070f',
+      },
+      toasts,
+      trigger: () => this.trigger(),
+      play: () => this.play(),
+      showSummary: () => this.showSummary(),
+      closeSummary: () => this.closeSummary(),
+      summaryOpen: this.state.summaryOpen,
+      earned, earnedCount: earnedRaw.length, plural: earnedRaw.length === 1 ? '' : 's',
+      earnedPts: earnedRaw.reduce((s,a) => s + a.pts, 0),
+    };
+  }
+}
+</script>
+</body>
+</html>

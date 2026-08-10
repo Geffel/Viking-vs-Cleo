@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Oswald:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  html, body { margin: 0; height: 100%; background: #05070f; }
+  * { box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #f2f5ff; -webkit-font-smoothing: antialiased; }
+  a { color: #ff4d9d; text-decoration: none; }
+  a:hover { color: #ffd166; }
+  img { display: block; }
+  ::selection { background: rgba(255,77,157,0.35); }
+  @keyframes ach-in { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+  @keyframes ach-bar { from { width: 0; } }
+  @keyframes ach-shine { 0% { transform: translateX(-120%); } 60%,100% { transform: translateX(320%); } }
+</style>
+</helmet>
+
+<div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:26px 18px 64px;background:radial-gradient(circle at 84% -8%, rgba(255,77,157,0.12), transparent 44%), radial-gradient(circle at 4% 108%, rgba(77,195,255,0.1), transparent 48%), #05070f;">
+
+  <div style="width:1280px;max-width:100%;display:flex;flex-direction:column;gap:22px;">
+
+    <!-- ===== HEADER ===== -->
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;">
+      <div>
+        <div style="display:flex;align-items:baseline;gap:11px;margin-bottom:8px;">
+          <span style="font-family:'Anton',sans-serif;font-size:20px;letter-spacing:0.06em;text-transform:uppercase;color:#ff4d9d;">Cleo</span>
+          <span style="font-family:'Oswald',sans-serif;font-weight:300;font-size:14px;color:rgba(242,245,255,0.4);">vs</span>
+          <span style="font-family:'Anton',sans-serif;font-size:20px;letter-spacing:0.06em;text-transform:uppercase;color:#4dc3ff;">Viking</span>
+        </div>
+        <h1 style="margin:0;font-family:'Anton',sans-serif;font-size:52px;line-height:0.9;letter-spacing:0.02em;text-transform:uppercase;">Achievements</h1>
+        <div style="margin-top:8px;font-family:'Oswald',sans-serif;font-size:13px;letter-spacing:0.14em;text-transform:uppercase;color:rgba(242,245,255,0.5);">Mathias · Season 3 · rare feats earn more glory</div>
+      </div>
+      <!-- completion dial -->
+      <div style="display:flex;align-items:center;gap:16px;">
+        <div style="text-align:right;">
+          <div style="font-family:'Anton',sans-serif;font-size:16px;letter-spacing:0.04em;text-transform:uppercase;color:#ffd166;">Completion</div>
+          <div style="font-family:'Oswald',sans-serif;font-size:12px;letter-spacing:0.1em;text-transform:uppercase;color:rgba(242,245,255,0.5);">{{ doneCount }} of {{ totalCount }} unlocked</div>
+        </div>
+        <div style="{{ dialStyle }}">
+          <div style="position:absolute;inset:7px;border-radius:50%;background:#080c17;"></div>
+          <span style="position:relative;font-family:'Anton',sans-serif;font-size:26px;line-height:1;color:#ffd166;font-variant-numeric:tabular-nums;">{{ completionPct }}<span style="font-size:13px;">%</span></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== STAT STRIP ===== -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;">
+      <sc-for list="{{ headerStats }}" as="s" hint-placeholder-count="4">
+        <div style="position:relative;overflow:hidden;padding:16px 18px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-left:3px solid {{ s.tone }};clip-path:polygon(0 0,100% 0,100% calc(100% - 12px),calc(100% - 12px) 100%,0 100%);">
+          <div style="font-family:'Oswald',sans-serif;font-size:10.5px;letter-spacing:0.14em;text-transform:uppercase;color:rgba(242,245,255,0.45);">{{ s.k }}</div>
+          <div style="font-family:'Anton',sans-serif;font-size:32px;line-height:1;margin:8px 0 3px;color:{{ s.tone }};">{{ s.v }}</div>
+          <div style="font-size:11px;letter-spacing:0.04em;text-transform:uppercase;color:rgba(242,245,255,0.4);">{{ s.sub }}</div>
+        </div>
+      </sc-for>
+    </div>
+
+    <!-- ===== FILTER BAR ===== -->
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;">
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        <sc-for list="{{ cats }}" as="c" hint-placeholder-count="6">
+          <button onClick="{{ c.go }}" style="{{ c.style }}">{{ c.label }}<span style="opacity:0.55;margin-left:6px;font-variant-numeric:tabular-nums;">{{ c.n }}</span></button>
+        </sc-for>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <sc-for list="{{ statusChips }}" as="q" hint-placeholder-count="3">
+          <button onClick="{{ q.go }}" style="{{ q.style }}">{{ q.label }}</button>
+        </sc-for>
+      </div>
+    </div>
+
+    <!-- ===== ACHIEVEMENT GRID ===== -->
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;">
+      <sc-for list="{{ items }}" as="a" hint-placeholder-count="9">
+        <div style="{{ a.cardStyle }}">
+          <!-- rarity ribbon -->
+          <div style="{{ a.ribbonStyle }}">{{ a.rarity }}</div>
+          <sc-if value="{{ a.unlocked }}" hint-placeholder-val="{{ true }}">
+            <div style="position:absolute;top:0;left:0;right:0;height:100%;overflow:hidden;pointer-events:none;"><div style="{{ a.shineStyle }}"></div></div>
+          </sc-if>
+
+          <div style="position:relative;display:flex;gap:14px;align-items:flex-start;">
+            <!-- icon frame -->
+            <div style="{{ a.iconFrame }}">
+              <img src="{{ a.icon }}" alt="" style="{{ a.iconStyle }}" />
+              <sc-if value="{{ a.locked }}" hint-placeholder-val="{{ false }}">
+                <div style="position:absolute;inset:0;display:grid;place-items:center;background:rgba(5,7,15,0.55);font-size:22px;">🔒</div>
+              </sc-if>
+            </div>
+            <div style="min-width:0;flex:1;">
+              <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;">
+                <div style="font-family:'Oswald',sans-serif;font-weight:600;font-size:17px;letter-spacing:0.01em;line-height:1.15;{{ a.titleColor }}">{{ a.title }}</div>
+                <span style="display:flex;align-items:center;gap:4px;flex:none;font-family:'Anton',sans-serif;font-size:18px;color:#ffd166;font-variant-numeric:tabular-nums;">{{ a.points }}<span style="font-family:'Oswald',sans-serif;font-size:9px;letter-spacing:0.1em;color:rgba(255,209,102,0.7);">PTS</span></span>
+              </div>
+              <div style="margin-top:5px;font-size:12.5px;line-height:1.4;color:rgba(242,245,255,0.62);text-wrap:pretty;">{{ a.desc }}</div>
+            </div>
+          </div>
+
+          <!-- progress (in-progress achievements) -->
+          <sc-if value="{{ a.showProgress }}" hint-placeholder-val="{{ false }}">
+            <div style="position:relative;margin-top:14px;">
+              <div style="display:flex;justify-content:space-between;font-family:'Oswald',sans-serif;font-size:10.5px;letter-spacing:0.08em;text-transform:uppercase;color:rgba(242,245,255,0.5);margin-bottom:5px;">
+                <span>Progress</span><span style="color:{{ a.tone }};">{{ a.progLabel }}</span>
+              </div>
+              <div style="height:7px;background:rgba(255,255,255,0.07);overflow:hidden;clip-path:polygon(3px 0,100% 0,calc(100% - 3px) 100%,0 100%);">
+                <div style="{{ a.progBarStyle }}"></div>
+              </div>
+            </div>
+          </sc-if>
+
+          <!-- footer: global unlock stat -->
+          <div style="position:relative;margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.07);display:flex;align-items:center;justify-content:space-between;gap:12px;">
+            <div style="flex:1;min-width:0;">
+              <div style="display:flex;align-items:center;gap:6px;font-size:11px;letter-spacing:0.02em;color:rgba(242,245,255,0.55);">
+                <b style="font-family:'Oswald',sans-serif;font-weight:600;color:{{ a.rarityTone }};">{{ a.globalPct }}%</b> of fighters unlocked this
+              </div>
+              <div style="margin-top:6px;height:4px;background:rgba(255,255,255,0.06);overflow:hidden;">
+                <div style="{{ a.globalBarStyle }}"></div>
+              </div>
+            </div>
+            <span style="{{ a.stampStyle }}">{{ a.stamp }}</span>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+
+    <sc-if value="{{ empty }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:60px;text-align:center;font-family:'Oswald',sans-serif;font-size:14px;letter-spacing:0.1em;text-transform:uppercase;color:rgba(242,245,255,0.4);border:1px dashed rgba(255,255,255,0.12);">No achievements match this filter</div>
+    </sc-if>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1320,&quot;height&quot;:1180}}">
+class Component extends DCLogic {
+  state = { cat: 'all', status: 'all' };
+
+  data() {
+    // cat tones
+    const T = { Combat:'#ff4d9d', Collection:'#ffd166', Progression:'#4dc3ff', Social:'#7cf5b0' };
+    return [
+      { id:'first', title:'First Blood', desc:'Win your very first arena match.', cat:'Progression', icon:'assets/cleo_shield_icon.png', pts:10, pct:82.4, unlocked:true, date:'12 Jun' },
+      { id:'kebab', title:'Kebab King', desc:'Land 100 kebab projectiles on opponents.', cat:'Combat', icon:'assets/kebab.png', pts:20, pct:38.1, unlocked:true, date:'28 Jun' },
+      { id:'pizza', title:'Pizza Party', desc:'Collect 500 pizza pickups across all matches.', cat:'Collection', icon:'assets/pizza.png', pts:15, pct:44.9, unlocked:true, date:'02 Jul' },
+      { id:'sun', title:'Sun Scorcher', desc:'Land 50 sun fireballs as Cleo.', cat:'Combat', icon:'assets/cleo/sun_fire_ball.png', pts:25, pct:19.7, unlocked:true, date:'09 Jul' },
+      { id:'harpoon', title:'Harpoon Hero', desc:'Land 25 harpoon shots as Viking.', cat:'Combat', icon:'assets/viking_harpoon_projectile.png', pts:25, pct:22.3, unlocked:true, date:'11 Jul' },
+      { id:'mvp', title:'MVP Machine', desc:'Earn 25 MVP awards.', cat:'Progression', icon:'assets/viking_shield_icon.png', pts:30, pct:14.6, unlocked:true, date:'21 Jul', prog:{cur:28,max:25} },
+      { id:'shield', title:'Shield Wall', desc:'Block 250 incoming attacks in a single season.', cat:'Combat', icon:'assets/cleo_shield_icon.png', pts:20, pct:27.8, unlocked:false, prog:{cur:163,max:250} },
+      { id:'mushroom', title:'Mushroom Muncher', desc:'Eat 200 mushroom power-ups.', cat:'Collection', icon:'assets/mushroom.png', pts:15, pct:31.2, unlocked:false, prog:{cur:118,max:200} },
+      { id:'marathon', title:'Marathon Fighter', desc:'Play 100 ranked matches.', cat:'Progression', icon:'assets/arena_01.png', pts:20, pct:33.5, unlocked:false, prog:{cur:71,max:100} },
+      { id:'social', title:'Full House', desc:'Host a match with all 6 slots filled.', cat:'Social', icon:'assets/viking/idle.png', pts:15, pct:41.0, unlocked:true, date:'05 Jul' },
+      { id:'friends', title:'Sparring Circle', desc:'Fight alongside 20 different players.', cat:'Social', icon:'assets/cleo/idle.png', pts:15, pct:36.7, unlocked:false, prog:{cur:13,max:20} },
+      { id:'flawless', title:'Flawless Victory', desc:'Win a round without taking a single hit.', cat:'Combat', icon:'assets/viking/axe_throw.png', pts:40, pct:6.4, unlocked:true, date:'19 Jul' },
+      { id:'comeback', title:'Comeback Kid', desc:'Win a round after trailing by 10 points.', cat:'Progression', icon:'assets/cleo/sun_fire_ball.png', pts:35, pct:8.9, unlocked:false, prog:{cur:0,max:1} },
+      { id:'allmaps', title:'Arena Master', desc:'Win at least once on every map.', cat:'Collection', icon:'assets/arena_01.png', pts:30, pct:11.5, unlocked:false, prog:{cur:3,max:4} },
+      { id:'streak', title:'Undefeated', desc:'Win 10 ranked matches in a row.', cat:'Progression', icon:'assets/viking/idle.png', pts:50, pct:0.8, unlocked:false, prog:{cur:5,max:10} },
+      { id:'rank1', title:'Throne of the Arena', desc:'Reach the #1 spot on the season leaderboard.', cat:'Social', icon:'assets/cleo/idle.png', pts:60, pct:0.3, unlocked:false, prog:{cur:0,max:1} },
+    ].map(a => ({ ...a, tone: T[a.cat] }));
+  }
+
+  rarity(pct) {
+    if (pct < 2)  return { label:'Legendary', tone:'#c58bff' };
+    if (pct < 10) return { label:'Epic',      tone:'#ff4d9d' };
+    if (pct < 35) return { label:'Rare',      tone:'#4dc3ff' };
+    return { label:'Common', tone:'#9fb0d0' };
+  }
+
+  renderVals() {
+    const all = this.data();
+    const { cat, status } = this.state;
+
+    const done = all.filter(a => a.unlocked);
+    const totalCount = all.length, doneCount = done.length;
+    const completionPct = Math.round(doneCount / totalCount * 100);
+    const earnedPts = done.reduce((s,a) => s + a.pts, 0);
+    const totalPts = all.reduce((s,a) => s + a.pts, 0);
+    const rarest = done.slice().sort((a,b) => a.pct - b.pct)[0];
+
+    const headerStats = [
+      { k:'Unlocked', v: doneCount + '/' + totalCount, sub:'achievements earned', tone:'#7cf5b0' },
+      { k:'Glory points', v: earnedPts, sub:'of ' + totalPts + ' available', tone:'#ffd166' },
+      { k:'Rarest unlock', v: (rarest ? rarest.pct + '%' : '—'), sub: rarest ? rarest.title : 'none yet', tone:'#c58bff' },
+      { k:'In progress', v: all.filter(a => !a.unlocked && a.prog && a.prog.cur > 0).length, sub:'partially complete', tone:'#4dc3ff' },
+    ];
+
+    // ---- category filter ----
+    const catList = ['all','Combat','Progression','Collection','Social'];
+    const catLabel = { all:'All' };
+    const cats = catList.map(c => {
+      const active = cat === c;
+      const n = c === 'all' ? all.length : all.filter(a => a.cat === c).length;
+      return {
+        label: catLabel[c] || c, n,
+        go: () => this.setState({ cat: c }),
+        style: {
+          display:'flex', alignItems:'center', padding:'8px 15px', cursor:'pointer',
+          fontFamily:"'Oswald',sans-serif", fontSize:'12px', fontWeight:600, letterSpacing:'0.08em', textTransform:'uppercase',
+          border:'1px solid ' + (active ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.1)'),
+          background: active ? 'rgba(255,255,255,0.12)' : 'rgba(10,14,26,0.6)',
+          color: active ? '#f2f5ff' : 'rgba(242,245,255,0.5)',
+          clipPath:'polygon(7px 0,100% 0,100% calc(100% - 7px),calc(100% - 7px) 100%,0 100%,0 7px)',
+        },
+      };
+    });
+
+    const statusList = [['all','All'],['unlocked','Unlocked'],['locked','Locked']];
+    const statusChips = statusList.map(([id,label]) => {
+      const active = status === id;
+      return {
+        label,
+        go: () => this.setState({ status: id }),
+        style: {
+          padding:'8px 15px', cursor:'pointer',
+          fontFamily:"'Oswald',sans-serif", fontSize:'11px', fontWeight:600, letterSpacing:'0.1em', textTransform:'uppercase',
+          border:'1px solid ' + (active ? 'rgba(255,209,102,0.5)' : 'rgba(255,255,255,0.1)'),
+          background: active ? 'rgba(255,209,102,0.12)' : 'rgba(10,14,26,0.6)',
+          color: active ? '#ffd166' : 'rgba(242,245,255,0.5)',
+          clipPath:'polygon(7px 0,100% 0,100% calc(100% - 7px),calc(100% - 7px) 100%,0 100%,0 7px)',
+        },
+      };
+    });
+
+    // ---- filtered items ----
+    let list = all.filter(a => (cat === 'all' || a.cat === cat) && (status === 'all' || (status === 'unlocked') === a.unlocked));
+
+    const items = list.map(a => {
+      const rar = this.rarity(a.pct);
+      const locked = !a.unlocked;
+      const hasProg = !!a.prog;
+      const progPct = hasProg ? Math.min(100, Math.round(a.prog.cur / a.prog.max * 100)) : 0;
+      // global bar scaled so rare feats still read: sqrt curve, min 3%
+      const globalW = Math.max(3, Math.round(Math.sqrt(a.pct / 100) * 100));
+      return {
+        title: a.title, desc: a.desc, points: a.pts, tone: a.tone,
+        icon: a.icon, unlocked: a.unlocked, locked,
+        rarity: rar.label, rarityTone: rar.tone, globalPct: a.pct,
+        titleColor: locked ? 'color:rgba(242,245,255,0.75);' : 'color:#f2f5ff;',
+        cardStyle: {
+          position:'relative', overflow:'hidden', padding:'18px 18px 16px',
+          background: locked ? 'rgba(255,255,255,0.015)' : 'linear-gradient(180deg, ' + a.tone + '10, rgba(255,255,255,0.03))',
+          border:'1px solid ' + (locked ? 'rgba(255,255,255,0.07)' : a.tone + '55'),
+          borderLeft:'3px solid ' + (locked ? 'rgba(255,255,255,0.14)' : a.tone),
+          boxShadow: locked ? 'none' : '0 0 26px ' + a.tone + '18',
+          clipPath:'polygon(0 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%)',
+          opacity: locked ? 0.82 : 1,
+          animation:'ach-in 0.4s ease both',
+        },
+        ribbonStyle: {
+          position:'absolute', top:0, right:0, padding:'4px 12px 4px 16px',
+          fontFamily:"'Oswald',sans-serif", fontSize:'9.5px', fontWeight:700, letterSpacing:'0.14em', textTransform:'uppercase',
+          color: rar.label === 'Common' ? 'rgba(242,245,255,0.7)' : '#05070f',
+          background: rar.label === 'Common' ? 'rgba(255,255,255,0.08)' : rar.tone,
+          clipPath:'polygon(10px 0,100% 0,100% 100%,0 100%)',
+        },
+        shineStyle: {
+          position:'absolute', top:0, bottom:0, left:0, width:'40%',
+          background:'linear-gradient(105deg, transparent, ' + a.tone + '22, transparent)',
+          animation:'ach-shine 5s ease-in-out infinite', animationDelay:(Math.random()*3).toFixed(1)+'s',
+        },
+        iconFrame: {
+          position:'relative', width:'58px', height:'58px', flex:'none', display:'grid', placeItems:'center', overflow:'hidden',
+          background:'rgba(0,0,0,0.4)', border:'1px solid ' + (locked ? 'rgba(255,255,255,0.1)' : a.tone + '66'),
+          boxShadow: locked ? 'none' : 'inset 0 0 20px ' + a.tone + '22',
+          clipPath:'polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px)',
+        },
+        iconStyle: {
+          maxHeight:'42px', maxWidth:'44px', imageRendering:'pixelated',
+          filter: locked ? 'grayscale(1) brightness(0.5)' : 'drop-shadow(0 3px 8px ' + a.tone + '55)',
+        },
+        showProgress: locked && hasProg,
+        progLabel: hasProg ? a.prog.cur + ' / ' + a.prog.max : '',
+        progBarStyle: { height:'100%', width: progPct + '%', background:'linear-gradient(90deg,' + a.tone + ',#ffd166)', animation:'ach-bar 0.7s ease both' },
+        globalBarStyle: { height:'100%', width: globalW + '%', background: rar.tone, opacity:0.75 },
+        stampStyle: a.unlocked ? {
+          flex:'none', display:'flex', alignItems:'center', gap:'5px', padding:'4px 10px',
+          fontFamily:"'Oswald',sans-serif", fontSize:'10px', fontWeight:600, letterSpacing:'0.08em', textTransform:'uppercase',
+          color:'#7cf5b0', border:'1px solid rgba(124,245,176,0.4)', background:'rgba(124,245,176,0.08)',
+          clipPath:'polygon(6px 0,100% 0,calc(100% - 6px) 100%,0 100%)',
+        } : {
+          flex:'none', padding:'4px 10px', fontFamily:"'Oswald',sans-serif", fontSize:'10px', fontWeight:600,
+          letterSpacing:'0.08em', textTransform:'uppercase', color:'rgba(242,245,255,0.4)', border:'1px solid rgba(255,255,255,0.12)',
+          clipPath:'polygon(6px 0,100% 0,calc(100% - 6px) 100%,0 100%)',
+        },
+        stamp: a.unlocked ? '✓ ' + a.date : 'Locked',
+      };
+    });
+
+    const circ = 2 * Math.PI * 26;
+    return {
+      totalCount, doneCount, completionPct, headerStats, cats, statusChips, items,
+      empty: items.length === 0,
+      dialStyle: {
+        width:'74px', height:'74px', display:'grid', placeItems:'center', borderRadius:'50%',
+        background:'conic-gradient(#ffd166 ' + (completionPct*3.6) + 'deg, rgba(255,255,255,0.08) 0)',
+        position:'relative',
+        boxShadow:'0 0 22px rgba(255,209,102,0.25)',
+      },
+    };
+  }
+}
+</script>
+</body>
+</html>
