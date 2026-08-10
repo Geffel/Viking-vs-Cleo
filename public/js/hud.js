@@ -1,7 +1,5 @@
 import { ABILITIES, ABILITY_BINDS, COMBO, MELEE_ATTACKS, MELEE_BINDS, TEAMS } from '/shared/constants.js';
-
-// Vilken tangent varje melee-plats sitter pa, for combo-spuret: m1 -> Q.
-const KEYCAPS = Object.fromEntries(MELEE_BINDS.map((bind) => [bind.slot, bind.keycap]));
+import { inputCap, onBindingsChange } from '/js/keybinds.js';
 
 // Tva melee-rutor foljs av abilities. Har ett lag ingen formaga i en ruta doljs
 // rutan helt.
@@ -38,9 +36,9 @@ export class Hud {
     this.root.innerHTML = `
       <div class="hud-col">
         <div class="combo-track" hidden></div>
-        <div class="hud-group hud-melee">${MELEE_BINDS.map((bind) => slotMarkup(bind.slot, bind.keycap)).join('')}</div>
+        <div class="hud-group hud-melee">${MELEE_BINDS.map((bind) => slotMarkup(bind.slot)).join('')}</div>
       </div>
-      <div class="hud-group hud-abilities">${ABILITY_BINDS.map((bind) => slotMarkup(bind.slot, bind.keycap)).join('')}</div>`;
+      <div class="hud-group hud-abilities">${ABILITY_BINDS.map((bind) => slotMarkup(bind.slot)).join('')}</div>`;
 
     // Combo-sparet visas bara medan en kedja pagar. Markupen byggs om forst nar
     // det ar en ny combo pa gang, resten ar bara klasser som slas av och pa.
@@ -56,6 +54,7 @@ export class Hud {
       this.slots[key] = {
         el,
         icon: el.querySelector('.icon'),
+        key: el.querySelector('.key'),
         sweep: el.querySelector('.sweep'),
         timer: el.querySelector('.timer'),
         total: 1000,
@@ -80,6 +79,19 @@ export class Hud {
     this.feed = document.getElementById('killfeed');
     this.respawn = document.getElementById('respawn');
     this.respawnTimer = document.getElementById('respawn-timer');
+
+    this.showKeycaps();
+    onBindingsChange(() => this.showKeycaps());
+  }
+
+  /** Skriver om tangenten i varje ruta - kors om nar spelaren binder om. */
+  showKeycaps() {
+    for (const key of SLOT_KEYS) {
+      const slot = this.slots[key];
+      if (slot?.key) slot.key.textContent = inputCap(key);
+    }
+    // Combo-sparet ritas om vid nasta kedja, sa pipsen far de nya tangenterna.
+    this.combo.index = -1;
   }
 
   setTeam(team) {
@@ -155,7 +167,7 @@ export class Hud {
       this.combo.steps = -1;
       this.combo.el.innerHTML = `
         <div class="combo-name">${escapeHtml(combo.name)}</div>
-        <div class="combo-keys">${combo.seq.map((slot) => `<span class="pip">${KEYCAPS[slot] ?? '?'}</span>`).join('')}</div>
+        <div class="combo-keys">${combo.seq.map((slot) => `<span class="pip">${escapeHtml(inputCap(slot))}</span>`).join('')}</div>
         <div class="combo-window"><i></i></div>`;
       this.combo.pips = [...this.combo.el.querySelectorAll('.pip')];
       this.combo.bar = this.combo.el.querySelector('.combo-window i');
@@ -349,12 +361,13 @@ function escapeHtml(str) {
   return String(str).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 }
 
-function slotMarkup(slot, keycap) {
+// Tangenten fylls i av showKeycaps, sa att en ombindning slar igenom direkt.
+function slotMarkup(slot) {
   return `
     <div class="ability" data-slot="${slot}">
       <div class="sweep"></div>
       <div class="icon"></div>
-      <div class="key">${keycap}</div>
+      <div class="key"></div>
       <div class="timer"></div>
     </div>`;
 }

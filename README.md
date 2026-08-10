@@ -38,15 +38,28 @@ npm start
 
 ## Styrning
 
-| Tangent | Gör |
-| --- | --- |
-| `←` / `→` | Gå vänster / höger |
-| `Mellanslag` | Hoppa |
-| `Pil ned` | Droppa ned genom plattformen du står på |
-| `Q` / `E` | Närstridsattacker |
-| `1` | Förmåga 1 |
-| `2` | Förmåga 2 |
-| `3` | Förmåga 3 |
+| Tangent | Handkontroll | Gör |
+| --- | --- | --- |
+| `←` / `→` | Vänster spak / d-pad | Gå vänster / höger |
+| `Mellanslag` | `A` / Cross | Hoppa |
+| `Pil ned` | `D-pad ned` (eller spaken nedåt) | Droppa ned genom plattformen du står på |
+| `Q` / `E` | `X` / `Y` | Närstridsattacker |
+| `1` | `RB` | Förmåga 1 |
+| `2` | `LB` | Förmåga 2 |
+| `3` | `LT` | Förmåga 3 |
+| `4` | `RT` | Förmåga 4 |
+
+Det här är bara standardläget. **Controls** i lobbyn ger en egen sida där varje
+rad kan bindas om: klicka rutan och tryck en tangent, eller klicka
+kontrollrutan och tryck en knapp på handkontrollen. Högerklick tömmer en ruta,
+`Esc` avbryter, och sitter tangenten redan någon annanstans byter de två raderna
+plats med varandra.
+
+Bindningarna sparas i webbläsaren (`localStorage`, nyckeln `vvc.keybinds`) och
+slår igenom direkt överallt — HUD-rutorna, combo-spåret och info-fliken läser
+samma lista, så de kan aldrig visa en tangent som inte längre gäller. Rörelsen
+på handkontrollen sitter på vänster spak och går inte att binda om; den är en
+riktning och inte en knapp.
 
 ## Lag och förmågor
 
@@ -368,7 +381,9 @@ shared/constants.js   Kartor, fysik, lag, förmågor — delas av server och kli
 server/game.js        Spelvärlden: fysik, kollision, skada, respawn, poäng
 server/index.js       HTTP + WebSocket, spelloopen, LAN-adresser
 public/js/net.js      WebSocket + interpolering av andra spelare
-public/js/input.js    Tangentbord -> meddelanden
+public/js/input.js    Tangentbord och handkontroll -> meddelanden
+public/js/keybinds.js Spelarens bindningar: standard ur konstantfilen, egna i localStorage
+public/js/controls.js Kontrollsidan i lobbyn: binda om tangenter och knappar
 public/js/render.js   Canvas: bakgrund, plattformar, spelare, sprites, effekter
 public/js/hud.js      Ability-rutor med cooldown, killfeed, poängtavla
 public/js/main.js     Lobby och renderloop

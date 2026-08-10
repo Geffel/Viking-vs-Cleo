@@ -23,6 +23,7 @@ const SCHEMA_VERSION = 3;
 // Hur ofta pagaende sessioners poang och speltid checkpointas till disk. En
 // hard krasch (stromavbrott, kill -9) forlorar da som mest denna tid.
 const AUTOSAVE_MS = 30000;
+const LEADERBOARD_BROADCAST_MS = 1000;
 
 const app = express();
 app.use(express.static(path.join(ROOT, 'public')));
@@ -42,6 +43,7 @@ const recordedMatchResults = new Set();
 let nextProfileId = 1;
 let nextSessionId = 1;
 let shuttingDown = false;
+let lastLeaderboardBroadcastSig = '';
 
 // Deklareras fore loadProfiles() - den anropar cleanClientId/cleanName som
 // laser denna, och en const i temporal dead zone skulle annars krascha inlasningen.
@@ -73,6 +75,7 @@ wss.on('connection', (ws) => {
   });
   ws.ping();
 
+  const lb = leaderboardSnapshot();
   send(ws, {
     t: 'welcome',
     serverNow: Date.now(),
@@ -80,7 +83,8 @@ wss.on('connection', (ws) => {
     teams: game.teamCounts(),
     suggest: game.suggestTeam(),
     matches: matches.list(),
-    lb: leaderboardSnapshot(),
+    lb,
+    leaderboardSummary: leaderboardSummary(lb),
   });
 
   ws.on('message', (raw) => {
@@ -614,6 +618,116 @@ function leaderboardSnapshot() {
 
   rows.sort((a, b) => b.pts - a.pts || b.ms - a.ms || a.n.localeCompare(b.n, 'sv'));
   return rows.slice(0, 12);
+}
+
+function leaderboardPayload(rows = leaderboardSnapshot()) {
+  return {
+    t: 'leaderboard',
+    serverNow: Date.now(),
+    lb: rows,
+    matches: leaderboardMatchesSnapshot(),
+    summary: leaderboardSummary(rows),
+  };
+}
+
+function leaderboardSummary(rows = leaderboardSnapshot()) {
+  const matchList = leaderboardMatchesSnapshot();
+  let totalKills = 0;
+  let totalPlayMs = 0;
+  let totalMatches = 0;
+  let totalPowerups = 0;
+  let totalKebabs = 0;
+  let cleoPoints = 0;
+  let vikingPoints = 0;
+
+  for (const profile of profiles.values()) {
+    const view = buildProfileView(profile);
+    const points = Math.max(0, Number(view.points) || 0);
+    totalKills += view.kills;
+    totalPlayMs += view.playMs;
+    totalMatches += Math.max(0, Number(view.stats?.matches?.played) || 0);
+    totalPowerups += Math.max(0, Number(view.stats?.powerups?.total) || 0);
+    totalKebabs += Math.max(0, Number(view.stats?.powerups?.byKind?.kebab) || 0);
+
+    if (view.favoriteCharacter === 'Cleo') cleoPoints += points;
+    else if (view.favoriteCharacter === 'Viking') vikingPoints += points;
+    else {
+      cleoPoints += points / 2;
+      vikingPoints += points / 2;
+    }
+  }
+
+  return {
+    totalProfiles: profiles.size,
+    shownProfiles: rows.length,
+    activePlayers: [...allPlayers()].length,
+    activeMatches: matchList.length,
+    liveMatches: matchList.filter((match) => [MATCH_PHASES.countdown, MATCH_PHASES.playing].includes(match.phase)).length,
+    totalKills,
+    totalPlayMs,
+    totalMatches,
+    totalPowerups,
+    totalKebabs,
+    factionPoints: {
+      cleo: Math.round(cleoPoints),
+      viking: Math.round(vikingPoints),
+    },
+  };
+}
+
+function leaderboardMatchesSnapshot() {
+  return matches.list().map((match) => ({
+    ...match,
+    liveScore: matchGames.get(match.id)?.score ?? match.finalScore ?? null,
+  }));
+}
+
+function broadcastLeaderboard({ force = false } = {}) {
+  const payload = leaderboardPayload();
+  const sig = leaderboardSignature(payload);
+  if (!force && sig === lastLeaderboardBroadcastSig) return payload;
+  lastLeaderboardBroadcastSig = sig;
+
+  const str = JSON.stringify(payload);
+  for (const ws of wss.clients) {
+    if (ws.readyState === ws.OPEN) ws.send(str);
+  }
+  return payload;
+}
+
+function leaderboardSignature(payload) {
+  return JSON.stringify({
+    rows: payload.lb.map((entry) => [
+      entry.id,
+      entry.n,
+      entry.pts,
+      Math.floor((entry.ms ?? 0) / 1000),
+      entry.kills,
+      entry.deaths,
+      entry.nemesis?.name,
+      entry.nemesis?.count,
+      entry.prey?.name,
+      entry.prey?.count,
+      entry.fav,
+    ]),
+    summary: {
+      ...payload.summary,
+      totalPlayMs: Math.floor((payload.summary?.totalPlayMs ?? 0) / 1000),
+    },
+    matches: payload.matches.map((match) => [
+      match.id,
+      match.phase,
+      match.playerCount,
+      match.selectedMap,
+      Math.floor((match.voteEndsAt ?? 0) / 1000),
+      Math.floor((match.countdownEndsAt ?? 0) / 1000),
+      Math.floor((match.matchEndsAt ?? 0) / 1000),
+      match.finalScore?.cleo ?? 0,
+      match.finalScore?.viking ?? 0,
+      match.liveScore?.cleo ?? 0,
+      match.liveScore?.viking ?? 0,
+    ]),
+  });
 }
 
 function loadProfiles() {
@@ -1329,6 +1443,10 @@ function sendGameSnapshot(targetGame, predicate) {
   snap.lb = leaderboardSnapshot();
   broadcastTo(JSON.stringify(snap), predicate);
 }
+
+setInterval(() => {
+  broadcastLeaderboard();
+}, LEADERBOARD_BROADCAST_MS);
 
 setInterval(() => {
   const changes = matches.advancePhases({

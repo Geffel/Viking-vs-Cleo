@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Viking vs Cleo - Leaderboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Anton&family=Oswald:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/css/style.css" />
+    <link rel="stylesheet" href="/css/leaderboard.css" />
+  </head>
+  <body class="gl-display">
+    <main class="gl-screen" aria-labelledby="leaderboard-title">
+      <header class="gl-header">
+        <div class="gl-brand" aria-label="Viking vs Cleo">
+          <span class="cleo-word">Cleo</span>
+          <span class="vs-word">vs</span>
+          <span class="viking-word">Viking</span>
+        </div>
+
+        <div class="gl-title-block">
+          <h1 id="leaderboard-title">Leaderboard</h1>
+          <div class="gl-subtitle">Ranked Arena / Live Standings</div>
+        </div>
+
+        <div class="gl-live-block">
+          <div class="gl-live-pill">
+            <span class="gl-live-dot" id="leaderboard-dot"></span>
+            <span id="leaderboard-status">Connecting</span>
+          </div>
+          <div class="gl-clock-wrap">
+            <div class="gl-clock" id="leaderboard-clock">--:--:--</div>
+            <div class="gl-online" id="leaderboard-online">0 fighters online</div>
+          </div>
+        </div>
+      </header>
+
+      <section class="gl-body">
+        <section class="gl-ranking" aria-label="Top fighters">
+          <div class="gl-rank-head">
+            <div>Rank</div>
+            <div></div>
+            <div>Fighter</div>
+            <div>Matches</div>
+            <div>Win Rate</div>
+            <div>K/D</div>
+            <div>Score</div>
+          </div>
+
+          <div class="gl-rows" id="leaderboard-rows">
+            <div class="gl-empty">No stats yet</div>
+          </div>
+        </section>
+
+        <aside class="gl-side" aria-label="Leaderboard summary">
+          <section class="gl-panel gl-faction" aria-label="Faction war">
+            <div class="gl-panel-head">
+              <span>Faction War</span>
+              <small>Total glory</small>
+            </div>
+            <div class="gl-faction-teams">
+              <div class="gl-team cleo">
+                <span class="gl-team-icon"><img src="/assets/cleo/idle.png" alt="" /></span>
+                <span>
+                  <b>Cleo</b>
+                  <strong id="leaderboard-cleo-pct">50%</strong>
+                </span>
+              </div>
+              <div class="gl-team viking">
+                <span class="gl-team-icon"><img src="/assets/viking/idle.png" alt="" /></span>
+                <span>
+                  <b>Viking</b>
+                  <strong id="leaderboard-viking-pct">50%</strong>
+                </span>
+              </div>
+            </div>
+            <div class="gl-warbar" aria-hidden="true">
+              <span class="cleo" id="leaderboard-cleo-bar"></span>
+              <span class="viking" id="leaderboard-viking-bar"></span>
+            </div>
+            <div class="gl-lead" id="leaderboard-lead">Factions are tied</div>
+          </section>
+
+          <section class="gl-counters" id="leaderboard-summary" aria-label="Live counters"></section>
+
+          <section class="gl-panel gl-climber" id="leaderboard-climber" aria-label="Top climber">
+            <div class="gl-panel-head">
+              <span>Top Climber</span>
+              <small>recent movement</small>
+            </div>
+            <div class="gl-climber-body">
+              <span class="gl-climber-avatar"><img src="/assets/cleo/idle.png" alt="" /></span>
+              <div>
+                <div class="gl-climber-name">Waiting</div>
+                <div class="gl-climber-jump">+0 ranks</div>
+                <div class="gl-climber-note">No movement yet</div>
+              </div>
+            </div>
+          </section>
+        </aside>
+      </section>
+
+      <footer class="gl-ticker">
+        <div class="gl-feed-label">
+          <span></span>
+          Arena Feed
+        </div>
+        <div class="gl-marquee">
+          <div id="leaderboard-ticker">
+            <span>Waiting for arena feed</span>
+            <span>Waiting for arena feed</span>
+          </div>
+        </div>
+      </footer>
+    </main>
+
+    <script type="module" src="/js/leaderboard.js"></script>
+  </body>
+</html>

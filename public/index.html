@@ -71,7 +71,9 @@
             </div>
             <div class="screen-actions">
               <span class="online-pill"><span></span><b id="lobby-player-name">Global lobby</b></span>
+              <a class="screen-link" href="/leaderboard.html" target="_blank" rel="noopener">Leaderboard</a>
               <button id="open-achievements" type="button">Achievements</button>
+              <button id="open-controls" type="button">Controls</button>
               <button id="create-match" type="button">Create match</button>
             </div>
           </div>
@@ -151,6 +153,49 @@
 
           <div class="ach-grid" id="achievements-grid"></div>
           <div class="ach-empty" id="achievements-empty" hidden>No achievements match this filter</div>
+        </section>
+
+        <section class="flow-screen controls-screen" id="controls-view" hidden aria-labelledby="controls-title">
+          <div class="kb-topbar">
+            <button id="controls-back" type="button">Back</button>
+            <div class="kb-wordmark">
+              <span class="cleo-word">Cleo</span>
+              <span class="vs-word">vs</span>
+              <span class="viking-word">Viking</span>
+              <span class="kb-kicker">Controls &middot; rebind keys</span>
+            </div>
+            <div class="kb-topbar-actions">
+              <span class="kb-dirty" id="controls-dirty"><i></i>All saved</span>
+              <button id="controls-save" type="button">&#10003; Save bindings</button>
+            </div>
+          </div>
+
+          <div class="kb-body">
+            <aside class="kb-rail">
+              <div class="kb-rail-title">Categories</div>
+              <div class="kb-cats" id="controls-cats"></div>
+              <button id="controls-reset-all" class="kb-reset-all" type="button">&#8634; Restore defaults</button>
+              <p class="kb-hint">
+                Click a slot, then press a key<br />or a button on your controller.<br />
+                <b>Right-click</b> a slot to clear it.<br />
+                <b>Esc</b> cancels rebinding.
+              </p>
+            </aside>
+
+            <div class="kb-main">
+              <div class="kb-main-head">
+                <div>
+                  <div class="kb-eyebrow">Keyboard &amp; gamepad</div>
+                  <h1 id="controls-title">Movement</h1>
+                </div>
+                <div class="kb-colheads"><span>Keyboard</span><span>Controller</span></div>
+              </div>
+
+              <div class="kb-rows" id="controls-rows"></div>
+
+              <div class="kb-note" id="controls-note" hidden></div>
+            </div>
+          </div>
         </section>
 
         <section class="flow-screen" id="match-room" hidden aria-labelledby="match-room-title">

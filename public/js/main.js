@@ -2,6 +2,7 @@ import { Net } from '/js/net.js';
 import { Renderer } from '/js/render.js';
 import { Hud } from '/js/hud.js';
 import { AchievementsUi } from '/js/achievements.js';
+import { ControlsUi } from '/js/controls.js';
 import { initInput } from '/js/input.js';
 import { initLobbyInfo } from '/js/info.js';
 import { ACTION_SLOTS, MAPS, MAP_VOTE_MS, MATCH_DURATION_MS, MATCH_PHASES, NAME_MAX, mapLayoutFor, mapThemeFor } from '/shared/constants.js';
@@ -26,6 +27,8 @@ const matchList = document.getElementById('match-list');
 const createMatchBtn = document.getElementById('create-match');
 const openAchievementsBtn = document.getElementById('open-achievements');
 const achievementsView = document.getElementById('achievements-view');
+const openControlsBtn = document.getElementById('open-controls');
+const controlsView = document.getElementById('controls-view');
 const matchRoom = document.getElementById('match-room');
 const matchRoomTitle = document.getElementById('match-room-title');
 const matchRoomPhase = document.getElementById('match-room-phase');
@@ -90,11 +93,14 @@ let wiping = false;
 let lastFightText = '';
 let lastFightMode = '';
 let achievementsReturnView = 'lobby';
+let controlsReturnView = 'lobby';
 
 const achievementsUi = new AchievementsUi({
   playerName: () => currentName,
   onBack: closeAchievements,
 });
+
+const controlsUi = new ControlsUi({ onBack: closeControls });
 
 introName.value = currentName;
 initLobbyInfo();
@@ -113,6 +119,7 @@ createMatchBtn.addEventListener('click', () => {
 
 openAchievementsBtn?.addEventListener('click', () => openAchievements());
 viewAchievementsResultBtn?.addEventListener('click', () => openAchievements());
+openControlsBtn?.addEventListener('click', () => openControls());
 
 matchList.addEventListener('click', (e) => {
   const btn = e.target.closest('[data-join-match]');
@@ -300,6 +307,7 @@ function setView(view) {
   globalLobby.hidden = view !== 'lobby';
   matchRoom.hidden = view !== 'matchRoom';
   if (achievementsView) achievementsView.hidden = view !== 'achievements';
+  if (controlsView) controlsView.hidden = view !== 'controls';
   leaveBtn.hidden = view !== 'game';
 
   // Profil-overlayen hor bara hemma i globala lobbyn.
@@ -316,7 +324,7 @@ function setView(view) {
     window.setTimeout(() => introName.focus(), 0);
   }
 
-  if (view === 'lobby' || view === 'matchRoom' || view === 'achievements') {
+  if (view === 'lobby' || view === 'matchRoom' || view === 'achievements' || view === 'controls') {
     lobbyPlayerName.textContent = currentName ? `Connected as ${currentName}` : 'Global lobby';
   }
 
@@ -333,6 +341,19 @@ function openAchievements() {
 
 function closeAchievements() {
   const backTo = achievementsReturnView === 'matchRoom' && net.match ? 'matchRoom' : 'lobby';
+  setView(backTo);
+}
+
+function openControls() {
+  controlsReturnView = currentView === 'matchRoom' ? 'matchRoom' : 'lobby';
+  hidePlayerCard();
+  if (openProfileId) closeProfile();
+  controlsUi.open();
+  setView('controls');
+}
+
+function closeControls() {
+  const backTo = controlsReturnView === 'matchRoom' && net.match ? 'matchRoom' : 'lobby';
   setView(backTo);
 }
 
@@ -445,7 +466,18 @@ function playWipe(wipe, swap) {
 }
 
 function markViewEntry(view) {
-  const el = view === 'intro' ? intro : view === 'lobby' ? globalLobby : view === 'matchRoom' ? matchRoom : view === 'achievements' ? achievementsView : null;
+  const el =
+    view === 'intro'
+      ? intro
+      : view === 'lobby'
+        ? globalLobby
+        : view === 'matchRoom'
+          ? matchRoom
+          : view === 'achievements'
+            ? achievementsView
+            : view === 'controls'
+              ? controlsView
+              : null;
   if (!el) return;
   el.classList.remove('vvc-enter');
   void el.offsetWidth;

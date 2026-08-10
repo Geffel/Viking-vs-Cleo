@@ -91,6 +91,10 @@ export class Net {
         if (!isLiveGamePhase(this.match?.phase)) this.clearLiveGame();
         this.setLeaderboard(msg.lb ?? this.leaderboard);
         this.emit('lobby', msg);
+      } else if (msg.t === 'leaderboard') {
+        this.matches = msg.matches ?? this.matches;
+        this.setLeaderboard(msg.lb ?? []);
+        this.emit('leaderboardSummary', msg.summary ?? null);
       } else if (msg.t === 'match') {
         this.match = msg.match ?? null;
         if (!isLiveGamePhase(this.match?.phase)) this.clearLiveGame();

@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Oswald:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  html, body { margin:0; height:100%; background:#04060d; overflow:hidden; }
+  * { box-sizing:border-box; }
+  body { font-family:'Oswald', system-ui, sans-serif; color:#f2f5ff; -webkit-font-smoothing:antialiased; }
+  img { display:block; }
+  @keyframes gl-pulse { 0%,100% { opacity:1; box-shadow:0 0 0 0 rgba(255,77,157,0.55); } 50% { opacity:0.55; box-shadow:0 0 0 7px rgba(255,77,157,0); } }
+  @keyframes gl-marquee { from { transform:translateX(0); } to { transform:translateX(-50%); } }
+  @keyframes gl-scan { 0% { transform:translateX(-120%);} 55%,100% { transform:translateX(360%);} }
+  @keyframes gl-float { 0%,100% { transform:translateY(0);} 50% { transform:translateY(-4px);} }
+</style>
+</helmet>
+
+<div style="width:1920px;height:1080px;position:relative;display:flex;flex-direction:column;padding:34px 40px 0;background:linear-gradient(180deg,#070a15,#05070f);overflow:hidden;">
+
+      <!-- corner gl/faction glows -->
+      <div style="position:absolute;top:-160px;left:-160px;width:520px;height:520px;background:radial-gradient(circle,rgba(255,77,157,0.16),transparent 70%);pointer-events:none;"></div>
+      <div style="position:absolute;bottom:-160px;right:-160px;width:520px;height:520px;background:radial-gradient(circle,rgba(77,195,255,0.16),transparent 70%);pointer-events:none;"></div>
+
+      <!-- ===== HEADER ===== -->
+      <div style="position:relative;display:flex;align-items:center;justify-content:space-between;padding-bottom:22px;border-bottom:1px solid rgba(255,255,255,0.08);">
+        <div style="display:flex;align-items:center;gap:14px;">
+          <div style="display:flex;align-items:baseline;gap:9px;">
+            <span style="font-family:'Anton',sans-serif;font-size:26px;letter-spacing:0.06em;text-transform:uppercase;color:#ff4d9d;">Cleo</span>
+            <span style="font-family:'Oswald',sans-serif;font-weight:300;font-size:15px;color:rgba(242,245,255,0.4);">vs</span>
+            <span style="font-family:'Anton',sans-serif;font-size:26px;letter-spacing:0.06em;text-transform:uppercase;color:#4dc3ff;">Viking</span>
+          </div>
+        </div>
+        <div style="text-align:center;">
+          <h1 style="margin:0;font-family:'Anton',sans-serif;font-size:52px;line-height:0.86;letter-spacing:0.04em;text-transform:uppercase;">Global Leaderboard</h1>
+          <div style="margin-top:8px;font-size:13px;letter-spacing:0.34em;text-transform:uppercase;color:rgba(242,245,255,0.5);">Season 3 · Ranked Arena · Worldwide</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:22px;">
+          <div style="display:flex;align-items:center;gap:9px;padding:8px 16px;border:1px solid rgba(255,77,157,0.45);background:rgba(255,77,157,0.08);clip-path:polygon(9px 0,100% 0,100% calc(100% - 9px),calc(100% - 9px) 100%,0 100%,0 9px);">
+            <span style="width:9px;height:9px;border-radius:50%;background:#ff4d9d;animation:gl-pulse 1.6s ease-in-out infinite;"></span>
+            <span style="font-family:'Oswald',sans-serif;font-weight:700;font-size:13px;letter-spacing:0.24em;text-transform:uppercase;color:#ff4d9d;">Live</span>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-family:'Anton',sans-serif;font-size:30px;line-height:1;letter-spacing:0.04em;font-variant-numeric:tabular-nums;color:#f2f5ff;">{{ clockText }}</div>
+            <div style="margin-top:4px;font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:rgba(242,245,255,0.5);">{{ onlineText }} fighters online</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== BODY ===== -->
+      <div style="position:relative;flex:1;display:grid;grid-template-columns:1332px 480px;gap:28px;padding:24px 0 20px;min-height:0;">
+
+        <!-- === RANKING COLUMN === -->
+        <div style="display:flex;flex-direction:column;min-height:0;">
+          <!-- column header -->
+          <div style="display:grid;grid-template-columns:70px 70px 1fr 116px 108px 92px 200px;align-items:center;gap:16px;padding:0 20px 12px;font-family:'Oswald',sans-serif;font-size:11px;font-weight:600;letter-spacing:0.16em;text-transform:uppercase;color:rgba(242,245,255,0.4);">
+            <div>Rank</div><div></div><div>Fighter</div>
+            <div style="text-align:right;">Matches</div>
+            <div style="text-align:right;">Win rate</div>
+            <div style="text-align:right;">K/D</div>
+            <div style="text-align:right;">Score</div>
+          </div>
+
+          <div style="flex:1;display:flex;flex-direction:column;gap:6px;min-height:0;">
+            <sc-for list="{{ rows }}" as="p" hint-placeholder-count="12">
+              <div style="{{ p.rowStyle }}">
+                <sc-if value="{{ p.top3 }}" hint-placeholder-val="{{ false }}">
+                  <div style="{{ p.scanWrap }}"><div style="{{ p.scanStyle }}"></div></div>
+                </sc-if>
+                <!-- rank -->
+                <div style="position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+                  <span style="{{ p.rankStyle }}">{{ p.rank }}</span>
+                  <span style="{{ p.moveStyle }}">{{ p.moveText }}</span>
+                </div>
+                <!-- avatar -->
+                <div style="{{ p.avatarFrame }}">
+                  <sc-if value="{{ p.avatar }}" hint-placeholder-val="{{ false }}">
+                    <img src="{{ p.avatar }}" alt="" style="height:52px;image-rendering:pixelated;filter:drop-shadow(0 3px 6px rgba(0,0,0,0.6));" />
+                  </sc-if>
+                </div>
+                <!-- name -->
+                <div style="position:relative;min-width:0;">
+                  <div style="display:flex;align-items:center;gap:10px;">
+                    <span style="font-family:'Oswald',sans-serif;font-weight:600;font-size:23px;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ p.name }}</span>
+                    <span style="{{ p.factionTag }}">{{ p.factionLabel }}</span>
+                  </div>
+                  <div style="margin-top:6px;display:flex;align-items:center;gap:8px;font-family:'Oswald',sans-serif;font-size:12px;letter-spacing:0.05em;text-transform:uppercase;color:rgba(242,245,255,0.5);">
+                    <span style="{{ p.streakStyle }}">{{ p.streakText }}</span>
+                    <span style="opacity:0.5;">{{ p.country }}</span>
+                  </div>
+                </div>
+                <!-- matches -->
+                <div style="text-align:right;font-family:'Oswald',sans-serif;font-weight:500;font-size:20px;font-variant-numeric:tabular-nums;color:rgba(242,245,255,0.82);">{{ p.matches }}</div>
+                <!-- win rate -->
+                <div style="text-align:right;">
+                  <div style="font-family:'Oswald',sans-serif;font-weight:600;font-size:20px;font-variant-numeric:tabular-nums;color:#7cf5b0;">{{ p.winPct }}%</div>
+                </div>
+                <!-- kd -->
+                <div style="text-align:right;font-family:'Oswald',sans-serif;font-weight:500;font-size:20px;font-variant-numeric:tabular-nums;color:#ffd166;">{{ p.kd }}</div>
+                <!-- score -->
+                <div style="position:relative;text-align:right;">
+                  <div style="font-family:'Anton',sans-serif;font-size:28px;line-height:1;letter-spacing:0.01em;font-variant-numeric:tabular-nums;color:{{ p.tone }};">{{ p.scoreText }}</div>
+                  <div style="margin-top:7px;height:5px;background:rgba(255,255,255,0.07);overflow:hidden;clip-path:polygon(2px 0,100% 0,calc(100% - 2px) 100%,0 100%);">
+                    <div style="{{ p.barStyle }}"></div>
+                  </div>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <!-- === SIDE COLUMN === -->
+        <div style="display:flex;flex-direction:column;gap:20px;min-height:0;">
+
+          <!-- FACTION WAR -->
+          <div style="position:relative;padding:20px 22px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);clip-path:polygon(0 0,100% 0,100% calc(100% - 16px),calc(100% - 16px) 100%,0 100%);">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+              <span style="font-family:'Anton',sans-serif;font-size:18px;letter-spacing:0.04em;text-transform:uppercase;">Faction War</span>
+              <span style="font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:rgba(242,245,255,0.45);">total glory</span>
+            </div>
+            <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:10px;">
+              <div style="display:flex;align-items:center;gap:10px;">
+                <div style="width:44px;height:44px;display:grid;place-items:center;background:rgba(255,77,157,0.12);border:1px solid rgba(255,77,157,0.5);clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px);"><img src="assets/cleo/idle.png" alt="" style="height:34px;image-rendering:pixelated;" /></div>
+                <div>
+                  <div style="font-family:'Anton',sans-serif;font-size:15px;text-transform:uppercase;color:#ff4d9d;">Cleo</div>
+                  <div style="font-family:'Oswald',sans-serif;font-size:20px;font-weight:600;font-variant-numeric:tabular-nums;color:#f2f5ff;">{{ cleoPct }}%</div>
+                </div>
+              </div>
+              <div style="text-align:right;display:flex;align-items:center;gap:10px;flex-direction:row-reverse;">
+                <div style="width:44px;height:44px;display:grid;place-items:center;background:rgba(77,195,255,0.12);border:1px solid rgba(77,195,255,0.5);clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px);"><img src="assets/viking/idle.png" alt="" style="height:34px;image-rendering:pixelated;" /></div>
+                <div>
+                  <div style="font-family:'Anton',sans-serif;font-size:15px;text-transform:uppercase;color:#4dc3ff;">Viking</div>
+                  <div style="font-family:'Oswald',sans-serif;font-size:20px;font-weight:600;font-variant-numeric:tabular-nums;color:#f2f5ff;">{{ vikingPct }}%</div>
+                </div>
+              </div>
+            </div>
+            <div style="position:relative;height:16px;display:flex;overflow:hidden;background:#0a0e1a;border:1px solid rgba(255,255,255,0.08);">
+              <div style="{{ cleoBar }}"></div>
+              <div style="{{ vikingBar }}"></div>
+            </div>
+            <div style="margin-top:12px;text-align:center;font-family:'Oswald',sans-serif;font-size:12px;font-weight:600;letter-spacing:0.16em;text-transform:uppercase;color:{{ leadTone }};">{{ leadText }}</div>
+          </div>
+
+          <!-- LIVE COUNTERS -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+            <sc-for list="{{ counters }}" as="c" hint-placeholder-count="4">
+              <div style="position:relative;overflow:hidden;padding:16px 18px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-left:3px solid {{ c.tone }};clip-path:polygon(0 0,100% 0,100% calc(100% - 11px),calc(100% - 11px) 100%,0 100%);">
+                <div style="font-family:'Oswald',sans-serif;font-size:10.5px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;color:rgba(242,245,255,0.45);">{{ c.k }}</div>
+                <div style="font-family:'Anton',sans-serif;font-size:34px;line-height:1;margin-top:9px;font-variant-numeric:tabular-nums;color:{{ c.tone }};">{{ c.v }}</div>
+              </div>
+            </sc-for>
+          </div>
+
+          <!-- TOP CLIMBER -->
+          <div style="position:relative;overflow:hidden;flex:1;min-height:0;padding:20px 22px;background:linear-gradient(160deg,rgba(255,209,102,0.09),rgba(255,255,255,0.02));border:1px solid rgba(255,209,102,0.28);clip-path:polygon(0 0,100% 0,100% calc(100% - 16px),calc(100% - 16px) 100%,0 100%);display:flex;flex-direction:column;">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <span style="font-family:'Anton',sans-serif;font-size:18px;letter-spacing:0.04em;text-transform:uppercase;color:#ffd166;">Top Climber</span>
+              <span style="font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:rgba(242,245,255,0.45);">this hour</span>
+            </div>
+            <div style="flex:1;display:flex;align-items:center;gap:18px;margin-top:6px;">
+              <div style="{{ climberFrame }}">
+                <img src="{{ climberAvatar }}" alt="" style="height:66px;image-rendering:pixelated;animation:gl-float 3s ease-in-out infinite;filter:drop-shadow(0 5px 10px rgba(0,0,0,0.6));" />
+              </div>
+              <div style="min-width:0;">
+                <div style="font-family:'Anton',sans-serif;font-size:30px;line-height:0.95;text-transform:uppercase;color:#f2f5ff;">{{ climberName }}</div>
+                <div style="margin-top:8px;display:flex;align-items:center;gap:10px;">
+                  <span style="font-family:'Anton',sans-serif;font-size:22px;color:#7cf5b0;">▲ {{ climberJump }}</span>
+                  <span style="font-family:'Oswald',sans-serif;font-size:13px;letter-spacing:0.06em;text-transform:uppercase;color:rgba(242,245,255,0.55);">ranks climbed</span>
+                </div>
+                <div style="margin-top:8px;font-family:'Oswald',sans-serif;font-size:14px;letter-spacing:0.04em;color:rgba(242,245,255,0.6);">+{{ climberGain }} glory · now #{{ climberRank }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== TICKER ===== -->
+      <div style="position:relative;height:56px;margin:0 -40px;display:flex;align-items:center;background:#070a14;border-top:1px solid rgba(255,255,255,0.08);overflow:hidden;">
+        <div style="flex:none;height:100%;display:flex;align-items:center;gap:8px;padding:0 22px;background:#ff4d9d;clip-path:polygon(0 0,100% 0,calc(100% - 16px) 100%,0 100%);z-index:2;">
+          <span style="width:8px;height:8px;border-radius:50%;background:#04060d;animation:gl-pulse 1.6s ease-in-out infinite;"></span>
+          <span style="font-family:'Oswald',sans-serif;font-weight:700;font-size:13px;letter-spacing:0.2em;text-transform:uppercase;color:#04060d;">Arena Feed</span>
+        </div>
+        <div style="flex:1;overflow:hidden;position:relative;">
+          <div style="display:flex;width:max-content;animation:gl-marquee 48s linear infinite;">
+            <div style="display:flex;align-items:center;font-family:'Oswald',sans-serif;font-size:15px;letter-spacing:0.02em;color:rgba(242,245,255,0.7);white-space:nowrap;">{{ tickerText }}</div>
+            <div style="display:flex;align-items:center;font-family:'Oswald',sans-serif;font-size:15px;letter-spacing:0.02em;color:rgba(242,245,255,0.7);white-space:nowrap;">{{ tickerText }}</div>
+          </div>
+        </div>
+      </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1920,&quot;height&quot;:1080}}">
+class Component extends DCLogic {
+  state = { players: [], counters0: {}, tick: 0, baseline: {}, clock: new Date(), ticker: '' };
+
+  seed() {
+    const C = '#ff4d9d', V = '#4dc3ff';
+    const raw = [
+      [' pharaohMathias','cleo',46820,412,71,3.4,7,'SE'],
+      [' RagnarStorm','viking',44190,388,68,3.1,5,'NO'],
+      [' NefertariX','cleo',41560,401,66,2.9,0,'EG'],
+      ['BjornAxeborn','viking',39870,356,64,2.7,4,'DK'],
+      ['SeleneNoct','cleo',37240,344,63,2.6,2,'FR'],
+      ['UlfrTheWolf','viking',35110,377,59,2.4,0,'IS'],
+      ['AmunetGold','cleo',33480,298,61,2.5,3,'US'],
+      ['SigridBlade','viking',31020,312,57,2.2,0,'FI'],
+      ['NeithArrow','cleo',28640,289,55,2.1,1,'DE'],
+      ['HalvardsRage','viking',26150,271,53,1.9,0,'NL'],
+      ['AnippeSun','cleo',23770,254,52,1.8,2,'BR'],
+      ['SekhmetFury','viking',21390,247,50,1.7,0,'CA'],
+    ];
+    return raw.map((r,i) => ({
+      id:'p'+i, name:r[0], faction:r[1],
+      score:r[2], matches:r[3], winPct:r[4], kd:r[5], streak:r[6], country:r[7],
+      tone:r[1]==='cleo'?C:V,
+      avatar:r[1]==='cleo'?'assets/cleo/idle.png':'assets/viking/idle.png',
+      lastGain:0,
+    }));
+  }
+
+  componentDidMount() {
+    const players = this.seed();
+    const baseline = {}; players.slice().sort((a,b)=>b.score-a.score).forEach((p,i)=>baseline[p.id]=i+1);
+    this.setState({ players, baseline, counters0:{ matches:1284, kills:38470, kebabs:12960, online:137 }, ticker:this.buildTicker(players,[]) });
+    this.timer = setInterval(()=>this.tick(), 1200);
+    this.clockTimer = setInterval(()=>this.setState({clock:new Date()}), 1000);
+  }
+  componentWillUnmount(){ clearInterval(this.timer); clearInterval(this.clockTimer); }
+
+  buildTicker(players, events){
+    const base = events.slice(0,10);
+    const filler = [
+      players[0] && players[0].name+' extends the lead',
+      'Cleo dynasty pushes for control of the arena',
+      players[3] && players[3].name+' lands a Flawless Victory',
+      'Viking clans rally on the northern maps',
+      players[6] && players[6].name+' hits a 4-match win streak',
+    ].filter(Boolean);
+    const all = base.concat(filler);
+    return '   '+all.map(e=>'◆  '+e).join('        ')+'        ';
+  }
+
+  tick(){
+    this.setState(s => {
+      let events = s._events ? s._events.slice() : [];
+      const players = s.players.map(p => {
+        const active = Math.random() < 0.55;
+        const gain = active ? Math.floor(Math.random()*70)+8 : 0;
+        const gotMatch = Math.random() < 0.12;
+        if (gain > 55) events.unshift(p.name+' scores a critical '+gain+'-point flurry');
+        return {
+          ...p,
+          score: p.score + gain,
+          lastGain: gain,
+          matches: p.matches + (gotMatch?1:0),
+        };
+      });
+      events = events.slice(0,12);
+      const tick = s.tick + 1;
+
+      // counters drift
+      const c0 = { ...s.counters0 };
+      c0.kills += Math.floor(Math.random()*14)+4;
+      c0.kebabs += Math.floor(Math.random()*9)+1;
+      c0.matches += Math.random()<0.4 ? 1 : 0;
+      c0.online += Math.random()<0.5 ? 1 : -1;
+      c0.online = Math.max(120, Math.min(160, c0.online));
+
+      let baseline = s.baseline;
+      let ticker = s.ticker;
+      if (tick % 8 === 0) {
+        baseline = {}; players.slice().sort((a,b)=>b.score-a.score).forEach((p,i)=>baseline[p.id]=i+1);
+        ticker = this.buildTicker(players.slice().sort((a,b)=>b.score-a.score), events);
+      }
+      return { players, tick, counters0:c0, baseline, ticker, _events:events };
+    });
+  }
+
+  renderVals(){
+    const { players, baseline, counters0, clock } = this.state;
+    const sorted = players.slice().sort((a,b)=>b.score-a.score);
+    const top = sorted.length ? sorted[0].score : 1;
+
+    const rankTone = { 1:'#ffd166', 2:'#cfd6e6', 3:'#e0975a' };
+
+    const rows = sorted.map((p,i) => {
+      const rank = i+1;
+      const base = baseline[p.id] || rank;
+      const delta = base - rank; // positive = climbed
+      const tone = rankTone[rank] || p.tone;
+      const top3 = rank <= 3;
+      const barW = Math.max(4, Math.round(p.score/top*100));
+      return {
+        rank, name:p.name, matches:p.matches, winPct:p.winPct, kd:p.kd.toFixed(1),
+        avatar:p.avatar, tone, top3,
+        scoreText: p.score.toLocaleString('en-US'),
+        country: p.country,
+        factionLabel: p.faction==='cleo'?'Cleo':'Viking',
+        rowStyle: {
+          position:'relative', overflow:'hidden',
+          display:'grid', gridTemplateColumns:'70px 70px 1fr 116px 108px 92px 200px',
+          alignItems:'center', gap:'16px', padding:'0 20px', height:'62px',
+          background: top3 ? 'linear-gradient(90deg,'+tone+'1c, rgba(255,255,255,0.03))' : (rank%2 ? 'rgba(255,255,255,0.018)' : 'rgba(255,255,255,0.032)'),
+          border:'1px solid '+(top3 ? tone+'55' : 'rgba(255,255,255,0.06)'),
+          borderLeft:'3px solid '+tone,
+          clipPath:'polygon(0 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%)',
+          boxShadow: top3 ? '0 0 24px '+tone+'1f' : 'none',
+        },
+        scanWrap: { position:'absolute', inset:0, overflow:'hidden', pointerEvents:'none' },
+        scanStyle: { position:'absolute', top:0, bottom:0, left:0, width:'26%', background:'linear-gradient(105deg,transparent,'+tone+'26,transparent)', animation:'gl-scan 6s ease-in-out infinite', animationDelay:(rank*0.6).toFixed(1)+'s' },
+        rankStyle: {
+          fontFamily:"'Anton',sans-serif", fontSize: rank<=3?'34px':'28px', lineHeight:1,
+          color: tone, fontVariantNumeric:'tabular-nums',
+          textShadow: top3 ? '0 0 16px '+tone+'88' : 'none',
+        },
+        moveText: delta>0 ? '▲'+delta : (delta<0 ? '▼'+(-delta) : '—'),
+        moveStyle: {
+          marginTop:'2px', fontFamily:"'Oswald',sans-serif", fontWeight:600, fontSize:'11px', letterSpacing:'0.04em',
+          color: delta>0 ? '#7cf5b0' : (delta<0 ? '#ff6b6b' : 'rgba(242,245,255,0.28)'),
+        },
+        avatarFrame: {
+          width:'64px', height:'52px', display:'grid', placeItems:'center', overflow:'hidden',
+          background:'rgba(0,0,0,0.35)', border:'1px solid '+p.tone+'55',
+          clipPath:'polygon(9px 0,100% 0,100% calc(100% - 9px),calc(100% - 9px) 100%,0 100%,0 9px)',
+        },
+        factionTag: {
+          flex:'none', padding:'3px 9px', fontFamily:"'Oswald',sans-serif", fontSize:'10px', fontWeight:700,
+          letterSpacing:'0.12em', textTransform:'uppercase', color:'#04060d', background:p.tone,
+          clipPath:'polygon(5px 0,100% 0,calc(100% - 5px) 100%,0 100%)',
+        },
+        streakStyle: p.streak>0 ? {
+          padding:'2px 8px', color:'#ffd166', border:'1px solid rgba(255,209,102,0.4)', background:'rgba(255,209,102,0.08)',
+          fontWeight:600, letterSpacing:'0.04em',
+        } : { padding:'2px 8px', color:'rgba(242,245,255,0.35)', border:'1px solid rgba(255,255,255,0.1)' },
+        streakText: p.streak>0 ? ('🔥 '+p.streak+' streak') : 'no streak',
+        barStyle: { height:'100%', width:barW+'%', background:'linear-gradient(90deg,'+p.tone+','+tone+')', transition:'width 1s ease' },
+      };
+    });
+
+    // faction war
+    const cleoTotal = players.filter(p=>p.faction==='cleo').reduce((s,p)=>s+p.score,0);
+    const vikTotal = players.filter(p=>p.faction==='viking').reduce((s,p)=>s+p.score,0);
+    const tot = (cleoTotal+vikTotal)||1;
+    const cleoPct = Math.round(cleoTotal/tot*100);
+    const vikingPct = 100 - cleoPct;
+    const cleoLead = cleoTotal >= vikTotal;
+
+    // top climber
+    let climber = sorted[0] || {};
+    let bestDelta = -99, bestGain = 0;
+    sorted.forEach((p,i)=>{ const d=(baseline[p.id]||i+1)-(i+1); if(d>bestDelta){bestDelta=d; climber=p; climber._rank=i+1;} });
+    if (bestDelta <= 0) { // fall back to biggest gainer
+      const g = players.slice().sort((a,b)=>b.lastGain-a.lastGain)[0];
+      if (g){ climber = g; climber._rank = sorted.findIndex(x=>x.id===g.id)+1; bestDelta = 0; }
+    }
+    bestGain = climber.lastGain || 0;
+
+    const counters = [
+      { k:'Matches live', v:(counters0.matches||0).toLocaleString('en-US'), tone:'#ff4d9d' },
+      { k:'Fighters online', v:(counters0.online||0), tone:'#4dc3ff' },
+      { k:'Kills today', v:(counters0.kills||0).toLocaleString('en-US'), tone:'#ffd166' },
+      { k:'Kebabs thrown', v:(counters0.kebabs||0).toLocaleString('en-US'), tone:'#7cf5b0' },
+    ];
+
+    const h = clock.getHours().toString().padStart(2,'0');
+    const m = clock.getMinutes().toString().padStart(2,'0');
+    const sec = clock.getSeconds().toString().padStart(2,'0');
+
+    return {
+      rows,
+      clockText: h+':'+m+':'+sec,
+      onlineText: (counters0.online||0),
+      cleoPct, vikingPct,
+      cleoBar: { width:cleoPct+'%', height:'100%', background:'linear-gradient(90deg,#ff4d9d,#ff87bd)', transition:'width 1.1s ease', boxShadow:'0 0 12px rgba(255,77,157,0.6)' },
+      vikingBar: { width:vikingPct+'%', height:'100%', background:'linear-gradient(90deg,#4dc3ff,#8fdcff)', transition:'width 1.1s ease', boxShadow:'0 0 12px rgba(77,195,255,0.6)' },
+      leadText: cleoLead ? 'Cleo dynasty is winning the war' : 'Viking clans are winning the war',
+      leadTone: cleoLead ? '#ff4d9d' : '#4dc3ff',
+      counters,
+      climberName: climber.name || '—',
+      climberAvatar: climber.avatar || 'assets/viking/idle.png',
+      climberJump: Math.max(bestDelta,0),
+      climberGain: bestGain,
+      climberRank: climber._rank || 1,
+      climberFrame: {
+        width:'92px', height:'92px', flex:'none', display:'grid', placeItems:'center', overflow:'hidden',
+        background:'rgba(0,0,0,0.35)', border:'1px solid '+((climber.tone)||'#ffd166')+'66',
+        boxShadow:'inset 0 0 26px '+((climber.tone)||'#ffd166')+'22',
+        clipPath:'polygon(14px 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%,0 14px)',
+      },
+      tickerText: this.state.ticker,
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -19,6 +19,7 @@ import {
   POWERUP_SPAWNS,
   TEAMS,
 } from '/shared/constants.js';
+import { inputCap, keycapFor, onBindingsChange, padLabel } from '/js/keybinds.js';
 
 // Sekunder i klartext: "2 seconds", "1.5 seconds". Ingen spelare tanker i ms.
 const sec = (ms) => {
@@ -47,9 +48,9 @@ export function initLobbyInfo() {
   const root = document.getElementById('lobby-info');
   if (!root) return;
 
-  fill('info-gameplay', gameplayHtml());
-  fill('info-powerups', powerupsHtml());
-  fill('info-abilities', abilitiesHtml());
+  fillPanes();
+  // Binder spelaren om en tangent pa kontrollsidan ska texten har folja med.
+  onBindingsChange(fillPanes);
 
   const tabs = [...root.querySelectorAll('.info-tab')];
   const panes = [...root.querySelectorAll('.info-pane')];
@@ -66,6 +67,12 @@ export function initLobbyInfo() {
   }
 }
 
+function fillPanes() {
+  fill('info-gameplay', gameplayHtml());
+  fill('info-powerups', powerupsHtml());
+  fill('info-abilities', abilitiesHtml());
+}
+
 function fill(id, html) {
   const el = document.getElementById(id);
   if (el) el.innerHTML = html;
@@ -77,18 +84,21 @@ function fill(id, html) {
 // det forst i gameplay-fliken sa att tangenter och regler hanger ihop.
 function controlsHtml() {
   const keys = [
-    [['←', '→'], 'Move'],
-    [['Space'], 'Jump'],
-    [['Down'], 'Drop'],
-    [MELEE_BINDS.map((bind) => bind.keycap), 'Melee'],
-    [ABILITY_BINDS.map((bind) => bind.keycap), 'Abilities'],
+    { keyboard: [keycapFor('left'), keycapFor('right')], gamepad: [padLabel('left')], label: 'Move' },
+    { keyboard: [keycapFor('jump')], gamepad: [padLabel('jump')], label: 'Jump' },
+    { keyboard: [keycapFor('drop')], gamepad: [padLabel('drop')], label: 'Drop' },
+    { keyboard: MELEE_BINDS.map((bind) => keycapFor(bind.slot)), gamepad: MELEE_BINDS.map((bind) => padLabel(bind.slot)), label: 'Melee' },
+    { keyboard: ABILITY_BINDS.map((bind) => keycapFor(bind.slot)), gamepad: ABILITY_BINDS.map((bind) => padLabel(bind.slot)), label: 'Abilities' },
   ];
 
   return `<div class="key-map">${keys
     .map(
-      ([kbds, label]) => `
+      ({ keyboard, gamepad, label }) => `
         <div class="key-row">
-          <span class="key-keys">${kbds.map((k) => `<kbd>${k}</kbd>`).join('')}</span>
+          <span class="key-keys">
+            <span>${keyboard.map((k) => `<kbd>${k}</kbd>`).join('')}</span>
+            <span class="pad-keys">${gamepad.filter(Boolean).map((k) => `<kbd>${k}</kbd>`).join('')}</span>
+          </span>
           <span class="key-label">${label}</span>
         </div>`,
     )
@@ -96,8 +106,7 @@ function controlsHtml() {
 }
 
 // Combons tangenter som kbd-rutor: Q Q E Q.
-const comboKeys = (combo) =>
-  combo.seq.map((slot) => `<kbd>${MELEE_BINDS.find((bind) => bind.slot === slot)?.keycap ?? '?'}</kbd>`).join('');
+const comboKeys = (combo) => combo.seq.map((slot) => `<kbd>${inputCap(slot)}</kbd>`).join('');
 
 // Vad finishern gor, hopplockat ur combons falt - lagger man till en combo i
 // konstantfilen beskriver den sig sjalv har.
@@ -259,7 +268,7 @@ function abilitiesHtml() {
       for (const bind of MELEE_BINDS) {
         const info = melee[bind.slot];
         rows.push({
-          key: bind.keycap,
+          slot: bind.slot,
           info,
           text: `${info.name} hits whatever is ${reach(MELEE.reach)}, for ${MELEE.damageMin}-${MELEE.damageMax} damage. It shares melee timing with your other close-range move, so you choose the attack without doubling the speed.`,
           name: info.name,
@@ -268,7 +277,7 @@ function abilitiesHtml() {
       for (const bind of ABILITY_BINDS) {
         const info = ab[bind.slot];
         if (!info) continue;
-        rows.push({ key: bind.keycap, info, text: abilityText(info.id), name: info.name });
+        rows.push({ slot: bind.slot, info, text: abilityText(info.id), name: info.name });
       }
 
       return `
@@ -279,7 +288,7 @@ function abilitiesHtml() {
               .map(
                 (r) => `
                   <li>
-                    <kbd>${r.key}</kbd>
+                    <kbd>${inputCap(r.slot)}</kbd>
                     <span class="ab-icon">${
                       r.info.iconImage ? `<img src="${r.info.iconImage}" alt="" />` : r.info.icon
                     }</span>

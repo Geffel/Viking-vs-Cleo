@@ -266,6 +266,68 @@ export const ABILITY_BINDS = [
 export const ABILITY_SLOTS = ABILITY_BINDS.map((bind) => bind.slot);
 export const ACTION_SLOTS = [...MELEE_SLOTS, ...ABILITY_SLOTS];
 
+// Knapparna pa en handkontroll, i den ordning Gamepad API:t rapporterar dem
+// ("standard mapping"). Index = platsen i gamepad.buttons, sa en bindning ar
+// bara en siffra - namnen bor har.
+export const PAD_BUTTONS = [
+  { short: 'A', label: 'A / Cross' },
+  { short: 'B', label: 'B / Circle' },
+  { short: 'X', label: 'X / Square' },
+  { short: 'Y', label: 'Y / Triangle' },
+  { short: 'LB', label: 'LB / L1' },
+  { short: 'RB', label: 'RB / R1' },
+  { short: 'LT', label: 'LT / L2' },
+  { short: 'RT', label: 'RT / R2' },
+  { short: 'Back', label: 'Back / Share' },
+  { short: 'Start', label: 'Start / Options' },
+  { short: 'L3', label: 'L3 / left stick' },
+  { short: 'R3', label: 'R3 / right stick' },
+  { short: 'Up', label: 'D-pad up' },
+  { short: 'Down', label: 'D-pad down' },
+  { short: 'Left', label: 'D-pad left' },
+  { short: 'Right', label: 'D-pad right' },
+  { short: 'Guide', label: 'Guide' },
+];
+
+// Standardknappen for varje plats. Rorelsen sitter pa vanster spak och d-paden
+// och gar inte att binda om - den ar en riktning, inte en knapp.
+//
+// drop har dessutom en axel: drar man vanster spak nedat droppar man ocksa.
+// Det hanger ihop med spaken, sa den foljer inte med om man binder om knappen.
+export const GAMEPAD_BINDS = {
+  move: { label: 'Left stick / D-pad' },
+  jump: { button: 0 },
+  drop: { button: 13, axis: 1 },
+  m1: { button: 2 },
+  m2: { button: 3 },
+  a1: { button: 5 },
+  a2: { button: 4 },
+  a3: { button: 6 },
+  a4: { button: 7 },
+};
+
+// Rorelsen bodde tidigare hardkodad i input.js. Nu star den bredvid melee och
+// formagorna sa att alla bindningar gar att rakna upp pa ett stalle - vanster
+// och hoger blir ett rorelsemeddelande, hopp och drop ar vanliga handelser.
+export const MOVE_BINDS = [
+  { slot: 'left', code: 'ArrowLeft', keycap: '←' },
+  { slot: 'right', code: 'ArrowRight', keycap: '→' },
+  { slot: 'jump', code: 'Space', keycap: 'Space' },
+  { slot: 'drop', code: 'ArrowDown', keycap: '↓' },
+];
+
+export const MOVE_SLOTS = MOVE_BINDS.map((bind) => bind.slot);
+export const BIND_SLOTS = [...MOVE_SLOTS, ...ACTION_SLOTS];
+
+// Kategorierna pa kontrollsidan - samma indelning som HUD:en och info-fliken
+// redan anvander: rorelse, narstrid, formagor. Farg per kategori sa att raden,
+// ikonen och tangentbordskartan far samma ton.
+export const KEYBIND_CATEGORIES = [
+  { id: 'movement', name: 'Movement', color: TEAMS.viking.color, binds: MOVE_BINDS },
+  { id: 'melee', name: 'Melee', color: TEAMS.cleo.color, binds: MELEE_BINDS },
+  { id: 'abilities', name: 'Abilities', color: TEAMS.cleo.accent, binds: ABILITY_BINDS },
+];
+
 export const ABILITY_TUNING = {
   dash: { speed: 17, durationMs: 190 },
   heal: { amount: 40 },
