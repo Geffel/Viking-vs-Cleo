@@ -351,6 +351,7 @@ function leaveLobbyMatch(ws) {
 }
 
 function lobbySnapshotFor(ws) {
+  const lb = leaderboardSnapshot();
   return {
     t: 'lobby',
     serverNow: Date.now(),
@@ -363,7 +364,8 @@ function lobbySnapshotFor(ws) {
     profile: profileSnapshotFor(ws),
     matches: matches.list(),
     match: ws.matchId ? matches.snapshot(ws.matchId) : null,
-    lb: leaderboardSnapshot(),
+    lb,
+    leaderboardSummary: leaderboardSummary(lb),
   };
 }
 
@@ -660,6 +662,7 @@ function leaderboardSummary(rows = leaderboardSnapshot()) {
   return {
     totalProfiles: profiles.size,
     shownProfiles: rows.length,
+    activePlayers: activeNamedConnections(),
     activePlayers: [...allPlayers()].length,
     activeMatches: matchList.length,
     liveMatches: matchList.filter((match) => [MATCH_PHASES.countdown, MATCH_PHASES.playing].includes(match.phase)).length,
