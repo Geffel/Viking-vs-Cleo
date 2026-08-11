@@ -170,6 +170,8 @@ export class Renderer {
     this.ctx = canvas.getContext('2d');
     this.effects = [];
     this.scale = 1;
+    this.offsetX = 0;
+    this.offsetY = 0;
     this.dt = 16;
     this.stars = makeStars(90);
     this.snow = {
@@ -217,6 +219,7 @@ export class Renderer {
     this.debug = false; // window.vvc.renderer.debug = true ritar ut traffytorna
     this.resize();
     window.addEventListener('resize', () => this.resize());
+    window.visualViewport?.addEventListener('resize', () => this.resize());
     this.loadSprites();
     this.setArena(DEFAULT_ARENA_ASSET, 'nordic');
     for (const kind of Object.values(POWERUP_KINDS)) {
@@ -388,11 +391,19 @@ export class Renderer {
 
   resize() {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const w = this.canvas.clientWidth || WORLD.w;
-    const h = this.canvas.clientHeight || WORLD.h;
-    this.canvas.width = Math.round(w * dpr);
-    this.canvas.height = Math.round(h * dpr);
-    this.scale = this.canvas.width / WORLD.w;
+    const cssW = Math.max(1, this.canvas.clientWidth || WORLD.w);
+    const cssH = Math.max(1, this.canvas.clientHeight || WORLD.h);
+    const w = Math.round(cssW * dpr);
+    const h = Math.round(cssH * dpr);
+    if (this.canvas.width !== w) this.canvas.width = w;
+    if (this.canvas.height !== h) this.canvas.height = h;
+
+    this.scale = Math.min(w / WORLD.w, h / WORLD.h);
+    this.offsetX = Math.round((w - WORLD.w * this.scale) / 2);
+
+    const spareY = h - WORLD.h * this.scale;
+    const portrait = cssH > cssW * 1.08;
+    this.offsetY = Math.round(portrait ? Math.min(Math.max(spareY * 0.22, 0), 96 * dpr) : spareY / 2);
   }
 
   // --------------------------------------------------------------- effekter
@@ -752,7 +763,18 @@ export class Renderer {
     this.dt = dt;
     this.selfId = selfId; // effekterna behover veta vem som ar man sjalv
     this.updateShake(dt);
-    ctx.setTransform(this.scale, 0, 0, this.scale, this.shake.x * this.scale, this.shake.y * this.scale);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    ctx.fillStyle = '#05070f';
+    ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    ctx.setTransform(
+      this.scale,
+      0,
+      0,
+      this.scale,
+      this.offsetX + this.shake.x * this.scale,
+      this.offsetY + this.shake.y * this.scale,
+    );
     const pad = this.shake.amp > 0 ? COMBO_FX.shake : 0;
     ctx.clearRect(-pad, -pad, WORLD.w + pad * 2, WORLD.h + pad * 2);
 

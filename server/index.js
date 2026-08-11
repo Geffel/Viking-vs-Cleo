@@ -26,7 +26,15 @@ const AUTOSAVE_MS = 30000;
 const LEADERBOARD_BROADCAST_MS = 1000;
 
 const app = express();
-app.use(express.static(path.join(ROOT, 'public')));
+app.use(
+  express.static(path.join(ROOT, 'public'), {
+    setHeaders(res, filePath) {
+      if (filePath.endsWith('.ogg')) res.type('audio/ogg');
+      else if (filePath.endsWith('.mp3')) res.type('audio/mpeg');
+      else if (filePath.endsWith('.wav')) res.type('audio/wav');
+    },
+  }),
+);
 app.use('/shared', express.static(path.join(ROOT, 'shared')));
 
 const server = http.createServer(app);

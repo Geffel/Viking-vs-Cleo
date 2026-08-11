@@ -276,6 +276,7 @@ export class Game {
       const from = this.positionAt(p, t - p.halfRtt);
       const box = meleeBox(from.x, from.y, p.facing);
       p.swing = { resolveAt: t + MELEE.windupMs, viewTime: t - rewind, box, slot: kind };
+      const swingAudio = this.meleeSwingAudioMeta(p, kind, t);
 
       this.fx.push({
         k: 'swing',
@@ -285,6 +286,8 @@ export class Game {
         f: p.facing,
         team: p.team,
         slot: kind,
+        comboStep: swingAudio.comboStep,
+        axeStep: swingAudio.axeStep,
         // Traffytan foljer med sa att felsokningslaget kan rita ut den.
         bx: round(box.x),
         by: round(box.y),
@@ -737,9 +740,10 @@ export class Game {
     const cy = p.y + PLAYER.h * 0.42;
     const dx = p.facing;
     const dy = 0;
+    const projectileId = this.nextProjectileId++;
 
     this.projectiles.push({
-      id: this.nextProjectileId++,
+      id: projectileId,
       ownerId: p.id,
       team: p.team,
       x: cx + dx * cfg.spawnForward,
@@ -754,7 +758,7 @@ export class Game {
       born: t,
       angle: 0,
     });
-    this.fx.push({ k: 'axe_throw', id: p.id, x: cx, y: cy, f: Math.sign(dx) || p.facing, team: p.team });
+    this.fx.push({ k: 'axe_throw', id: p.id, pr: projectileId, x: cx, y: cy, f: Math.sign(dx) || p.facing, team: p.team });
   }
 
   updateProjectiles(t) {
@@ -808,7 +812,11 @@ export class Game {
       }
 
       const dmg = randInt(cfg.damageMin, cfg.damageMax);
-      this.fx.push({ k: pr.kind === 'sun_fire' ? 'sun_fire_hit' : 'axe_hit', x: pr.x, y: pr.y, team: pr.team, s: pr.strength ?? 0 });
+      const hitFx =
+        pr.kind === 'sun_fire'
+          ? { k: 'sun_fire_hit', x: pr.x, y: pr.y, team: pr.team, s: pr.strength ?? 0 }
+          : { k: 'axe_hit', id: hit.id, by: pr.ownerId, pr: pr.id, x: pr.x, y: pr.y, team: pr.team };
+      this.fx.push(hitFx);
       this.damage(hit, source, dmg, Math.sign(pr.vx) * cfg.knockbackX, cfg.knockbackY, t, projectileMeta);
     }
   }
@@ -1080,7 +1088,15 @@ export class Game {
         }
         this.finisherEffects(p, target, combo, t);
       }
-      const hitMeta = { cause: 'melee', meleeSlot: s.slot, comboId: combo?.id ?? null, comboName: combo?.name ?? null };
+      const meleeAudio = this.meleeAudioMeta(p, s.slot, combo, t);
+      const hitMeta = {
+        cause: 'melee',
+        meleeSlot: s.slot,
+        comboId: combo?.id ?? null,
+        comboName: combo?.name ?? null,
+        comboStep: meleeAudio.comboStep,
+        axeStep: meleeAudio.axeStep,
+      };
       this.damage(target, p, amount, kx, ky, t, hitMeta);
       if (combo) this.noteCombo(p, target, combo, t, target.dead);
       // Blev finishern en dodsstot gar angriparen in i ursinne. Kollas efter
@@ -1145,6 +1161,36 @@ export class Game {
       refundedCooldown: !!combo.refundCooldown,
       launched: !!(combo.knockback && combo.knockback.y < MELEE.knockbackY),
     });
+  }
+
+  meleeAudioMeta(p, slot, combo, t) {
+    const progress = combo ? { steps: combo.seq.length, seq: combo.seq } : this.comboProgress(p, t);
+    const seq = combo ? combo.seq : progress ? COMBO.list[progress.index]?.seq.slice(0, progress.steps) : [slot];
+    return {
+      comboStep: progress?.steps ?? 1,
+      axeStep: slot === 'm1' ? Math.min(3, seq.filter((item) => item === 'm1').length || 1) : 0,
+    };
+  }
+
+  meleeSwingAudioMeta(p, slot, t) {
+    const recent = p.comboSeq.length && t - p.comboAt <= COMBO.windowMs ? [...p.comboSeq] : [];
+    recent.push(slot);
+    if (recent.length > COMBO_MAX_LEN) recent.splice(0, recent.length - COMBO_MAX_LEN);
+
+    let best = null;
+    for (let i = 0; i < COMBO.list.length; i++) {
+      const combo = COMBO.list[i];
+      const steps = matchedSteps(recent, combo.seq);
+      if (!steps) continue;
+      const left = combo.seq.length - steps;
+      if (!best || steps > best.steps || (steps === best.steps && left < best.left)) best = { index: i, steps, left };
+    }
+
+    const seq = best ? COMBO.list[best.index].seq.slice(0, best.steps) : [slot];
+    return {
+      comboStep: best?.steps ?? 1,
+      axeStep: slot === 'm1' ? Math.min(3, seq.filter((item) => item === 'm1').length || 1) : 0,
+    };
   }
 
   /**
@@ -1363,12 +1409,20 @@ export class Game {
     this.fx.push({
       k: 'hit',
       id: target.id,
+      by: source.id,
       x: target.x + PLAYER.w / 2,
       y: target.y + PLAYER.h / 2,
       f: Math.sign(kx) || 1,
       team: source.team,
       dmg: amount, // klienten visar siffran sa att man ser att traffen gick fram
       cr: crit ? 1 : 0,
+      cause: meta.cause ?? 'unknown',
+      abilityId: meta.abilityId ?? null,
+      meleeSlot: meta.meleeSlot ?? null,
+      comboId: meta.comboId ?? null,
+      comboName: meta.comboName ?? null,
+      comboStep: meta.comboStep ?? 0,
+      axeStep: meta.axeStep ?? 0,
     });
 
     this.stat('hit', {

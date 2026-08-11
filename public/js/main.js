@@ -1,5 +1,6 @@
 import { Net } from '/js/net.js';
 import { Renderer } from '/js/render.js';
+import { AudioManager } from '/js/audio.js';
 import { Hud } from '/js/hud.js';
 import { AchievementsUi } from '/js/achievements.js';
 import { ControlsUi } from '/js/controls.js';
@@ -10,8 +11,10 @@ import { ACTION_SLOTS, MAPS, MAP_VOTE_MS, MATCH_DURATION_MS, MATCH_PHASES, NAME_
 const net = new Net();
 const stage = document.getElementById('stage');
 const renderer = new Renderer(document.getElementById('canvas'));
+const audio = new AudioManager({ getListener: () => net.self() });
 const hud = new Hud();
 const input = initInput(net, (action) => {
+  audio.prime();
   if (ACTION_SLOTS.includes(action)) hud.flash(action);
 });
 
@@ -64,6 +67,7 @@ const fighterProfileRecord = document.getElementById('fighter-profile-record');
 const fighterProfileTiles = document.getElementById('fighter-profile-tiles');
 
 const TRANSITION_MS = 620;
+const AUDIO_DEBUG = new URLSearchParams(location.search).has('audioDebug');
 const ROW_ACCENTS = ['#ff4d9d', '#4dc3ff', '#ffd166', '#ff86bf'];
 const MAP_TONES = {
   arena_01: '#ffd166',
@@ -105,6 +109,7 @@ const controlsUi = new ControlsUi({ onBack: closeControls });
 introName.value = currentName;
 initLobbyInfo();
 initPlayerCard();
+initAudioDebug();
 setView('intro');
 
 introForm.addEventListener('submit', (e) => {
@@ -172,6 +177,7 @@ leaveBtn.addEventListener('click', leaveCurrentMatch);
 function leaveCurrentMatch() {
   if (net.match) net.leaveMatch();
   else net.leave();
+  audio.stopAllLoops();
   playWipe(WIPES.lobby, () => {
     renderMatchRoom(null);
     setView('lobby');
@@ -236,7 +242,11 @@ net.on('gameReady', ({ team, match }) => {
   });
 });
 
-net.on('fx', (fx) => renderer.addFx(fx));
+net.on('fx', (fx) => {
+  renderer.addFx(fx);
+  audio.playFx(fx);
+  if (AUDIO_DEBUG && isAudioDebugFx(fx)) console.log('audio fx', fx, audio.status());
+});
 net.on('kill', (kill) => hud.addKill(kill));
 
 net.on('open', () => {
@@ -248,6 +258,7 @@ net.on('close', () => {
   connEl.hidden = false;
   connEl.textContent = 'Lost connection - reconnecting...';
   input.disable();
+  audio.stopAllLoops();
   hud.hide();
 });
 
@@ -262,6 +273,7 @@ function frame(now) {
   lastFrame = now;
 
   const players = net.sample();
+  audio.sync(players);
   const arena = currentArena();
   renderer.setArena(arena.asset, arena.theme);
   renderer.setMapLayout(arena.layout);
@@ -781,6 +793,52 @@ function triggerFightSlam() {
   window.setTimeout(() => whiteout.remove(), 540);
 }
 
+function initAudioDebug() {
+  if (!AUDIO_DEBUG) return;
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.title = 'Test audio';
+  btn.setAttribute('aria-label', 'Test audio');
+  btn.textContent = '♪';
+  btn.style.cssText = [
+    'position:fixed',
+    'right:14px',
+    'bottom:14px',
+    'z-index:99999',
+    'width:44px',
+    'height:44px',
+    'border-radius:50%',
+    'border:1px solid rgba(255,255,255,0.38)',
+    'background:rgba(10,15,30,0.88)',
+    'color:#ffd166',
+    'font:700 24px/1 system-ui,sans-serif',
+    'box-shadow:0 10px 30px rgba(0,0,0,0.34)',
+    'cursor:pointer',
+  ].join(';');
+  btn.addEventListener('click', async () => {
+    audio.setMuted(false);
+    audio.setMasterVolume(1);
+    audio.setSfxVolume(1);
+    btn.textContent = '...';
+    const beep = await audio.testBeep();
+    console.log('audio beep status', beep);
+    window.setTimeout(async () => {
+      const sun = await audio.testSunFire();
+      console.log('audio sunfire status', sun);
+      btn.textContent = '♪';
+    }, 420);
+  });
+  document.body.appendChild(btn);
+}
+
+function isAudioDebugFx(fx) {
+  if (fx.k?.startsWith('sun_fire')) return true;
+  if (fx.team === 'cleo' && (fx.k === 'sand_blast' || fx.k === 'blink' || fx.k === 'power_shield')) return true;
+  if (fx.team !== 'viking') return false;
+  return fx.k === 'swing' || fx.k === 'axe_throw' || fx.k === 'axe_hit' || fx.k === 'hit' || fx.k === 'combo';
+}
+
 function currentMatchPlayer(match = net.match) {
   return match?.players?.find((player) => player.id === net.sessionId) ?? null;
 }
@@ -868,7 +926,7 @@ function formatClock(ms) {
 
 // ------------------------------------------------------------------ hjalp
 
-window.vvc = { net, renderer, hud };
+window.vvc = { net, renderer, hud, audio };
 
 function formatPlayTime(ms) {
   const total = Math.max(0, Math.floor(ms / 1000));
