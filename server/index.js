@@ -505,6 +505,14 @@ function* allPlayers() {
   for (const matchGame of matchGames.values()) yield* matchGame.players.values();
 }
 
+function activeNamedConnections() {
+  let count = 0;
+  for (const ws of wss.clients) {
+    if (ws.readyState === ws.OPEN && ws.name) count++;
+  }
+  return count;
+}
+
 function cleanName(raw) {
   const name = String(raw ?? '').replace(CONTROL_CHARS, '').trim().slice(0, NAME_MAX);
   return name || `Player${Math.floor(Math.random() * 900 + 100)}`;
@@ -663,7 +671,6 @@ function leaderboardSummary(rows = leaderboardSnapshot()) {
     totalProfiles: profiles.size,
     shownProfiles: rows.length,
     activePlayers: activeNamedConnections(),
-    activePlayers: [...allPlayers()].length,
     activeMatches: matchList.length,
     liveMatches: matchList.filter((match) => [MATCH_PHASES.countdown, MATCH_PHASES.playing].includes(match.phase)).length,
     totalKills,
