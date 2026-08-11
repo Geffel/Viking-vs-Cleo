@@ -67,7 +67,7 @@ function onMessage(event) {
   }
 
   if (msg.t === 'lobby') {
-    applyData({ rows: msg.lb, matches: msg.matches, serverNow: msg.serverNow });
+    applyData({ rows: msg.lb, matches: msg.matches, summary: msg.leaderboardSummary, serverNow: msg.serverNow });
     return;
   }
 
