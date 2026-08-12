@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Oswald:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  html, body { margin: 0; height: 100%; background: #05070f; }
+  * { box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #f2f5ff; -webkit-font-smoothing: antialiased; }
+  a { color: #ff4d9d; text-decoration: none; }
+  a:hover { color: #ffd166; }
+  ::selection { background: rgba(255,77,157,0.35); }
+  @keyframes st-eq { 0%,100% { transform: scaleY(0.25); } 50% { transform: scaleY(1); } }
+  @keyframes st-panel { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  @keyframes st-row { from { opacity: 0; transform: translateX(-12px); } to { opacity: 1; transform: none; } }
+  @keyframes st-note { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+</style>
+</helmet>
+
+<div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:16px;padding:22px 18px 56px;background:radial-gradient(circle at 50% 0%, #0a0f1e, #05070f 72%);">
+
+  <!-- ===== CONTROL BAR ===== -->
+  <div style="display:flex;align-items:center;justify-content:space-between;width:1280px;max-width:100%;gap:16px;flex-wrap:wrap;">
+    <div style="display:flex;align-items:baseline;gap:11px;">
+      <span style="font-family:'Anton',sans-serif;font-size:22px;letter-spacing:0.06em;text-transform:uppercase;color:#ff4d9d;">Cleo</span>
+      <span style="font-family:'Oswald',sans-serif;font-weight:300;font-size:15px;color:rgba(242,245,255,0.4);">vs</span>
+      <span style="font-family:'Anton',sans-serif;font-size:22px;letter-spacing:0.06em;text-transform:uppercase;color:#4dc3ff;">Viking</span>
+      <span style="margin-left:8px;font-family:'Oswald',sans-serif;font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:rgba(242,245,255,0.35);">Settings</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <span style="{{ dirtyStyle }}"><span style="width:6px;height:6px;border-radius:50%;background:#ffd166;box-shadow:0 0 8px #ffd166;"></span>{{ dirtyLabel }}</span>
+      <button onClick="{{ save }}" style="{{ saveStyle }}">✓ Save settings</button>
+    </div>
+  </div>
+
+  <!-- ===== STAGE ===== -->
+  <div style="{{ stageStyle }}">
+    <div style="position:absolute;inset:0;background:radial-gradient(circle at 88% -10%, rgba(255,77,157,0.1), transparent 42%), radial-gradient(circle at 2% 110%, rgba(77,195,255,0.1), transparent 46%), #070b16;display:grid;grid-template-columns:246px 1fr;overflow:hidden;">
+
+      <!-- ===== LEFT RAIL: MENU SELECTOR ===== -->
+      <div style="display:flex;flex-direction:column;gap:7px;padding:26px 18px;border-right:1px solid rgba(255,255,255,0.08);background:rgba(5,7,15,0.4);min-height:0;">
+        <div style="font-family:'Oswald',sans-serif;font-size:10.5px;letter-spacing:0.2em;text-transform:uppercase;color:rgba(242,245,255,0.4);margin:0 4px 6px;">Menu</div>
+        <sc-for list="{{ navs }}" as="n" hint-placeholder-count="4">
+          <button onClick="{{ n.onClick }}" style="{{ n.style }}">
+            <span style="{{ n.iconWrap }}">{{ n.icon }}</span>
+            <span style="flex:1;text-align:left;">{{ n.label }}</span>
+            <span style="{{ n.tagStyle }}">{{ n.tag }}</span>
+          </button>
+        </sc-for>
+
+        <div style="flex:1;"></div>
+
+        <button onClick="{{ resetAll }}" style="display:flex;align-items:center;gap:9px;padding:12px 14px;background:rgba(255,77,157,0.08);border:1px solid rgba(255,77,157,0.4);color:#ff8bc0;font-family:'Oswald',sans-serif;font-size:12px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;cursor:pointer;clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px);">↺ Restore defaults</button>
+      </div>
+
+      <!-- ===== MAIN ===== -->
+      <div style="position:relative;display:flex;flex-direction:column;min-height:0;padding:24px 30px 22px;">
+
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:18px;">
+          <div>
+            <div style="font-family:'Oswald',sans-serif;font-size:11px;letter-spacing:0.2em;text-transform:uppercase;color:rgba(242,245,255,0.45);">{{ sectionKicker }}</div>
+            <h1 style="margin:2px 0 0;font-family:'Anton',sans-serif;font-size:38px;line-height:0.95;letter-spacing:0.02em;text-transform:uppercase;">{{ sectionLabel }}</h1>
+          </div>
+        </div>
+
+        <!-- ============ AUDIO PANEL ============ -->
+        <sc-if value="{{ isAudio }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-direction:column;gap:16px;overflow:auto;padding-right:6px;flex:1;min-height:0;animation:st-panel 0.3s ease both;">
+
+          <!-- MASTER -->
+          <div style="display:flex;align-items:center;gap:20px;padding:18px 20px;background:linear-gradient(180deg, rgba(255,209,102,0.09), rgba(255,255,255,0.015));border:1px solid rgba(255,255,255,0.1);border-left:3px solid #ffd166;clip-path:polygon(0 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%);">
+            <div style="flex:none;">
+              <div style="font-family:'Oswald',sans-serif;font-size:10.5px;letter-spacing:0.16em;text-transform:uppercase;color:rgba(242,245,255,0.5);">Master</div>
+              <div style="display:flex;align-items:flex-end;gap:2px;font-family:'Anton',sans-serif;line-height:0.9;"><span style="font-size:44px;color:#ffd166;font-variant-numeric:tabular-nums;">{{ masterPct }}</span><span style="font-size:20px;color:rgba(242,245,255,0.4);margin-bottom:4px;">%</span></div>
+            </div>
+            <div style="flex:1;min-width:0;">
+              <div style="{{ master.track }}" onPointerDown="{{ master.onDown }}">
+                <div style="{{ master.fill }}"></div>
+                <div style="{{ master.handle }}"></div>
+              </div>
+            </div>
+            <!-- live meter -->
+            <div style="display:flex;align-items:flex-end;gap:4px;height:44px;flex:none;">
+              <sc-for list="{{ meters }}" as="m" hint-placeholder-count="6">
+                <div style="{{ m.style }}"></div>
+              </sc-for>
+            </div>
+            <button onClick="{{ master.onMute }}" style="{{ master.muteStyle }}">{{ master.muteLabel }}</button>
+          </div>
+
+          <!-- CHANNELS -->
+          <div style="display:flex;flex-direction:column;gap:10px;">
+            <sc-for list="{{ channels }}" as="c" hint-placeholder-count="5">
+              <div style="{{ c.rowStyle }}">
+                <span style="{{ c.iconWrap }}">{{ c.icon }}</span>
+                <div style="width:150px;flex:none;">
+                  <div style="font-family:'Oswald',sans-serif;font-weight:600;font-size:15px;letter-spacing:0.02em;">{{ c.label }}</div>
+                  <div style="font-size:11px;color:rgba(242,245,255,0.45);">{{ c.desc }}</div>
+                </div>
+                <div style="flex:1;min-width:0;">
+                  <div style="{{ c.track }}" onPointerDown="{{ c.onDown }}">
+                    <div style="{{ c.fill }}"></div>
+                    <div style="{{ c.handle }}"></div>
+                  </div>
+                </div>
+                <span style="{{ c.pctStyle }}">{{ c.pct }}</span>
+                <button onClick="{{ c.onTest }}" title="Test sound" style="{{ c.testStyle }}">▶</button>
+                <button onClick="{{ c.onMute }}" style="{{ c.muteStyle }}">{{ c.muteLabel }}</button>
+              </div>
+            </sc-for>
+          </div>
+
+        </div>
+        </sc-if>
+
+        <!-- ============ CONTROLS PANEL ============ -->
+        <sc-if value="{{ isControls }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:1;min-height:0;overflow:auto;margin:0 -30px -22px;animation:st-panel 0.3s ease both;">
+          <dc-import name="Keybinds Panel" hint-size="100%,600px"></dc-import>
+        </div>
+        </sc-if>
+
+        <!-- ============ SOON PANEL ============ -->
+        <sc-if value="{{ isSoon }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:1;display:grid;place-items:center;animation:st-panel 0.3s ease both;">
+          <div style="text-align:center;">
+            <div style="font-family:'Anton',sans-serif;font-size:64px;color:rgba(255,255,255,0.08);letter-spacing:0.08em;">SOON</div>
+            <div style="font-family:'Oswald',sans-serif;font-size:14px;letter-spacing:0.08em;color:rgba(242,245,255,0.45);margin-top:6px;">{{ soonMsg }}</div>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- NOTE TOAST -->
+        <sc-if value="{{ noteOn }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;top:20px;right:30px;z-index:20;display:flex;align-items:center;gap:9px;padding:10px 15px;background:#0a0f1e;border:1px solid rgba(255,209,102,0.5);box-shadow:0 12px 30px rgba(0,0,0,0.6);font-family:'Oswald',sans-serif;font-size:12px;letter-spacing:0.04em;color:#ffd166;animation:st-note 0.24s ease both;clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px);">
+            <span style="font-size:14px;">♪</span>{{ noteText }}
+          </div>
+        </sc-if>
+
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1320,&quot;height&quot;:820},&quot;startSection&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;Audio&quot;,&quot;options&quot;:[&quot;Audio&quot;,&quot;Controls&quot;,&quot;Video&quot;,&quot;Gameplay&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Layout&quot;}}">
+class Component extends DCLogic {
+  NAV = [
+    { id:'Audio',    label:'Audio',    icon:'♪', color:'#ffd166' },
+    { id:'Controls', label:'Controls', icon:'⌨', color:'#4dc3ff' },
+    { id:'Video',    label:'Video',    icon:'▣', color:'#c58bff', soon:true },
+    { id:'Gameplay', label:'Gameplay', icon:'⚙', color:'#ff4d9d', soon:true },
+  ];
+
+  CHAN = [
+    { id:'music',    label:'Music',     desc:'Soundtrack & menus',   icon:'♫', color:'#c58bff', def:70 },
+    { id:'sfx',      label:'Effects',   desc:'Hits, jumps, items',   icon:'✸', color:'#ffd166', def:85 },
+    { id:'voice',    label:'Announcer', desc:'Callouts & voice',     icon:'◈', color:'#ff4d9d', def:80 },
+    { id:'ambience', label:'Ambience',  desc:'Arena atmosphere',     icon:'≈', color:'#4dc3ff', def:55 },
+    { id:'ui',       label:'Interface', desc:'Clicks & notifications', icon:'▮', color:'#7cf5b0', def:60 },
+  ];
+
+  CTRL = [
+    { label:'Movement', color:'#4dc3ff', items:[['Move Left','A'],['Move Right','D'],['Jump','Space'],['Crouch','S'],['Dash','L-Shift']] },
+    { label:'Combat',   color:'#ff4d9d', items:[['Light','J'],['Heavy','K'],['Special','L'],['Block','I'],['Grab','U']] },
+    { label:'Items',    color:'#ffd166', items:[['Use Item','E'],['Cycle Item','Q']] },
+    { label:'Interface',color:'#c58bff', items:[['Ready','R'],['Scoreboard','Tab'],['Emote','T'],['Pause','Esc']] },
+  ];
+
+  defaults() {
+    const ch = {}; this.CHAN.forEach(c => { ch[c.id] = { value: c.def, muted: false }; });
+    return { master: 90, masterMuted: false, channels: ch, device: 'Headphones', preset: 'Default' };
+  }
+
+  constructor(...args) {
+    super(...args);
+    const d = this.defaults();
+    const start = (this.props && this.props.startSection) || 'Audio';
+    this.state = { ...d, section: this.NAV.find(n => n.id === start) ? start : 'Audio', note: null, saved: JSON.stringify(d) };
+  }
+  componentWillUnmount() { clearTimeout(this._noteT); }
+
+  note(t) { clearTimeout(this._noteT); this.setState({ note: t }); this._noteT = setTimeout(() => this.setState({ note: null }), 2400); }
+
+  drag(id, e) {
+    e.preventDefault();
+    const rect = e.currentTarget.getBoundingClientRect();
+    const apply = (x) => {
+      let v = Math.round(((x - rect.left) / rect.width) * 100);
+      v = Math.max(0, Math.min(100, v));
+      if (id === 'master') this.setState({ master: v, masterMuted: false });
+      else this.setState(s => ({ channels: { ...s.channels, [id]: { value: v, muted: false } } }));
+    };
+    apply(e.clientX);
+    const move = (ev) => apply(ev.clientX);
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+  }
+
+  toggleMute(id) {
+    if (id === 'master') { this.setState(s => ({ masterMuted: !s.masterMuted })); return; }
+    this.setState(s => ({ channels: { ...s.channels, [id]: { ...s.channels[id], muted: !s.channels[id].muted } } }));
+  }
+
+  setDevice(d) { this.setState({ device: d }); }
+  applyPreset(name) {
+    const P = {
+      Default:     { master:90, music:70, sfx:85, voice:80, ambience:55, ui:60 },
+      Cinematic:   { master:95, music:90, sfx:80, voice:85, ambience:80, ui:40 },
+      Competitive: { master:100, music:20, sfx:100, voice:95, ambience:15, ui:55 },
+    };
+    const p = P[name] || P.Default;
+    this.setState(s => {
+      const ch = {}; this.CHAN.forEach(c => { ch[c.id] = { value: p[c.id], muted: false }; });
+      return { master: p.master, masterMuted: false, channels: ch, preset: name };
+    });
+    this.note(name + ' mix applied');
+  }
+
+  resetAll() { const d = this.defaults(); this.setState({ ...d, note: null }); this.note('Settings restored to defaults'); }
+  save() { this.setState(s => ({ saved: JSON.stringify({ master:s.master, masterMuted:s.masterMuted, channels:s.channels, device:s.device, preset:s.preset }) })); this.note('Settings saved'); }
+
+  sliderStyles(value, color, muted) {
+    const c = muted ? 'rgba(242,245,255,0.22)' : color;
+    return {
+      track: { position:'relative', height:'12px', width:'100%', background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)', cursor:'pointer', clipPath:'polygon(4px 0,100% 0,calc(100% - 4px) 100%,0 100%)' },
+      fill: { position:'absolute', left:0, top:0, bottom:0, width:value + '%', background:'linear-gradient(90deg,' + c + '99,' + c + ')', boxShadow:muted ? 'none' : '0 0 14px ' + c + '66', clipPath:'polygon(4px 0,100% 0,calc(100% - 4px) 100%,0 100%)', transition:'width 0.06s linear' },
+      handle: { position:'absolute', top:'50%', left:value + '%', width:'16px', height:'22px', transform:'translate(-50%,-50%)', background: muted ? 'rgba(242,245,255,0.35)' : '#fff', boxShadow:'0 2px 8px rgba(0,0,0,0.6)', clipPath:'polygon(4px 0,100% 0,100% calc(100% - 4px),calc(100% - 4px) 100%,0 100%,0 4px)', transition:'left 0.06s linear' },
+    };
+  }
+
+  renderVals() {
+    const s = this.state;
+    const section = s.section;
+    const cur = this.NAV.find(n => n.id === section) || this.NAV[0];
+    const dirty = JSON.stringify({ master:s.master, masterMuted:s.masterMuted, channels:s.channels, device:s.device, preset:s.preset }) !== s.saved;
+
+    const navs = this.NAV.map(n => {
+      const active = n.id === section;
+      return {
+        label: n.label, icon: n.icon, tag: n.soon ? 'SOON' : '',
+        onClick: () => this.setState({ section: n.id }),
+        style: {
+          display:'flex', alignItems:'center', gap:'12px', padding:'12px 13px', cursor: 'pointer',
+          fontFamily:"'Oswald',sans-serif", fontSize:'13.5px', fontWeight:600, letterSpacing:'0.06em', textTransform:'uppercase',
+          background: active ? 'rgba(255,255,255,0.08)' : 'transparent',
+          border: '1px solid ' + (active ? n.color + '77' : 'rgba(255,255,255,0.08)'),
+          borderLeft: '3px solid ' + (active ? n.color : 'rgba(255,255,255,0.14)'),
+          color: active ? '#f2f5ff' : (n.soon ? 'rgba(242,245,255,0.4)' : 'rgba(242,245,255,0.62)'),
+          clipPath:'polygon(0 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%)',
+        },
+        iconWrap: {
+          width:'30px', height:'30px', flex:'none', display:'grid', placeItems:'center', fontSize:'15px',
+          color: active ? n.color : 'rgba(242,245,255,0.5)',
+          background: active ? n.color + '1e' : 'rgba(255,255,255,0.04)',
+          border:'1px solid ' + (active ? n.color + '66' : 'rgba(255,255,255,0.1)'),
+          clipPath:'polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px)',
+        },
+        tagStyle: { fontFamily:"'Oswald',sans-serif", fontSize:'8.5px', fontWeight:700, letterSpacing:'0.14em', color:'rgba(242,245,255,0.35)', border: n.soon ? '1px solid rgba(255,255,255,0.15)' : 'none', padding: n.soon ? '2px 5px' : '0' },
+      };
+    });
+
+    const master = (() => {
+      const st = this.sliderStyles(s.master, '#ffd166', s.masterMuted);
+      return { ...st, onDown: (e) => this.drag('master', e), onMute: () => this.toggleMute('master'),
+        muteLabel: s.masterMuted ? 'MUTED' : 'MUTE',
+        muteStyle: this.muteBtn(s.masterMuted) };
+    })();
+
+    const meters = Array.from({ length: 7 }).map((_, i) => {
+      const active = !s.masterMuted && s.master > 0;
+      const h = 10 + ((i * 37) % 34);
+      return { style: {
+        width:'4px', height: h + 'px', background: active ? 'linear-gradient(180deg,#ffd166,#ff4d9d)' : 'rgba(255,255,255,0.12)',
+        transformOrigin:'bottom', animation: active ? 'st-eq 0.7s ease-in-out infinite' : 'none',
+        animationDelay: (i * 0.09).toFixed(2) + 's',
+      } };
+    });
+
+    const channels = this.CHAN.map((c, i) => {
+      const cs = s.channels[c.id];
+      const st = this.sliderStyles(cs.value, c.color, cs.muted);
+      return {
+        label: c.label, desc: c.desc, icon: c.icon, pct: cs.muted ? '—' : cs.value + '%',
+        ...st, onDown: (e) => this.drag(c.id, e),
+        onMute: () => this.toggleMute(c.id), onTest: () => this.note('Testing ' + c.label.toLowerCase() + '…'),
+        muteLabel: cs.muted ? 'OFF' : 'ON', muteStyle: this.muteBtn(cs.muted, c.color),
+        pctStyle: { width:'46px', flex:'none', textAlign:'right', fontFamily:"'Oswald',sans-serif", fontWeight:600, fontSize:'14px', fontVariantNumeric:'tabular-nums', color: cs.muted ? 'rgba(242,245,255,0.35)' : c.color },
+        testStyle: { width:'34px', height:'34px', flex:'none', display:'grid', placeItems:'center', fontSize:'11px', color:'rgba(242,245,255,0.7)', background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.14)', cursor:'pointer', clipPath:'polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px)' },
+        iconWrap: { width:'42px', height:'42px', flex:'none', display:'grid', placeItems:'center', fontSize:'18px', color: c.color, background:'rgba(0,0,0,0.35)', border:'1px solid ' + c.color + '55', boxShadow:'inset 0 0 16px ' + c.color + '22', clipPath:'polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px)' },
+        rowStyle: { display:'flex', alignItems:'center', gap:'14px', padding:'12px 16px', background:'linear-gradient(180deg,' + c.color + '0d, rgba(255,255,255,0.012))', border:'1px solid rgba(255,255,255,0.09)', borderLeft:'3px solid ' + c.color, clipPath:'polygon(0 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%)', animation:'st-row 0.32s ease both', animationDelay:(i * 0.05).toFixed(2) + 's' },
+      };
+    });
+
+    const ctrlGroups = this.CTRL.map(g => ({
+      label: g.label,
+      head: { fontFamily:"'Oswald',sans-serif", fontSize:'11px', fontWeight:600, letterSpacing:'0.16em', textTransform:'uppercase', color: g.color, marginBottom:'9px', paddingLeft:'2px' },
+      items: g.items.map(([name, code]) => ({ name, code, key: { fontFamily:"'Oswald',sans-serif", fontWeight:700, fontSize:'12px', letterSpacing:'0.04em', color:'#f2f5ff', padding:'3px 8px', background: g.color + '22', border:'1px solid ' + g.color + '66', clipPath:'polygon(4px 0,100% 0,100% calc(100% - 4px),calc(100% - 4px) 100%,0 100%,0 4px)' } })),
+    }));
+
+    return {
+      stageStyle: { position:'relative', width:'1280px', maxWidth:'100%', aspectRatio:'16 / 9', borderRadius:'16px', overflow:'hidden', border:'1px solid rgba(255,255,255,0.08)', boxShadow:'0 30px 90px rgba(0,0,0,0.75)', background:'#05070f' },
+      navs, resetAll: () => this.resetAll(), save: () => this.save(),
+      sectionKicker: cur.soon ? 'Coming soon' : (section === 'Audio' ? 'Sound & mixing' : 'Keyboard & mouse'),
+      sectionLabel: cur.label,
+      isAudio: section === 'Audio', isControls: section === 'Controls', isSoon: !!cur.soon,
+      soonMsg: cur.label + ' settings are on the way.',
+      masterPct: s.masterMuted ? 0 : s.master, master, meters, channels, ctrlGroups,
+      noteOn: !!s.note, noteText: s.note || '',
+      dirtyLabel: dirty ? 'Unsaved changes' : 'All saved',
+      dirtyStyle: { display:'flex', alignItems:'center', gap:'8px', fontFamily:"'Oswald',sans-serif", fontSize:'11px', fontWeight:600, letterSpacing:'0.1em', textTransform:'uppercase', color: dirty ? '#ffd166' : 'rgba(242,245,255,0.4)' },
+      saveStyle: { display:'flex', alignItems:'center', gap:'7px', padding:'0 18px', height:'34px', cursor: dirty ? 'pointer' : 'default', fontFamily:"'Oswald',sans-serif", fontSize:'12px', fontWeight:600, letterSpacing:'0.08em', textTransform:'uppercase', border:'1px solid ' + (dirty ? 'rgba(124,245,176,0.6)' : 'rgba(255,255,255,0.14)'), background: dirty ? 'rgba(124,245,176,0.14)' : 'rgba(255,255,255,0.05)', color: dirty ? '#7cf5b0' : 'rgba(242,245,255,0.45)', clipPath:'polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px)' },
+    };
+  }
+
+  muteBtn(on, color) {
+    return {
+      minWidth:'52px', height:'34px', flex:'none', padding:'0 12px', display:'grid', placeItems:'center', cursor:'pointer',
+      fontFamily:"'Oswald',sans-serif", fontSize:'11px', fontWeight:700, letterSpacing:'0.1em',
+      color: on ? '#ff8bc0' : (color || '#0a0f1e'),
+      background: on ? 'rgba(255,77,157,0.12)' : (color || '#ffd166'),
+      border: on ? '1px solid rgba(255,77,157,0.5)' : '1px solid transparent',
+      clipPath:'polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px)',
+    };
+  }
+  chip(active, color) {
+    return {
+      padding:'8px 14px', cursor:'pointer', fontFamily:"'Oswald',sans-serif", fontSize:'12px', fontWeight:600, letterSpacing:'0.06em', textTransform:'uppercase',
+      color: active ? '#f2f5ff' : 'rgba(242,245,255,0.55)',
+      background: active ? color + '22' : 'rgba(255,255,255,0.04)',
+      border:'1px solid ' + (active ? color + '88' : 'rgba(255,255,255,0.12)'),
+      clipPath:'polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px)',
+    };
+  }
+}
+</script>
+</body>
+</html>
