@@ -11,6 +11,11 @@ const ROOM = {
 
 const DEFAULT_ROOM_SEND = 0.08;
 const DEFAULT_DISTANCE_ROOM_SEND = 0.06;
+const DEFAULT_MUSIC = {
+  volume: 0.58,
+  fadeInMs: 900,
+  fadeOutMs: 700,
+};
 
 const SOUNDS = {
   sunFireChannel: {
@@ -76,6 +81,40 @@ const SOUNDS = {
     maxDistance: 1150,
     panDistance: 680,
     room: 0.12,
+  },
+  cleoMelee: {
+    urls: [
+      '/assets/audio/cleo/cleo_melee_01.ogg',
+      '/assets/audio/cleo/cleo_melee_02.ogg',
+      '/assets/audio/cleo/cleo_melee_03.ogg',
+    ],
+    volume: 0.66,
+    cooldownMs: 35,
+    rate: [0.98, 1.04],
+    lowpassHz: 4500,
+    lowpassQ: 0.55,
+    spatial: true,
+    maxDistance: 1000,
+    panDistance: 620,
+    room: 0.09,
+    distanceRoom: 0.035,
+    interruptGroup: 'cleoMelee',
+    interruptFadeMs: 12,
+  },
+  cleoMeleeComboEnd: {
+    urls: ['/assets/audio/cleo/cleo_melee_end_combo.ogg'],
+    volume: 0.82,
+    cooldownMs: 80,
+    rate: [0.98, 1.03],
+    lowpassHz: 5200,
+    lowpassQ: 0.55,
+    spatial: true,
+    maxDistance: 1250,
+    panDistance: 720,
+    room: 0.11,
+    distanceRoom: 0.035,
+    interruptGroup: 'cleoMelee',
+    interruptFadeMs: 12,
   },
   vikingAxeFlying: {
     urls: ['/assets/audio/viking/viking_axe_throw_flying.ogg'],
@@ -189,6 +228,42 @@ const SOUNDS = {
     panDistance: 700,
     room: 0.15,
   },
+  menuTransition: {
+    urls: ['/assets/audio/menu/menu_transition_effect.ogg'],
+    volume: 0.52,
+    cooldownMs: 180,
+    rate: [0.99, 1.01],
+    room: 0,
+    channel: 'ui',
+  },
+  menuClick: {
+    urls: ['/assets/audio/menu/menu_click.ogg'],
+    volume: 0.42,
+    cooldownMs: 40,
+    rate: [0.98, 1.03],
+    room: 0,
+    channel: 'ui',
+  },
+  chooseYourFighter: {
+    urls: ['/assets/audio/menu/Choose_your_fighter.ogg'],
+    volume: 0.78,
+    cooldownMs: 900,
+    rate: [0.995, 1.005],
+    room: 0,
+    channel: 'voice',
+    interruptGroup: 'menuPrompt',
+    interruptFadeMs: 90,
+  },
+  selectTheArena: {
+    urls: ['/assets/audio/menu/select_the_arena.ogg'],
+    volume: 0.78,
+    cooldownMs: 900,
+    rate: [0.995, 1.005],
+    room: 0,
+    channel: 'voice',
+    interruptGroup: 'menuPrompt',
+    interruptFadeMs: 90,
+  },
 };
 
 const FX_SOUND = {
@@ -200,10 +275,29 @@ const FX_SOUND = {
   power_shield: 'cleoShield',
 };
 
+// Mixern: en buss per kanal, alla under mastern. Varje ljud sager sjalvt vilken
+// buss det hor hemma i (sound.channel) - sager det inget hamnar det i sfx.
+// Musiken gar alltid i sin egen. Standardnivaerna kommer ur designdokumentet.
+const CHANNELS = {
+  music: { def: 0.7, key: 'vvc.audio.music', preview: null },
+  sfx: { def: 0.85, key: 'vvc.audio.sfx', preview: 'cleoSandBlast' },
+  voice: { def: 0.8, key: 'vvc.audio.voice', preview: null },
+  ambience: { def: 0.55, key: 'vvc.audio.ambience', preview: null },
+  ui: { def: 0.6, key: 'vvc.audio.ui', preview: 'menuClick' },
+};
+
+const CHANNEL_IDS = Object.keys(CHANNELS);
+const DEFAULT_CHANNEL = 'sfx';
+const MASTER_DEFAULT = 0.9;
+
+// Kanaler utan eget ljud far en kort ton genom sin buss i stallet, sa att
+// testknappen anda visar vad reglaget gor.
+const PREVIEW_TONE = { hz: 620, toHz: 880, seconds: 0.28, volume: 0.5 };
+
 const STORAGE = {
   master: 'vvc.audio.master',
-  sfx: 'vvc.audio.sfx',
   muted: 'vvc.audio.muted',
+  channelMuted: (id) => `vvc.audio.muted.${id}`,
 };
 
 export class AudioManager {
@@ -211,7 +305,9 @@ export class AudioManager {
     this.getListener = getListener;
     this.ctx = null;
     this.master = null;
+    this.buses = {};
     this.sfxBus = null;
+    this.musicBus = null;
     this.roomInput = null;
     this.roomPreDelay = null;
     this.roomReverb = null;
@@ -227,10 +323,19 @@ export class AudioManager {
     this.oneShotGroups = new Map();
     this.htmlOneShots = new Set();
     this.htmlOneShotGroups = new Map();
+    this.music = null;
+    this.desiredMusic = null;
+    this.musicStartingId = '';
+    this.musicPositions = new Map();
     this.lastError = '';
-    this.masterVolume = readNumber(STORAGE.master, 0.9);
-    this.sfxVolume = readNumber(STORAGE.sfx, 1);
+    this.masterVolume = readNumber(STORAGE.master, MASTER_DEFAULT);
     this.muted = readBool(STORAGE.muted, false);
+    this.channelVolume = {};
+    this.channelMuted = {};
+    for (const id of CHANNEL_IDS) {
+      this.channelVolume[id] = readNumber(CHANNELS[id].key, CHANNELS[id].def);
+      this.channelMuted[id] = readBool(STORAGE.channelMuted(id), false);
+    }
 
     this.unlockFromGesture = this.unlockFromGesture.bind(this);
     this.installUnlockers();
@@ -241,7 +346,8 @@ export class AudioManager {
     window.addEventListener('keydown', this.unlockFromGesture);
     window.addEventListener('touchstart', this.unlockFromGesture, { passive: true });
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden) this.stopAllLoops();
+      if (document.hidden) this.stopAllLoops({ keepMusicIntent: true, immediateMusic: true });
+      else this.resumeDesiredMusic();
     });
   }
 
@@ -252,7 +358,7 @@ export class AudioManager {
   }
 
   unlockFromGesture() {
-    this.prime();
+    this.prime().then(() => this.resumeDesiredMusic());
   }
 
   async prime() {
@@ -266,6 +372,7 @@ export class AudioManager {
           for (const sound of Object.values(SOUNDS)) {
             for (const url of sound.urls) this.loadBuffer(url);
           }
+          this.resumeDesiredMusic();
         }
         return ok;
       })
@@ -300,9 +407,16 @@ export class AudioManager {
 
     this.ctx = new AudioCtx();
     this.master = this.ctx.createGain();
-    this.sfxBus = this.ctx.createGain();
     this.master.connect(this.ctx.destination);
-    this.sfxBus.connect(this.master);
+
+    for (const id of CHANNEL_IDS) {
+      const bus = this.ctx.createGain();
+      bus.connect(this.master);
+      this.buses[id] = bus;
+    }
+    this.sfxBus = this.buses.sfx;
+    this.musicBus = this.buses.music;
+
     this.setupRoomBus();
     this.applyVolumes(true);
     return this.ctx;
@@ -354,16 +468,20 @@ export class AudioManager {
       this.play('vikingAxeHit', fx);
       return;
     }
-    if (fx.k === 'swing' && fx.team === 'viking') {
-      this.playVikingSwing(fx);
-      return;
-    }
     if (fx.k === 'hit') {
+      if (fx.cause === 'melee') {
+        if (!fx.comboId) this.playMeleeHit(fx);
+        return;
+      }
       this.playVikingHit(fx);
       return;
     }
     if (fx.k === 'combo' && fx.team === 'viking') {
       this.play('vikingMeleeComboEnd', fx);
+      return;
+    }
+    if (fx.k === 'combo' && fx.team === 'cleo') {
+      this.play('cleoMeleeComboEnd', fx);
       return;
     }
 
@@ -376,6 +494,27 @@ export class AudioManager {
     else this.play(name, fx);
   }
 
+  playMenuTransition() {
+    return this.play('menuTransition');
+  }
+
+  playMenuClick() {
+    return this.play('menuClick');
+  }
+
+  playChooseYourFighter() {
+    return this.play('chooseYourFighter');
+  }
+
+  playSelectTheArena() {
+    return this.play('selectTheArena');
+  }
+
+  /** Bussen ett ljud ska spelas genom - sfx ar hemmaplanen for allt gameplay. */
+  busFor(sound) {
+    return this.buses[sound?.channel ?? DEFAULT_CHANNEL] ?? this.sfxBus;
+  }
+
   playVikingHit(fx) {
     if (fx.team !== 'viking') return;
 
@@ -384,15 +523,27 @@ export class AudioManager {
     }
   }
 
-  playVikingSwing(fx) {
-    if (fx.slot === 'm2') {
+  playMeleeHit(fx) {
+    if (fx.team === 'viking') this.playVikingMeleeHit(fx);
+    else if (fx.team === 'cleo') this.playCleoMeleeHit(fx);
+  }
+
+  playVikingMeleeHit(fx) {
+    const slot = fx.meleeSlot ?? fx.slot;
+    if (slot === 'm2') {
       this.play('vikingMeleeShield', fx);
       return;
     }
-    if (fx.slot !== 'm1') return;
+    if (slot !== 'm1') return;
 
     const step = Math.round(clamp(Number(fx.axeStep ?? 1), 1, 3));
     this.play(`vikingMeleeAxe${step}`, fx);
+  }
+
+  playCleoMeleeHit(fx) {
+    const slot = fx.meleeSlot ?? fx.slot;
+    if (!slot?.startsWith('m')) return;
+    this.play('cleoMelee', fx);
   }
 
   async play(name, fx = {}) {
@@ -417,7 +568,7 @@ export class AudioManager {
     gain.gain.value = this.effectiveVolume(sound, fx, spatial);
     if (panner) panner.pan.value = spatial.pan;
 
-    connectNodes(source, filter, gain, panner, this.sfxBus, this.roomInput, roomSend);
+    connectNodes(source, filter, gain, panner, this.busFor(sound), this.roomInput, roomSend);
     const voice = { source, filter, gain, panner, roomSend, group: sound.interruptGroup, stopping: false, ended: false };
     this.trackOneShot(voice);
     source.onended = () => this.finishOneShot(voice);
@@ -551,7 +702,7 @@ export class AudioManager {
     loop.panner = panner;
     loop.roomSend = roomSend;
 
-    connectNodes(source, filter, gain, panner, this.sfxBus, this.roomInput, roomSend);
+    connectNodes(source, filter, gain, panner, this.busFor(sound), this.roomInput, roomSend);
     source.onended = () => disconnectNodes(source, filter, gain, panner, roomSend);
     source.start();
     this.armLoopTimeout(loop);
@@ -637,8 +788,13 @@ export class AudioManager {
     }
   }
 
-  stopAllLoops() {
+  stopAllLoops({ keepMusicIntent = false, immediateMusic = false, preserveMusic = false } = {}) {
     for (const loop of [...this.activeLoops.values()]) this.stopLoop(loop.name, loop.id);
+    if (preserveMusic) {
+      if (!keepMusicIntent) this.desiredMusic = null;
+      return;
+    }
+    this.stopMusic(immediateMusic ? 0 : DEFAULT_MUSIC.fadeOutMs, { keepDesired: keepMusicIntent });
   }
 
   armLoopTimeout(loop) {
@@ -731,15 +887,198 @@ export class AudioManager {
     }
   }
 
-  setMasterVolume(value) {
-    this.masterVolume = clamp(Number(value), 0, 1);
-    writeStorage(STORAGE.master, this.masterVolume);
-    this.applyVolumes();
+  syncMusic(track = null) {
+    const wanted = normalizeMusicTrack(track);
+    if (!wanted) {
+      this.stopMusic();
+      return;
+    }
+
+    this.desiredMusic = wanted;
+    if (this.music?.id === wanted.id && !this.music.stopping) {
+      this.music.track = wanted;
+      this.updateMusicVolume();
+      return;
+    }
+    if (!document.hidden && this.unlocked) this.startMusic(wanted);
+  }
+
+  async startMusic(track) {
+    const wanted = normalizeMusicTrack(track);
+    if (!wanted) return false;
+
+    this.desiredMusic = wanted;
+    if (this.music?.id === wanted.id && !this.music.stopping) {
+      this.music.track = wanted;
+      this.updateMusicVolume();
+      return true;
+    }
+    if (this.musicStartingId === wanted.id) return false;
+
+    this.musicStartingId = wanted.id;
+    this.stopMusic(wanted.fadeOutMs, { keepDesired: true });
+    const ready = await this.readyToPlay();
+    if (!ready) {
+      if (this.musicStartingId === wanted.id) this.musicStartingId = '';
+      return false;
+    }
+
+    if (this.desiredMusic?.id !== wanted.id || document.hidden) {
+      if (this.musicStartingId === wanted.id) this.musicStartingId = '';
+      return false;
+    }
+
+    const buffer = await this.loadBuffer(wanted.url);
+    if (buffer && this.desiredMusic?.id === wanted.id && !document.hidden && this.ctx && this.musicBus) {
+      const source = this.ctx.createBufferSource();
+      const gain = this.ctx.createGain();
+      const now = this.ctx.currentTime;
+      const duration = buffer.duration;
+      const offset = this.musicOffsetFor(wanted, duration);
+
+      source.buffer = buffer;
+      source.loop = true;
+      gain.gain.setValueAtTime(0, now);
+      source.connect(gain);
+      gain.connect(this.musicBus);
+
+      const music = {
+        id: wanted.id,
+        track: wanted,
+        source,
+        gain,
+        startedAt: now,
+        offset,
+        duration,
+        fadeId: 0,
+        stopping: false,
+      };
+      this.music = music;
+      source.onended = () => {
+        if (this.music === music) this.music = null;
+        disconnectNodes(source, gain);
+      };
+      source.start(now, offset);
+      this.fadeMusicTo(music, this.musicTargetVolume(wanted, music), wanted.fadeInMs);
+      if (this.musicStartingId === wanted.id) this.musicStartingId = '';
+      return true;
+    }
+
+    if (this.desiredMusic?.id !== wanted.id || document.hidden) {
+      if (this.musicStartingId === wanted.id) this.musicStartingId = '';
+      return false;
+    }
+
+    return this.startHtmlMusic(wanted);
+  }
+
+  async startHtmlMusic(wanted) {
+    const audio = new Audio(wanted.url);
+    audio.loop = true;
+    audio.preload = 'auto';
+    audio.volume = 0;
+    this.seekHtmlMusic(audio, wanted);
+
+    const music = {
+      id: wanted.id,
+      track: wanted,
+      audio,
+      fadeId: 0,
+      stopping: false,
+    };
+    this.music = music;
+
+    try {
+      await audio.play();
+      if (this.desiredMusic?.id === wanted.id && this.music === music) {
+        this.fadeMusicTo(music, this.musicTargetVolume(wanted, music), wanted.fadeInMs);
+        return true;
+      }
+      this.stopMusic(0, { keepDesired: true });
+      return false;
+    } catch (err) {
+      if (this.music === music) this.music = null;
+      this.lastError = String(err?.message ?? err);
+      console.warn(`Could not start music ${wanted.url}:`, err);
+      return false;
+    } finally {
+      if (this.musicStartingId === wanted.id) this.musicStartingId = '';
+    }
+  }
+
+  musicOffsetFor(track, duration = 0) {
+    if (!track?.resume) return 0;
+    return wrapMusicOffset(this.musicPositions.get(track.id) ?? 0, duration);
+  }
+
+  seekHtmlMusic(audio, track) {
+    const seek = () => {
+      const offset = this.musicOffsetFor(track, audio.duration);
+      if (!offset) return;
+      try {
+        audio.currentTime = offset;
+      } catch {
+        // Some browsers only allow seeking after metadata is available.
+      }
+    };
+
+    if (audio.readyState >= 1) seek();
+    else audio.addEventListener('loadedmetadata', seek, { once: true });
+  }
+
+  rememberMusicPosition(music) {
+    if (!music?.track?.resume) return;
+    this.musicPositions.set(music.id, this.musicPlaybackOffset(music));
+  }
+
+  musicPlaybackOffset(music) {
+    if (music?.audio) return wrapMusicOffset(music.audio.currentTime, music.audio.duration);
+    if (!music?.source || !this.ctx) return 0;
+
+    const elapsed = Math.max(0, this.ctx.currentTime - (finite(music.startedAt) ? music.startedAt : this.ctx.currentTime));
+    return wrapMusicOffset((finite(music.offset) ? music.offset : 0) + elapsed, music.duration);
+  }
+
+  stopMusic(fadeMs = DEFAULT_MUSIC.fadeOutMs, { keepDesired = false } = {}) {
+    if (!keepDesired) this.desiredMusic = null;
+
+    const music = this.music;
+    if (!music?.audio && !music?.source) return;
+
+    this.rememberMusicPosition(music);
+    this.music = null;
+    music.stopping = true;
+    this.fadeMusicTo(music, 0, fadeMs, () => {
+      try {
+        if (music.source) music.source.stop();
+        if (music.audio) {
+          music.audio.pause();
+          music.audio.currentTime = 0;
+        }
+      } catch {
+        // The element may already be gone.
+      } finally {
+        disconnectNodes(music.source, music.gain);
+      }
+    });
+  }
+
+  resumeDesiredMusic() {
+    if (!this.desiredMusic || document.hidden) return;
+    this.startMusic(this.desiredMusic);
+  }
+
+  setMusicVolume(value) {
+    this.setChannelVolume('music', value);
   }
 
   setSfxVolume(value) {
-    this.sfxVolume = clamp(Number(value), 0, 1);
-    writeStorage(STORAGE.sfx, this.sfxVolume);
+    this.setChannelVolume('sfx', value);
+  }
+
+  setMasterVolume(value) {
+    this.masterVolume = clamp(Number(value), 0, 1);
+    writeStorage(STORAGE.master, this.masterVolume);
     this.applyVolumes();
   }
 
@@ -749,12 +1088,143 @@ export class AudioManager {
     this.applyVolumes();
   }
 
+  setChannelVolume(id, value) {
+    if (!CHANNELS[id]) return;
+    this.channelVolume[id] = clamp(Number(value), 0, 1);
+    writeStorage(CHANNELS[id].key, this.channelVolume[id]);
+    this.applyVolumes();
+  }
+
+  setChannelMuted(id, muted) {
+    if (!CHANNELS[id]) return;
+    this.channelMuted[id] = !!muted;
+    writeStorage(STORAGE.channelMuted(id), this.channelMuted[id] ? '1' : '0');
+    this.applyVolumes();
+  }
+
+  /**
+   * Hela mixern i ett svep. Installningssidan drar reglagen mot den levande
+   * mixern med persist:false och skriver forst ner allt nar man sparar.
+   */
+  applyMix(mix = {}, { persist = true } = {}) {
+    if (finite(mix.master)) {
+      this.masterVolume = clamp(Number(mix.master), 0, 1);
+      if (persist) writeStorage(STORAGE.master, this.masterVolume);
+    }
+    if (mix.masterMuted !== undefined) {
+      this.muted = !!mix.masterMuted;
+      if (persist) writeStorage(STORAGE.muted, this.muted ? '1' : '0');
+    }
+
+    for (const [id, channel] of Object.entries(mix.channels ?? {})) {
+      if (!CHANNELS[id]) continue;
+      if (finite(channel?.value)) {
+        this.channelVolume[id] = clamp(Number(channel.value), 0, 1);
+        if (persist) writeStorage(CHANNELS[id].key, this.channelVolume[id]);
+      }
+      if (channel?.muted !== undefined) {
+        this.channelMuted[id] = !!channel.muted;
+        if (persist) writeStorage(STORAGE.channelMuted(id), this.channelMuted[id] ? '1' : '0');
+      }
+    }
+
+    this.applyVolumes();
+  }
+
+  /** Det som ligger i localStorage just nu - dit vi backar om man inte sparar. */
+  storedMix() {
+    const channels = {};
+    for (const id of CHANNEL_IDS) {
+      channels[id] = {
+        value: readNumber(CHANNELS[id].key, CHANNELS[id].def),
+        muted: readBool(STORAGE.channelMuted(id), false),
+      };
+    }
+    return {
+      master: readNumber(STORAGE.master, MASTER_DEFAULT),
+      masterMuted: readBool(STORAGE.muted, false),
+      channels,
+    };
+  }
+
+  /** Nulaget i mixern, i samma form som applyMix vill ha den tillbaka. */
+  mix() {
+    const channels = {};
+    for (const id of CHANNEL_IDS) channels[id] = { value: this.channelVolume[id], muted: this.channelMuted[id] };
+    return { master: this.masterVolume, masterMuted: this.muted, channels };
+  }
+
+  /** Fabriksinstallningen, samma karta som mix() ger. */
+  defaultMix() {
+    const channels = {};
+    for (const id of CHANNEL_IDS) channels[id] = { value: CHANNELS[id].def, muted: false };
+    return { master: MASTER_DEFAULT, masterMuted: false, channels };
+  }
+
+  masterGain() {
+    return this.muted ? 0 : this.masterVolume;
+  }
+
+  channelGain(id = DEFAULT_CHANNEL) {
+    if (!CHANNELS[id]) return 1;
+    return this.channelMuted[id] ? 0 : this.channelVolume[id];
+  }
+
   applyVolumes(immediate = false) {
-    if (!this.ctx || !this.master || !this.sfxBus) return;
+    this.updateMusicVolume(immediate ? 0 : 80);
+    if (!this.ctx || !this.master) return;
     const now = this.ctx.currentTime;
-    const master = this.muted ? 0 : this.masterVolume;
-    setGain(this.master.gain, master, now, immediate);
-    setGain(this.sfxBus.gain, this.sfxVolume, now, immediate);
+    setGain(this.master.gain, this.masterGain(), now, immediate);
+    for (const id of CHANNEL_IDS) {
+      const bus = this.buses[id];
+      if (bus) setGain(bus.gain, this.channelGain(id), now, immediate);
+    }
+  }
+
+  /**
+   * Testknappen i ljudinstallningarna. Kanaler med ett representativt ljud
+   * spelar det, ovriga far en ton - bada gar genom kanalens buss sa att man
+   * hor exakt vad reglaget gor.
+   */
+  async previewChannel(id) {
+    if (!CHANNELS[id]) return false;
+    const sample = CHANNELS[id].preview;
+    if (sample && SOUNDS[sample]) {
+      this.lastPlayed.delete(sample);
+      await this.play(sample);
+      return true;
+    }
+    return this.playTone(id);
+  }
+
+  async playTone(channel = DEFAULT_CHANNEL) {
+    if (!(await this.readyToPlay()) || !this.ctx) return false;
+
+    const bus = this.buses[channel] ?? this.sfxBus;
+    if (!bus) return false;
+
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    const now = this.ctx.currentTime;
+
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(PREVIEW_TONE.hz, now);
+    osc.frequency.exponentialRampToValueAtTime(PREVIEW_TONE.toHz, now + PREVIEW_TONE.seconds * 0.6);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(PREVIEW_TONE.volume, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + PREVIEW_TONE.seconds);
+
+    osc.connect(gain);
+    gain.connect(bus);
+    const voice = { source: osc, gain };
+    this.oneShots.add(voice);
+    osc.onended = () => {
+      this.oneShots.delete(voice);
+      disconnectNodes(osc, gain);
+    };
+    osc.start(now);
+    osc.stop(now + PREVIEW_TONE.seconds + 0.02);
+    return true;
   }
 
   async readyToPlay() {
@@ -871,9 +1341,51 @@ export class AudioManager {
     return clamp((sound.volume ?? 1) * spatial.distanceGain * strengthGain, 0, 1.4);
   }
 
+  // HTML-ljuden har ingen buss att ga igenom, sa mixern raknas in i elementets
+  // egen volym i stallet.
   htmlVolume(sound, fx, spatial) {
-    if (this.muted) return 0;
-    return clamp(this.effectiveVolume(sound, fx, spatial) * this.masterVolume * this.sfxVolume, 0, 1);
+    const bus = this.masterGain() * this.channelGain(sound?.channel ?? DEFAULT_CHANNEL);
+    return clamp(this.effectiveVolume(sound, fx, spatial) * bus, 0, 1);
+  }
+
+  updateMusicVolume(fadeMs = 80) {
+    if ((!this.music?.audio && !this.music?.gain) || this.music.stopping) return;
+    this.fadeMusicTo(this.music, this.musicTargetVolume(this.music.track, this.music), fadeMs);
+  }
+
+  musicTargetVolume(track = this.music?.track, music = this.music) {
+    if (!track) return 0;
+    if (music?.gain) return clamp(track.volume, 0, 1);
+    return clamp(track.volume * this.masterGain() * this.channelGain('music'), 0, 1);
+  }
+
+  fadeMusicTo(music, target, ms, after = null) {
+    if (!music?.audio && !music?.gain) return;
+
+    const duration = Math.max(0, Number(ms) || 0);
+    const from = musicCurrentVolume(music);
+    const to = clamp(target, 0, 1);
+    const fadeId = (music.fadeId ?? 0) + 1;
+    music.fadeId = fadeId;
+
+    if (duration <= 0) {
+      setMusicNodeVolume(music, to);
+      after?.();
+      return;
+    }
+
+    const started = performance.now();
+    const step = () => {
+      if (music.fadeId !== fadeId) return;
+      const progress = clamp((performance.now() - started) / duration, 0, 1);
+      setMusicNodeVolume(music, from + (to - from) * progress);
+      if (progress < 1) {
+        requestAnimationFrame(step);
+        return;
+      }
+      after?.();
+    };
+    requestAnimationFrame(step);
   }
 
   fadeInHtml(audio, target, ms) {
@@ -915,11 +1427,14 @@ export class AudioManager {
       contextState: this.ctx?.state ?? 'none',
       muted: this.muted,
       masterVolume: this.masterVolume,
-      sfxVolume: this.sfxVolume,
+      channels: { ...this.channelVolume },
+      channelsMuted: { ...this.channelMuted },
       room: !!this.roomInput,
       loadedBuffers: this.buffers.size,
       loadingBuffers: this.loading.size,
       activeLoops: this.activeLoops.size,
+      music: this.music?.id ?? '',
+      desiredMusic: this.desiredMusic?.id ?? '',
       oneShots: this.oneShots.size,
       htmlOneShots: this.htmlOneShots.size,
       lastError: this.lastError,
@@ -932,7 +1447,7 @@ export class AudioManager {
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
     const now = this.ctx.currentTime;
-    const volume = this.muted ? 0 : 0.55 * this.masterVolume * this.sfxVolume;
+    const volume = 0.55;
 
     osc.type = 'sine';
     osc.frequency.setValueAtTime(660, now);
@@ -984,6 +1499,38 @@ function fxFromChannelPlayer(p) {
 
 function withAudioId(fx, audioId) {
   return { ...fx, audioId };
+}
+
+function normalizeMusicTrack(track) {
+  if (!track?.url) return null;
+  return {
+    id: String(track.id ?? track.url),
+    url: String(track.url),
+    volume: finite(track.volume) ? clamp(Number(track.volume), 0, 1) : DEFAULT_MUSIC.volume,
+    fadeInMs: finite(track.fadeInMs) ? Math.max(0, Number(track.fadeInMs)) : DEFAULT_MUSIC.fadeInMs,
+    fadeOutMs: finite(track.fadeOutMs) ? Math.max(0, Number(track.fadeOutMs)) : DEFAULT_MUSIC.fadeOutMs,
+    resume: !!track.resume,
+  };
+}
+
+function wrapMusicOffset(value, duration = 0) {
+  const offset = Number(value);
+  if (!Number.isFinite(offset) || offset <= 0) return 0;
+
+  const length = Number(duration);
+  if (!Number.isFinite(length) || length <= 0) return offset;
+  return offset % length;
+}
+
+function musicCurrentVolume(music) {
+  if (music?.gain) return clamp(Number(music.gain.gain.value), 0, 1);
+  return clamp(Number(music?.audio?.volume ?? 0), 0, 1);
+}
+
+function setMusicNodeVolume(music, value) {
+  const volume = clamp(value, 0, 1);
+  if (music?.gain) music.gain.gain.value = volume;
+  if (music?.audio) music.audio.volume = volume;
 }
 
 function connectNodes(source, filter, gain, panner, destination, roomDestination = null, roomSend = null) {
@@ -1066,7 +1613,9 @@ function setGain(param, value, now, immediate) {
 
 function readNumber(key, fallback) {
   try {
-    const value = Number(localStorage.getItem(key));
+    const raw = localStorage.getItem(key);
+    if (raw === null || raw === '') return fallback;
+    const value = Number(raw);
     return Number.isFinite(value) ? clamp(value, 0, 1) : fallback;
   } catch {
     return fallback;

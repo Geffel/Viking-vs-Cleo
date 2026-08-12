@@ -1,15 +1,17 @@
-// Kontrollsidan: en rad per bindning, uppdelad i samma kategorier som HUD:en och
-// info-fliken anvander - rorelse, narstrid, formagor. Sidan visar bara de
+// Kontrollpanelen: en rad per bindning, uppdelad i samma kategorier som HUD:en
+// och info-fliken anvander - rorelse, narstrid, formagor. Panelen visar bara de
 // bindningar spelet faktiskt har; texten byggs ur shared/constants.js sa att den
 // aldrig kan sla isar fran vad som verkligen ar bundet.
 //
 // Varje rad har tva rutor: tangenten till vanster, handkontrollknappen till
-// hoger. Klickar man en ruta lyssnar sidan efter nasta tangenttryck respektive
+// hoger. Klickar man en ruta lyssnar panelen efter nasta tangenttryck respektive
 // nasta knapp pa kontrollen.
 //
-// Andringarna ligger i ett utkast tills man trycker Save. Forst da skrivs de
-// till keybinds.js, som i sin tur talar om for input-lagret, HUD:en och
-// info-fliken att tangenterna bytt plats.
+// Panelen bor inne i installningarna (settings.js) och har darfor ingen egen
+// ram: skalet ager rubriken, spara-knappen och notisrutan. Andringarna ligger i
+// ett utkast tills skalet ropar save(). Forst da skrivs de till keybinds.js, som
+// i sin tur talar om for input-lagret, HUD:en och info-fliken att tangenterna
+// bytt plats.
 
 import { ABILITIES, KEYBIND_CATEGORIES, MELEE_ATTACKS, TEAMS } from '/shared/constants.js';
 import {
@@ -26,7 +28,6 @@ import {
   slotForPad,
 } from '/js/keybinds.js';
 
-const NOTE_MS = 2600;
 const PAD_PRESS = 0.5;
 
 // Rorelseraderna har ingen ikon i konstantfilen - de far en pil och en mening.
@@ -46,23 +47,18 @@ const SLOT_TITLES = { m1: 'Melee 1', m2: 'Melee 2', a1: 'Ability 1', a2: 'Abilit
 const FIXED_PAD = new Set(['left', 'right']);
 
 export class ControlsUi {
-  constructor({ onBack = () => {} } = {}) {
-    this.onBack = onBack;
+  constructor({ onChange = () => {}, onNote = () => {} } = {}) {
+    this.onChange = onChange;
+    this.onNote = onNote;
     this.cat = KEYBIND_CATEGORIES[0].id;
     this.draft = bindings();
     this.listening = null;
-    this.noteTimer = 0;
     this.padFrame = 0;
 
     this.page = document.getElementById('controls-view');
     this.title = document.getElementById('controls-title');
     this.cats = document.getElementById('controls-cats');
     this.rows = document.getElementById('controls-rows');
-    this.note = document.getElementById('controls-note');
-    this.dirty = document.getElementById('controls-dirty');
-    this.saveBtn = document.getElementById('controls-save');
-    this.resetAllBtn = document.getElementById('controls-reset-all');
-    this.back = document.getElementById('controls-back');
     if (!this.page) return;
 
     this.cats?.addEventListener('click', (e) => {
@@ -91,10 +87,6 @@ export class ControlsUi {
       this.clearSlot(slot.dataset.kbSlot, slot.dataset.kbBox);
     });
 
-    this.saveBtn?.addEventListener('click', () => this.save());
-    this.resetAllBtn?.addEventListener('click', () => this.resetAll());
-    this.back?.addEventListener('click', () => this.onBack());
-
     // Ligger i capture-fasen sa att tangenten fangas innan nagon annan hinner
     // reagera pa den medan vi lyssnar efter en ny bindning.
     window.addEventListener('keydown', (e) => this.onKeyDown(e), true);
@@ -102,11 +94,16 @@ export class ControlsUi {
     this.render();
   }
 
-  /** Oppnar sidan: utkastet borjar alltid fran det som faktiskt ar sparat. */
+  /** Oppnar panelen: utkastet borjar alltid fran det som faktiskt ar sparat. */
   open() {
     this.draft = bindings();
     this.stopListening();
-    this.hideNote();
+    this.render();
+  }
+
+  /** Stanger panelen - slutar lyssna sa att en tangent inte fastnar i luften. */
+  close() {
+    this.stopListening();
     this.render();
   }
 
@@ -233,11 +230,12 @@ export class ControlsUi {
     this.showNote('All controls restored to defaults');
   }
 
+  /** Skriver utkastet till keybinds.js. Skalets spara-knapp ager den har. */
   save() {
-    if (!this.isDirty()) return;
+    if (!this.isDirty()) return false;
     this.draft = saveBindings(this.draft);
-    this.showNote('Bindings saved');
     this.render();
+    return true;
   }
 
   commit(draft) {
@@ -257,7 +255,7 @@ export class ControlsUi {
     if (this.title) this.title.textContent = category.name;
     this.renderCats();
     this.renderRows(category);
-    this.renderStatus();
+    this.onChange();
   }
 
   renderCats() {
@@ -318,26 +316,8 @@ export class ControlsUi {
     return this.listening?.slot === slot && this.listening?.box === box;
   }
 
-  renderStatus() {
-    const dirty = this.isDirty();
-    if (this.dirty) {
-      this.dirty.classList.toggle('on', dirty);
-      this.dirty.innerHTML = `<i></i>${dirty ? 'Unsaved changes' : 'All saved'}`;
-    }
-    if (this.saveBtn) this.saveBtn.disabled = !dirty;
-  }
-
   showNote(text) {
-    if (!this.note) return;
-    window.clearTimeout(this.noteTimer);
-    this.note.innerHTML = `<i>⇄</i>${escapeHtml(text)}`;
-    this.note.hidden = false;
-    this.noteTimer = window.setTimeout(() => this.hideNote(), NOTE_MS);
-  }
-
-  hideNote() {
-    window.clearTimeout(this.noteTimer);
-    if (this.note) this.note.hidden = true;
+    this.onNote(text, '⇄');
   }
 }
 

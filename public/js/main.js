@@ -3,10 +3,20 @@ import { Renderer } from '/js/render.js';
 import { AudioManager } from '/js/audio.js';
 import { Hud } from '/js/hud.js';
 import { AchievementsUi } from '/js/achievements.js';
-import { ControlsUi } from '/js/controls.js';
+import { SettingsUi } from '/js/settings.js';
 import { initInput } from '/js/input.js';
 import { initLobbyInfo } from '/js/info.js';
-import { ACTION_SLOTS, MAPS, MAP_VOTE_MS, MATCH_DURATION_MS, MATCH_PHASES, NAME_MAX, mapLayoutFor, mapThemeFor } from '/shared/constants.js';
+import {
+  ACTION_SLOTS,
+  MAPS,
+  MAP_VOTE_MS,
+  MATCH_DURATION_MS,
+  MATCH_PHASES,
+  NAME_MAX,
+  mapLayoutFor,
+  mapSoundtrackFor,
+  mapThemeFor,
+} from '/shared/constants.js';
 
 const net = new Net();
 const stage = document.getElementById('stage');
@@ -30,8 +40,8 @@ const matchList = document.getElementById('match-list');
 const createMatchBtn = document.getElementById('create-match');
 const openAchievementsBtn = document.getElementById('open-achievements');
 const achievementsView = document.getElementById('achievements-view');
-const openControlsBtn = document.getElementById('open-controls');
-const controlsView = document.getElementById('controls-view');
+const openSettingsBtn = document.getElementById('open-settings');
+const settingsView = document.getElementById('settings-view');
 const matchRoom = document.getElementById('match-room');
 const matchRoomTitle = document.getElementById('match-room-title');
 const matchRoomPhase = document.getElementById('match-room-phase');
@@ -83,6 +93,16 @@ const WIPES = {
   results: { type: 'blade', a: '#0a0f1e', b: '#151d34', vs: true },
   countdown: { type: 'flash', color: 'rgba(255,209,102,0.9)' },
 };
+const SCREEN_PROMPT_DELAY_MS = 1500;
+const MENU_SOUNDTRACK = {
+  id: 'mainMenuTheme',
+  url: '/assets/audio/soundtracks/main_menu_theme.ogg',
+  volume: 0.24,
+  fadeInMs: 1400,
+  fadeOutMs: 650,
+  resume: true,
+};
+const MENU_MUSIC_PHASES = new Set([MATCH_PHASES.matchLobby, MATCH_PHASES.mapVote, MATCH_PHASES.results]);
 
 const clientId = loadClientId();
 let currentName = localStorage.getItem('vvc.name') ?? '';
@@ -97,20 +117,24 @@ let wiping = false;
 let lastFightText = '';
 let lastFightMode = '';
 let achievementsReturnView = 'lobby';
-let controlsReturnView = 'lobby';
+let settingsReturnView = 'lobby';
+let screenPromptTimer = 0;
+let screenPromptKey = '';
 
 const achievementsUi = new AchievementsUi({
   playerName: () => currentName,
   onBack: closeAchievements,
 });
 
-const controlsUi = new ControlsUi({ onBack: closeControls });
+const settingsUi = new SettingsUi({ audio, onBack: closeSettings });
 
 introName.value = currentName;
 initLobbyInfo();
 initPlayerCard();
 initAudioDebug();
+initMenuClicks();
 setView('intro');
+syncMatchMusic(null);
 
 introForm.addEventListener('submit', (e) => {
   e.preventDefault();
@@ -124,7 +148,7 @@ createMatchBtn.addEventListener('click', () => {
 
 openAchievementsBtn?.addEventListener('click', () => openAchievements());
 viewAchievementsResultBtn?.addEventListener('click', () => openAchievements());
-openControlsBtn?.addEventListener('click', () => openControls());
+openSettingsBtn?.addEventListener('click', () => openSettings());
 
 matchList.addEventListener('click', (e) => {
   const btn = e.target.closest('[data-join-match]');
@@ -175,12 +199,15 @@ mapVoteList.addEventListener('click', (e) => {
 leaveBtn.addEventListener('click', leaveCurrentMatch);
 
 function leaveCurrentMatch() {
+  const keepMenuMusic = net.match?.phase !== MATCH_PHASES.playing;
   if (net.match) net.leaveMatch();
   else net.leave();
-  audio.stopAllLoops();
+  clearScreenPrompt();
+  audio.stopAllLoops({ keepMusicIntent: keepMenuMusic, preserveMusic: keepMenuMusic });
   playWipe(WIPES.lobby, () => {
     renderMatchRoom(null);
     setView('lobby');
+    syncMatchMusic(null);
   });
 }
 
@@ -319,7 +346,10 @@ function setView(view) {
   globalLobby.hidden = view !== 'lobby';
   matchRoom.hidden = view !== 'matchRoom';
   if (achievementsView) achievementsView.hidden = view !== 'achievements';
-  if (controlsView) controlsView.hidden = view !== 'controls';
+  if (settingsView) settingsView.hidden = view !== 'settings';
+  // Installningarna lyssnar efter tangenter medan man binder om - de maste fa
+  // veta nar de inte langre ar framme.
+  if (view !== 'settings') settingsUi.close();
   leaveBtn.hidden = view !== 'game';
 
   // Profil-overlayen hor bara hemma i globala lobbyn.
@@ -336,9 +366,12 @@ function setView(view) {
     window.setTimeout(() => introName.focus(), 0);
   }
 
-  if (view === 'lobby' || view === 'matchRoom' || view === 'achievements' || view === 'controls') {
+  if (view === 'lobby' || view === 'matchRoom' || view === 'achievements' || view === 'settings') {
     lobbyPlayerName.textContent = currentName ? `Connected as ${currentName}` : 'Global lobby';
   }
+
+  if (view === 'matchRoom') syncScreenPrompt(net.match);
+  else clearScreenPrompt();
 
   markViewEntry(view);
 }
@@ -356,16 +389,16 @@ function closeAchievements() {
   setView(backTo);
 }
 
-function openControls() {
-  controlsReturnView = currentView === 'matchRoom' ? 'matchRoom' : 'lobby';
+function openSettings(section) {
+  settingsReturnView = currentView === 'matchRoom' ? 'matchRoom' : 'lobby';
   hidePlayerCard();
   if (openProfileId) closeProfile();
-  controlsUi.open();
-  setView('controls');
+  settingsUi.open(section);
+  setView('settings');
 }
 
-function closeControls() {
-  const backTo = controlsReturnView === 'matchRoom' && net.match ? 'matchRoom' : 'lobby';
+function closeSettings() {
+  const backTo = settingsReturnView === 'matchRoom' && net.match ? 'matchRoom' : 'lobby';
   setView(backTo);
 }
 
@@ -414,6 +447,7 @@ function playWipe(wipe, swap) {
   wiping = true;
   const ov = document.createElement('div');
   ov.className = 'vvc-overlay';
+  let showsVs = false;
 
   if (wipe.type === 'blade') {
     const bladeEase = 'cubic-bezier(0.16,0.9,0.2,1)';
@@ -454,6 +488,7 @@ function playWipe(wipe, swap) {
     });
 
     if (wipe.vs !== false) {
+      showsVs = true;
       const vs = document.createElement('div');
       vs.className = 'vvc-vs';
       vs.innerHTML = '<span>VS</span>';
@@ -470,6 +505,7 @@ function playWipe(wipe, swap) {
   }
 
   document.body.appendChild(ov);
+  if (showsVs) audio.playMenuTransition();
   window.setTimeout(swap, TRANSITION_MS * 0.46);
   window.setTimeout(() => {
     ov.remove();
@@ -487,8 +523,8 @@ function markViewEntry(view) {
           ? matchRoom
           : view === 'achievements'
             ? achievementsView
-            : view === 'controls'
-              ? controlsView
+            : view === 'settings'
+              ? settingsView
               : null;
   if (!el) return;
   el.classList.remove('vvc-enter');
@@ -610,6 +646,7 @@ function renderMatchRoom(match) {
 function routeForMatch(match, previousPhase = lastMatchPhase) {
   if (!currentName) return;
   if (!match) {
+    syncMatchMusic(null);
     lastMatchPhase = '';
     fightFlashUntil = 0;
     resetFightCopy();
@@ -622,6 +659,7 @@ function routeForMatch(match, previousPhase = lastMatchPhase) {
     fightFlashUntil = performance.now() + 1200;
   }
   lastMatchPhase = match.phase;
+  syncMatchMusic(match);
 
   // Sen anslutare som annu inte spawnats (ingen selfId) stannar i matchrummet
   // och valjer karaktar - forst nar de faktiskt ar med i arenan gar de till spelvyn.
@@ -631,6 +669,50 @@ function routeForMatch(match, previousPhase = lastMatchPhase) {
 
   syncGameAccess(match);
   if (enteringFight) triggerFightSlam();
+}
+
+function syncMatchMusic(match) {
+  let soundtrack = MENU_SOUNDTRACK;
+  if (match?.phase === MATCH_PHASES.playing) soundtrack = mapSoundtrackFor(match.selectedMap);
+  else if (match && !MENU_MUSIC_PHASES.has(match.phase)) soundtrack = null;
+  audio.syncMusic(soundtrack);
+}
+
+function syncScreenPrompt(match) {
+  const prompt = screenPromptFor(match);
+  if (!prompt) {
+    clearScreenPrompt();
+    return;
+  }
+  if (screenPromptKey === prompt.key) return;
+
+  clearScreenPrompt();
+  screenPromptKey = prompt.key;
+  screenPromptTimer = window.setTimeout(() => {
+    screenPromptTimer = 0;
+    if (screenPromptKey !== prompt.key || currentView !== 'matchRoom') return;
+
+    const latest = screenPromptFor(net.match);
+    if (latest?.key !== prompt.key) return;
+    prompt.play();
+  }, SCREEN_PROMPT_DELAY_MS);
+}
+
+function clearScreenPrompt() {
+  if (screenPromptTimer) window.clearTimeout(screenPromptTimer);
+  screenPromptTimer = 0;
+  screenPromptKey = '';
+}
+
+function screenPromptFor(match) {
+  const matchId = match?.id ?? 'match';
+  if (match?.phase === MATCH_PHASES.matchLobby) {
+    return { key: `${matchId}:fighter`, play: () => audio.playChooseYourFighter() };
+  }
+  if (match?.phase === MATCH_PHASES.mapVote) {
+    return { key: `${matchId}:arena:${match.voteEndsAt ?? ''}`, play: () => audio.playSelectTheArena() };
+  }
+  return null;
 }
 
 function syncGameAccess(match = net.match) {
@@ -830,6 +912,19 @@ function initAudioDebug() {
     }, 420);
   });
   document.body.appendChild(btn);
+}
+
+function initMenuClicks() {
+  document.addEventListener(
+    'click',
+    (e) => {
+      const btn = e.target.closest('button');
+      if (!btn || btn.disabled) return;
+      if (!btn.closest('.app-view, #overlay')) return;
+      audio.playMenuClick();
+    },
+    true,
+  );
 }
 
 function isAudioDebugFx(fx) {

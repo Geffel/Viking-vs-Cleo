@@ -1,20 +1,22 @@
-# Handoff: Achievements System (Cleo vs Viking)
+# Handoff: Settings System (Cleo vs Viking)
 
 ## Overview
-Two connected pieces of an achievements/rewards system for the "Cleo vs Viking" arena fighting game:
+The settings surface for the "Cleo vs Viking" arena fighting game. Two connected pieces:
 
-1. **Achievements page** — a full library where a player browses every achievement, tracks completion, and sees rarity + global unlock statistics.
-2. **In-match feedback** — a small, non-intrusive toast that pops in the top-right corner when an achievement unlocks mid-match, plus a post-match summary listing everything earned that match.
+1. **Settings shell** — a compact menu selector (left rail) that switches between settings categories in place. Currently ships **Audio** and **Controls**; **Video** and **Gameplay** are placeholders wired for future work. Header holds a save/dirty indicator + Save button; the rail holds a global **Restore defaults**.
+2. **Audio page** — the first fully-designed category: master volume + a live meter, and per-channel sliders (Music, Effects, Announcer, Ambience, Interface) each with a value readout, test-sound button, and mute toggle.
 
-Together they cover: discovery (browse), live reward feedback (toast), and end-of-match payoff (summary).
+The **Controls** category embeds the existing keybinds designs (a chrome-free variant of the standalone `Controls - Keybinds` screen) directly inside the shell so it lives under the same menu.
+
+Together they cover: category navigation (rail), audio mixing (sliders + master), and key rebinding (embedded panel).
 
 ## About the Design Files
 The files in this bundle are **design references created in HTML** — prototypes that show the intended look, layout, and behavior. They are **not** production code to copy directly. They are authored as "Design Components" (a `.dc.html` prototype format) and depend on a local prototyping runtime (`support.js`), so they will not run as-is in a product codebase.
 
-The task is to **recreate these designs in the target codebase's existing environment** (React, Vue, SwiftUI, a game-engine UI layer, etc.) using its established patterns, components, and asset pipeline. If no UI environment exists yet, pick the most appropriate one for the project and implement there.
+The task is to **recreate these designs in the target codebase's existing environment** (React, Vue, SwiftUI, a game-engine UI layer, etc.) using its established patterns, components, and asset pipeline.
 
 ## Fidelity
-**High-fidelity.** Final colors, typography, spacing, angular card shapes, and interaction timings are all specified below and should be recreated faithfully. Re-map to the codebase's own components where equivalents exist, but keep the visual result matching.
+**High-fidelity.** Colors, typography, spacing, angular shapes, slider mechanics, and interaction timings are specified below and should be recreated faithfully. Re-map to the codebase's own components where equivalents exist, but keep the visual result matching. This system deliberately reuses the exact visual language of the Achievements handoff (same tokens, same chamfered shapes) — treat that as the shared source of truth.
 
 ---
 
@@ -23,163 +25,125 @@ The task is to **recreate these designs in the target codebase's existing enviro
 ### Colors
 | Token | Hex | Use |
 |---|---|---|
-| Background (base) | `#05070f` | Page/stage background |
-| Background (panel) | `#080d18` / `#080c17` | Summary card, dial center |
-| Surface | `rgba(255,255,255,0.03)` | Stat cards, achievement cards |
-| Surface border | `rgba(255,255,255,0.08–0.12)` | Card borders/dividers |
+| Background (base) | `#05070f` | Page background |
+| Background (stage) | `#070b16` / `#05070f` | Stage interior |
+| Rail surface | `rgba(5,7,15,0.4)` | Left menu rail |
+| Surface | `rgba(255,255,255,0.03–0.06)` | Tracks, chips, buttons |
+| Surface border | `rgba(255,255,255,0.08–0.14)` | Borders/dividers |
 | Text primary | `#f2f5ff` | Body / headings |
 | Text muted | `rgba(242,245,255,0.4–0.62)` | Labels, descriptions |
-| Cleo / pink | `#ff4d9d` | Cleo side, Combat category |
-| Viking / blue | `#4dc3ff` | Viking side, Progression category |
-| Gold | `#ffd166` | Points/glory, highlights, Collection category |
-| Green | `#7cf5b0` | Unlocked/ready states, Social category |
-| Legendary violet | `#c58bff` | Legendary rarity |
-| Common gray | `#9fb0d0` | Common rarity |
-| Danger red | `#ff6b6b` | (from base game) loss states |
+| Cleo / pink | `#ff4d9d` | Cleo side, Announcer channel, Gameplay nav, mute-on state |
+| Viking / blue | `#4dc3ff` | Viking side, Ambience channel, Controls nav |
+| Gold | `#ffd166` | Master, Effects channel, dirty/save highlights, Audio nav |
+| Green | `#7cf5b0` | Interface channel, saved state |
+| Violet | `#c58bff` | Music channel, Video nav |
 
-### Rarity tiers (derived from global unlock %)
-| Rarity | Condition | Tone |
-|---|---|---|
-| Legendary | `pct < 2` | `#c58bff` |
-| Epic | `pct < 10` | `#ff4d9d` |
-| Rare | `pct < 35` | `#4dc3ff` |
-| Common | otherwise | `#9fb0d0` |
+### Channel → accent color (Audio)
+Master `#ffd166` · Music `#c58bff` · Effects `#ffd166` · Announcer `#ff4d9d` · Ambience `#4dc3ff` · Interface `#7cf5b0`
 
-### Category → accent color
-Combat `#ff4d9d` · Progression `#4dc3ff` · Collection `#ffd166` · Social `#7cf5b0`
+### Nav item → accent color (rail)
+Audio `#ffd166` · Controls `#4dc3ff` · Video `#c58bff` (soon) · Gameplay `#ff4d9d` (soon)
 
 ### Typography
-- **Display / headings:** `Anton` (Google Fonts), uppercase, `letter-spacing: 0.02–0.06em`. Used for page titles, big numbers, points.
-- **Labels / body / UI:** `Oswald` (Google Fonts), weights 300/600/700, uppercase labels use `letter-spacing: 0.08–0.22em`.
+- **Display / headings:** `Anton` (Google Fonts), uppercase, `letter-spacing: 0.02–0.06em`. Section title (38px), big master % (44px).
+- **Labels / body / UI:** `Oswald` (Google Fonts), weights 300/600/700; uppercase micro-labels use `letter-spacing: 0.08–0.2em`.
 - **Fallback body:** `'Segoe UI', system-ui, -apple-system, sans-serif`.
-- Scale used: page title 52px; card/summary heading 32–46px; big stat numbers 30–38px; achievement title 15–17px; description 12.5px; micro-labels 9.5–11px.
+- Scale: section title 38px; master number 44px; nav label 13.5px; channel label 15px; channel value 14px; micro-labels 10–11px.
 
 ### Shape language
-- **Angular clip-path cards** (chamfered corner), the signature look. Common variants:
-  - Card: `polygon(0 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%)`
-  - Button/chip: `polygon(7-8px 0,100% 0,100% calc(100% - 7-8px),calc(100% - 7-8px) 100%,0 100%,0 7-8px)`
-  - Ribbon/tag: `polygon(10px 0,100% 0,100% 100%,0 100%)` / small pill `polygon(5-6px 0,100% 0,calc(100% - 5-6px) 100%,0 100%)`
-  - Icon frame: `polygon(8-10px 0,100% 0,100% calc(100% - 8-10px),calc(100% - 8-10px) 100%,0 100%,0 8-10px)`
-- **Left accent bar:** 3px `border-left` in the category/rarity tone.
-- No rounded corners except the stage container (`border-radius:16px`) and the completion dial (circle).
-- Pixel-art images always use `image-rendering: pixelated`.
+- **Angular clip-path** (chamfered corners) throughout — the signature look:
+  - Card/row: `polygon(0 0,100% 0,100% calc(100% - 8–10px),calc(100% - 8–10px) 100%,0 100%)`
+  - Button/chip/nav: `polygon(6–8px 0,100% 0,100% calc(100% - 6–8px),calc(100% - 6–8px) 100%,0 100%,0 6–8px)`
+  - Slider track & fill: `polygon(4px 0,100% 0,calc(100% - 4px) 100%,0 100%)` (parallelogram)
+  - Icon frame: `polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px)`
+- **Left accent bar:** 3px `border-left` in the nav/channel tone (also on the active rail item).
+- Only the stage container is rounded (`border-radius:16px`).
 
 ### Shadows / glow
 - Stage: `0 30px 90px rgba(0,0,0,0.75)`.
-- Unlocked card glow: `0 0 26px <tone>18` + border `<tone>55`.
-- Icon frame inner glow: `inset 0 0 16–20px <tone>22`.
-- Toast: `0 12px 34px rgba(0,0,0,0.55), 0 0 22px <tone>2a`, `backdrop-filter: blur(4px)`.
+- Slider fill glow: `0 0 14px <tone>66` (removed when muted).
+- Icon frame inner glow: `inset 0 0 16px <tone>22`.
+- Toast: `0 12px 30px rgba(0,0,0,0.6)` + gold border.
 
 ---
 
 ## Screens / Views
 
-### 1. Achievements Page (`Achievements.dc.html`)
-**Purpose:** Player browses all achievements, tracks overall completion, and reads rarity/global stats.
+### 1. Settings shell (`Settings.dc.html`)
+**Purpose:** One home for all settings, with a compact way to switch between categories.
 
-**Layout:** Centered column, max width **1280px**. Top-to-bottom:
-1. **Header row** (space-between): left = game wordmark ("Cleo vs Viking"), page title `Achievements` (Anton 52px), subline. Right = **completion dial** + label.
-2. **Stat strip** — 4-column grid (`gap:14px`), each an angular card with a colored left bar.
-3. **Filter bar** (space-between): left = category chips; right = status chips.
-4. **Achievement grid** — `grid-template-columns: repeat(3, 1fr)`, `gap:14px`.
-5. Empty state (dashed border) when a filter matches nothing.
+**Layout:** Centered column, max width **1280px**, on a radial page background.
+1. **Control bar** (space-between): left = game wordmark ("Cleo vs Viking" + "Settings" kicker); right = **dirty indicator** ("Unsaved changes" gold dot / "All saved") + **Save settings** button (green tint when dirty, muted when clean).
+2. **Stage** — 16:9, `border-radius:16px`, `grid-template-columns: 246px 1fr`.
+   - **Left rail (the menu selector — key deliverable):** a "Menu" micro-label, then one button per category. Each button = 30×30 angular icon chip (tone-tinted when active) + label + optional `SOON` tag. Active item: brighter bg, tone border, 3px tone left-bar, white text. Inactive: muted; "soon" items are further dimmed. Below a spacer sits **Restore defaults** (pink ghost).
+   - **Main panel** switches on the selected category (see below), with a section kicker + Anton title header.
+3. **Note toast** (top-right of the main panel): appears on save / reset / preset / test actions, ~2.4s, gold-bordered.
 
-**Completion dial:** 74×74 circle. Ring drawn with `conic-gradient(#ffd166 <pct*3.6>deg, rgba(255,255,255,0.08) 0)`; inner disc `inset:7px; background:#080c17` to make it a ring; centered `%` in Anton gold, glow `0 0 22px rgba(255,209,102,0.25)`.
+**Compactness rationale:** the rail is a single vertical list of same-height rows; adding a category is one array entry. "Soon" items are shown (not hidden) so the roadmap is visible without cluttering the active area.
 
-**Header stat cards (4):**
-- Unlocked `9/16` (green) — "achievements earned"
-- Glory points `340` (gold) — "of 720 available"
-- Rarest unlock `0.8%` (violet) — name of rarest earned
-- In progress `N` (blue) — "partially complete"
+### 2. Audio panel (inside `Settings.dc.html`, `section === 'Audio'`)
+**Purpose:** Adjust all sound levels.
 
-**Achievement card components:**
-- **Rarity ribbon** top-right: uppercase rarity label; filled with rarity tone (text `#05070f`), except Common which is `rgba(255,255,255,0.08)` with light text.
-- **Icon frame** 58×58 angular, pixel-art icon inside; locked → `filter: grayscale(1) brightness(0.5)` + a `🔒` overlay on `rgba(5,7,15,0.55)`.
-- **Title** (Oswald 600, 17px) + **points** badge right (Anton gold `+N` with tiny "PTS").
-- **Description** (12.5px, `text-wrap: pretty`).
-- **Progress block** (locked + has progress only): "Progress" label + `cur / max` in tone; 7px bar filled `linear-gradient(90deg,<tone>,#ffd166)`, width = `cur/max`.
-- **Footer:** "**X%** of fighters unlocked this" with a 4px mini-bar (width scaled `max(3, sqrt(pct/100)*100)%` so rare feats stay visible) + a stamp: unlocked → green `✓ <date>`; locked → gray "Locked".
-- Locked cards: `opacity:0.82`, muted borders, no glow.
+- **Master block** (gold left-bar card): big Anton `%` readout, a **wide slider**, a **live equalizer meter** (7 bars, `st-eq` animation, delay-staggered; freezes to flat gray when master is muted or at 0), and a **MUTE** button. Dragging master un-mutes it.
+- **Channel rows** (one per channel, staggered `st-row` entrance): icon chip · label + one-line description (fixed 150px) · **slider** (flex) · `%` value (or `—` when muted) in the channel tone · **▶ test** button (fires a note toast) · **ON/OFF** mute toggle. Muted rows desaturate the fill to gray, drop the glow, and dim the value.
 
-**Filters:**
-- Category chips: `All / Combat / Progression / Collection / Social`, each with a count. Active = brighter bg + border.
-- Status chips: `All / Unlocked / Locked` (gold active tone).
-- Filtering is `(cat matches) AND (status matches)`.
+**Slider mechanics (custom, not native `<input type=range>`):**
+- Track: 12px tall, `rgba(255,255,255,0.06)` bg, parallelogram clip.
+- Fill: `linear-gradient(90deg,<tone>99,<tone>)`, width = value%, glow `0 0 14px <tone>66`.
+- Handle: 16×22 chamfered white block, `left: value%`, `translate(-50%,-50%)`.
+- **Drag:** `pointerdown` on the track captures its `getBoundingClientRect()`, converts pointer X → 0–100 (clamped), then a window `pointermove`/`pointerup` pair tracks the drag. Click-to-set works from the same handler. `transition: 0.06s linear` on fill/handle for smoothness.
 
-### 2. In-Match Feedback + Post-Match Summary (`Match Achievements.dc.html`)
-**Purpose:** Give live reward feedback during a match and a payoff summary after.
+### 3. Controls panel (embedded — `Keybinds Panel.dc.html`)
+**Purpose:** Key rebinding, living under the same Settings menu.
 
-**Layout:** Same centered 1280px column. A control bar (demo triggers) sits above a **16:9 stage** (`aspect-ratio:16/9`, `border-radius:16px`) mocking the in-game view: arena bg image (`brightness(0.6)`), two bobbing fighters, a centered HUD score chip.
+- This is a **chrome-free extraction** of the standalone `Controls - Keybinds` screen: same category rail (Movement / Combat / Items / Interface), same rebindable rows (primary + alternate slots), same click-to-listen → press-key flow, auto-swap on conflict, right-click to clear, per-row + global reset, and the note toast. The outer page background, the Cleo/vs/Viking control bar, and the stage frame are **removed** so it drops cleanly into the shell's main panel (mounted full-bleed, `margin:0 -30px -22px` to reach the panel edges).
+- The standalone `Controls - Keybinds.dc.html` remains as-is for full-screen use; this panel duplicates its binding data/logic. **In production, both should share one keybind module** rather than two copies.
 
-**Toast (top-right, the key deliverable):**
-- Container: `position:absolute; top:16px; right:16px; width:308px; display:flex; flex-direction:column; gap:10px; z-index:30`. Stacks multiple toasts vertically.
-- Each toast (~308px wide, compact): angular card, 3px left accent bar in rarity tone, `backdrop-filter: blur(4px)`, subtle glow in rarity tone.
-- Contents in one row: **icon frame** 40×40 (icon animates in) · text block (`"<RARITY> UNLOCKED"` micro-label in rarity tone + title Oswald 600 15px, single-line ellipsis) · **`+N` GLORY** in Anton gold.
-- Bottom **timer bar** 3px that depletes over the toast lifetime (rarity tone).
-- **Deliberately small and non-distracting** — top-right, does not cover gameplay.
-
-**Post-match summary overlay:**
-- Full-stage overlay, `z-index:50`, dim backdrop `rgba(5,7,15,0.9)` + gold radial glow, entrance slide-up.
-- Card 560px, angular. Header (space-between): left = "Match complete" micro-label + **big win headline** `Team <Cleo> wins` (Anton **46px**, side name in pink with glow) + a small gold row "`N` new achievements earned"; right = total **`+N` glory points** (Anton 38px gold). *Win result is the visual focus; achievements are the secondary reward.*
-- Body: scrollable list (`max-height:340px`) of earned achievements. Each row: icon frame 46×46, title + rarity tag, description, a 4px global-% mini-bar with "**X%** of fighters", and `+N` points right. Rows stagger in.
-- Footer: two buttons — "Close" (ghost) and "View all achievements ▸" (gold gradient, links to the Achievements page).
+### 4. Video / Gameplay (placeholder)
+When a "soon" category is selected the main panel shows a centered ghost `SOON` with a one-line message. Wire these up as those features land; the rail item just flips `soon:false`.
 
 ---
 
 ## Interactions & Behavior
 
-### Achievements page
-- Category and status chips filter the grid instantly (client-side).
-- Cards fade/slide in (`ach-in`, 0.4s ease). Unlocked cards have a slow looping diagonal **shine** sweep (`ach-shine`, 5s, randomized delay).
-- Progress and global bars animate width from 0 (`ach-bar`, 0.7s ease).
-
-### Toast lifecycle
-- On unlock, push a toast. **Lifetime ≈ 4600ms.**
-- Enter: `ma-toastin` 0.5s `cubic-bezier(0.16,1,0.3,1)` (slide from right + fade). Icon: `ma-icon` 0.6s pop/rotate settle. One-shot shine sweep `ma-shine` ~1.3s.
-- Timer bar: `ma-timer` linear over full lifetime.
-- Exit: at `lifetime - 420ms` mark leaving → `ma-toastout` 0.42s (slide right + fade), then remove at lifetime end.
-- Multiple toasts stack (newest at bottom of the column); each self-manages its own timers.
-
-### Demo triggers (prototype only — replace with real game events)
-- **Unlock one** → one random toast.
-- **Play match** → fires the 4 achievements as a staggered sequence (1300ms apart), then auto-opens the summary ~1400ms after the last.
-- **Match summary** → opens the overlay directly.
-
-### Post-match summary
-- Slide-up entrance (`ma-up` 0.45s). Rows stagger in (`ma-row`, 0.09s step). Global bars animate (`ma-bar`).
-- Both footer buttons close the overlay in the prototype; in-product "View all achievements" should navigate to the Achievements page.
+- **Category switching:** instant, client-side (`section` state). Panels fade/slide in (`st-panel` 0.3s).
+- **Sliders:** live drag + click-to-set (see mechanics above). Master drag un-mutes.
+- **Mute:** per-channel and master; visual-only in the prototype (no audio engine attached).
+- **Test button:** fires a transient note toast ("Testing <channel>…"); in-product it should play a representative sample on that bus.
+- **Dirty tracking:** header compares a serialized snapshot (`master, masterMuted, channels, device, preset`) against the last saved snapshot; Save stamps a new snapshot; Restore defaults resets everything.
+- **Keybinds panel:** identical behavior to the standalone keybinds screen — click a slot → "Press a key…" (pulsing), press any key to bind; `Esc` cancels; right-click clears; conflicts auto-swap and raise a toast.
 
 ---
 
 ## State Management
 
-### Achievements page
-- `cat`: current category filter (`'all' | 'Combat' | 'Progression' | 'Collection' | 'Social'`).
-- `status`: `'all' | 'unlocked' | 'locked'`.
-- Derived (no stored state): completion %, earned points, rarest unlock, filtered list, per-achievement rarity.
-- **Data model per achievement:** `{ id, title, desc, cat, icon, pts, pct (global unlock %), unlocked (bool), date? , prog?: { cur, max } }`.
+### Settings shell / Audio (`Settings.dc.html`)
+- `section`: active category (`'Audio' | 'Controls' | 'Video' | 'Gameplay'`). Prop `startSection` seeds it.
+- `master` (0–100), `masterMuted` (bool).
+- `channels`: map of `{ [id]: { value: 0–100, muted: bool } }` for `music / sfx / voice / ambience / ui`.
+- `saved`: serialized snapshot for dirty comparison. `note`: transient toast string.
+- Static config: `NAV` (rail items), `CHAN` (channel id/label/desc/icon/color/default). `defaults()` builds the reset/initial state.
+- **Real integration:** map each channel to an audio-mixer bus; persist values to the player's profile/local store; `Save` commits, `Restore defaults` reverts to `defaults()`.
 
-### Match feedback
-- `toasts`: array of active toasts `{ ...achievement, _id, leaving, dur }`.
-- `summaryOpen`: bool.
-- Timers tracked so they can be cleared on unmount.
-- **Real integration:** the game should emit an "achievement unlocked" event → push toast + add to the match's earned set. Global unlock `pct` comes from backend/analytics.
+### Keybinds panel (`Keybinds Panel.dc.html`)
+- `bindings`: `{ [actionId]: { primary, alt } }` of `KeyboardEvent.code` strings.
+- `cat`: active category. `listening`: `{ id, slot } | null` while capturing. `note`: toast string.
+- Static config: `GROUPS` (category→color), `defs()` (action list with defaults, icons/tags).
+- **Real integration:** share one keybind store with the rest of the game; `code` values map to the engine's input layer.
 
 ---
 
 ## Assets
-Pixel-art PNGs from the existing game (`assets/` in the project). Icons currently mapped to achievements:
-- `assets/kebab.png`, `assets/pizza.png`, `assets/mushroom.png` — collectible/combat items
-- `assets/cleo_shield_icon.png`, `assets/viking_shield_icon.png` — shields
-- `assets/cleo/sun_fire_ball.png`, `assets/viking/axe_throw.png`, `assets/viking_harpoon_projectile.png` — attacks
-- `assets/cleo/idle.png`, `assets/viking/idle.png` — fighters
-- `assets/arena_01.png` — arena background (also used as a map/achievement thumbnail)
+Pixel-art PNGs from the existing game (`assets/`), used only by the embedded keybinds panel's action icons:
+- `assets/cleo/sun_fire_ball.png` — Special
+- `assets/cleo_shield_icon.png` — Block
+- `assets/pizza.png` — Use Item
 
-Fonts: **Anton** and **Oswald** via Google Fonts. Use existing licensed equivalents in the target app if available.
+The Audio panel uses **no image assets** — channel icons are text glyphs (`♫ ✸ ◈ ≈ ▮`). Swap for final iconography as needed. Fonts: **Anton** and **Oswald** via Google Fonts; use licensed equivalents in the target app if available.
 
-All icon → achievement mappings are placeholders; swap for final art as needed. Achievement copy, points, and global-% values in the files are **placeholder data** — wire to real backend values.
+All copy, default levels, and the channel list are **placeholder-quality defaults** — confirm the real channel taxonomy and starting values with audio/design.
 
 ## Files (in this bundle)
-- `Achievements.dc.html` — the full achievements library page.
-- `Match Achievements.dc.html` — in-match toast + post-match summary.
-- (Both reference the shared prototyping runtime `support.js` and the `assets/` folder from the project; they are design references, not runnable product code.)
+- `Settings.dc.html` — the settings shell (menu selector) + Audio panel; embeds the keybinds panel for the Controls category.
+- `Keybinds Panel.dc.html` — chrome-free keybinds panel mounted inside the Controls category.
+- (Both reference the shared prototyping runtime `support.js` and the `assets/` folder; they are design references, not runnable product code.)

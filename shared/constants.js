@@ -485,6 +485,13 @@ export const MAPS = [
     thumb: '/assets/thumbs/deep_forest.jpg',
     theme: 'forest',
     layout: 'deepForest',
+    soundtrack: {
+      id: 'deepForestFireflyGrove',
+      url: '/assets/audio/soundtracks/Firefly Grove.mp3',
+      volume: 0.58,
+      fadeInMs: 900,
+      fadeOutMs: 700,
+    },
   },
   {
     id: 'ivory_city',
@@ -688,6 +695,10 @@ export const MAP_LAYOUTS = {
 
 export function mapConfigFor(mapId) {
   return MAPS.find((map) => map.id === mapId) ?? MAPS[0];
+}
+
+export function mapSoundtrackFor(mapId) {
+  return mapConfigFor(mapId)?.soundtrack ?? null;
 }
 
 export function mapThemeFor(mapId) {

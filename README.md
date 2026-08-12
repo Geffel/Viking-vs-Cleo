@@ -49,8 +49,8 @@ npm start
 | `3` | `LT` | Förmåga 3 |
 | `4` | `RT` | Förmåga 4 |
 
-Det här är bara standardläget. **Controls** i lobbyn ger en egen sida där varje
-rad kan bindas om: klicka rutan och tryck en tangent, eller klicka
+Det här är bara standardläget. **Settings → Controls** i lobbyn ger en sida där
+varje rad kan bindas om: klicka rutan och tryck en tangent, eller klicka
 kontrollrutan och tryck en knapp på handkontrollen. Högerklick tömmer en ruta,
 `Esc` avbryter, och sitter tangenten redan någon annanstans byter de två raderna
 plats med varandra.
@@ -60,6 +60,20 @@ slår igenom direkt överallt — HUD-rutorna, combo-spåret och info-fliken lä
 samma lista, så de kan aldrig visa en tangent som inte längre gäller. Rörelsen
 på handkontrollen sitter på vänster spak och går inte att binda om; den är en
 riktning och inte en knapp.
+
+## Ljud
+
+**Settings → Audio** är mixern. Master ligger överst, och under den en rad per
+kanal: musik, effekter, announcer, ambience och gränssnitt. Varje rad har ett
+reglage, en testknapp som spelar ett ljud genom just den kanalen och en
+av/på-knapp. Reglagen hörs medan man drar men skrivs inte ner förrän man trycker
+**Save settings** — backar man ut utan att spara går nivåerna tillbaka dit de
+senast sparades.
+
+Varje ljud i `public/js/audio.js` säger själv vilken kanal det hör hemma i
+(`channel: 'ui'`); säger det inget hamnar det i `sfx`. Announcer och ambience har
+ännu inga ljud — bussarna finns och slår igenom så fort ett ljud pekar dit.
+Nivåerna sparas i `localStorage` under `vvc.audio.*`.
 
 ## Lag och förmågor
 
@@ -383,7 +397,9 @@ server/index.js       HTTP + WebSocket, spelloopen, LAN-adresser
 public/js/net.js      WebSocket + interpolering av andra spelare
 public/js/input.js    Tangentbord och handkontroll -> meddelanden
 public/js/keybinds.js Spelarens bindningar: standard ur konstantfilen, egna i localStorage
-public/js/controls.js Kontrollsidan i lobbyn: binda om tangenter och knappar
+public/js/settings.js Installningarna: menyn, ljudmixern och panelen for kontrollerna
+public/js/controls.js Kontrollpanelen: binda om tangenter och knappar
+public/js/audio.js    Ljudmotorn: en buss per kanal (musik, sfx, roster, ambience, gransnitt)
 public/js/render.js   Canvas: bakgrund, plattformar, spelare, sprites, effekter
 public/js/hud.js      Ability-rutor med cooldown, killfeed, poängtavla
 public/js/main.js     Lobby och renderloop

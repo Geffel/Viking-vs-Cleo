@@ -73,7 +73,7 @@
               <span class="online-pill"><span></span><b id="lobby-player-name">Global lobby</b></span>
               <a class="screen-link" href="/leaderboard.html" target="_blank" rel="noopener">Leaderboard</a>
               <button id="open-achievements" type="button">Achievements</button>
-              <button id="open-controls" type="button">Controls</button>
+              <button id="open-settings" type="button">Settings</button>
               <button id="create-match" type="button">Create match</button>
             </div>
           </div>
@@ -155,45 +155,85 @@
           <div class="ach-empty" id="achievements-empty" hidden>No achievements match this filter</div>
         </section>
 
-        <section class="flow-screen controls-screen" id="controls-view" hidden aria-labelledby="controls-title">
-          <div class="kb-topbar">
-            <button id="controls-back" type="button">Back</button>
-            <div class="kb-wordmark">
+        <section class="flow-screen settings-screen" id="settings-view" hidden aria-labelledby="settings-title">
+          <div class="set-topbar">
+            <button id="settings-back" type="button">Back</button>
+            <div class="set-wordmark">
               <span class="cleo-word">Cleo</span>
               <span class="vs-word">vs</span>
               <span class="viking-word">Viking</span>
-              <span class="kb-kicker">Controls &middot; rebind keys</span>
+              <span class="set-kicker">Settings</span>
             </div>
-            <div class="kb-topbar-actions">
-              <span class="kb-dirty" id="controls-dirty"><i></i>All saved</span>
-              <button id="controls-save" type="button">&#10003; Save bindings</button>
+            <div class="set-topbar-actions">
+              <span class="set-dirty" id="settings-dirty"><i></i>All saved</span>
+              <button id="settings-save" type="button">&#10003; Save settings</button>
             </div>
           </div>
 
-          <div class="kb-body">
-            <aside class="kb-rail">
-              <div class="kb-rail-title">Categories</div>
-              <div class="kb-cats" id="controls-cats"></div>
-              <button id="controls-reset-all" class="kb-reset-all" type="button">&#8634; Restore defaults</button>
-              <p class="kb-hint">
-                Click a slot, then press a key<br />or a button on your controller.<br />
-                <b>Right-click</b> a slot to clear it.<br />
-                <b>Esc</b> cancels rebinding.
-              </p>
+          <div class="set-body">
+            <aside class="set-rail">
+              <div class="set-rail-title">Menu</div>
+              <div class="set-navs" id="settings-navs"></div>
+              <div class="set-rail-fill"></div>
+              <button id="settings-reset" class="set-reset" type="button">&#8634; Restore defaults</button>
             </aside>
 
-            <div class="kb-main">
-              <div class="kb-main-head">
-                <div>
-                  <div class="kb-eyebrow">Keyboard &amp; gamepad</div>
-                  <h1 id="controls-title">Movement</h1>
-                </div>
-                <div class="kb-colheads"><span>Keyboard</span><span>Controller</span></div>
+            <div class="set-main">
+              <div class="set-main-head">
+                <div class="set-eyebrow" id="settings-eyebrow">Sound &amp; mixing</div>
+                <h1 id="settings-title">Audio</h1>
               </div>
 
-              <div class="kb-rows" id="controls-rows"></div>
+              <!-- ljudpanelen: master + en rad per kanal -->
+              <div class="set-panel mix-panel" id="settings-audio">
+                <div class="mix-master" id="settings-master">
+                  <div class="mix-master-read">
+                    <div class="mix-master-label">Master</div>
+                    <div class="mix-master-value"><span id="settings-master-pct">90</span><small>%</small></div>
+                  </div>
+                  <div class="mix-master-slider" id="settings-master-slider"></div>
+                  <div class="mix-meter" id="settings-meter" aria-hidden="true">
+                    <i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+                  </div>
+                  <button class="mix-mute" id="settings-master-mute" type="button">Mute</button>
+                </div>
 
-              <div class="kb-note" id="controls-note" hidden></div>
+                <div class="mix-rows" id="settings-channels"></div>
+              </div>
+
+              <!-- kontrollpanelen: samma tangentbindningar, utan egen ram -->
+              <div class="set-panel kb-panel" id="controls-view" hidden aria-labelledby="controls-title">
+                <div class="kb-body">
+                  <aside class="kb-rail">
+                    <div class="kb-rail-title">Categories</div>
+                    <div class="kb-cats" id="controls-cats"></div>
+                    <p class="kb-hint">
+                      Click a slot, then press a key<br />or a button on your controller.<br />
+                      <b>Right-click</b> a slot to clear it.<br />
+                      <b>Esc</b> cancels rebinding.
+                    </p>
+                  </aside>
+
+                  <div class="kb-main">
+                    <div class="kb-main-head">
+                      <h2 id="controls-title">Movement</h2>
+                      <div class="kb-colheads"><span>Keyboard</span><span>Controller</span></div>
+                    </div>
+
+                    <div class="kb-rows" id="controls-rows"></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- kategorier som annu inte finns -->
+              <div class="set-panel set-soon" id="settings-soon" hidden>
+                <div>
+                  <div class="set-soon-word">SOON</div>
+                  <div class="set-soon-msg" id="settings-soon-msg">Video settings are on the way.</div>
+                </div>
+              </div>
+
+              <div class="set-note" id="settings-note" hidden></div>
             </div>
           </div>
         </section>
