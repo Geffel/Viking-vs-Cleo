@@ -181,7 +181,7 @@ function renderRows() {
 }
 
 function renderFactionWar() {
-  const points = state.summary?.factionPoints ?? factionPointsFromRows();
+  const points = state.summary?.factionPoints ?? { cleo: 0, viking: 0 };
   const cleo = Math.max(0, Number(points.cleo) || 0);
   const viking = Math.max(0, Number(points.viking) || 0);
   const total = cleo + viking;
@@ -310,25 +310,8 @@ function deriveSummary(rows, matches) {
     totalPlayMs: sum(rows, 'ms'),
     totalMatches: sumMatches(rows),
     totalKebabs: 0,
-    factionPoints: factionPointsFromRows(rows),
+    factionPoints: { cleo: 0, viking: 0 },
   };
-}
-
-function factionPointsFromRows(rows = state.rows) {
-  return rows.reduce(
-    (total, entry) => {
-      const points = Math.max(0, Number(entry.pts) || 0);
-      const side = sideLabel(entry.fav);
-      if (side === 'Cleo') total.cleo += points;
-      else if (side === 'Viking') total.viking += points;
-      else {
-        total.cleo += points / 2;
-        total.viking += points / 2;
-      }
-      return total;
-    },
-    { cleo: 0, viking: 0 },
-  );
 }
 
 function sumMatches(rows = state.rows) {
