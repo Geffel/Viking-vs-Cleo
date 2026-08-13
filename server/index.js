@@ -18,7 +18,7 @@ const PROFILES_FILE = path.join(DATA_DIR, 'profiles.json');
 
 // Formatversion for profiles.json. Hoj denna nar sparformatet andras pa ett
 // satt som kraver migrering, och lagg till ett steg i migrateProfiles().
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 // Hur ofta pagaende sessioners poang och speltid checkpointas till disk. En
 // hard krasch (stromavbrott, kill -9) forlorar da som mest denna tid.
@@ -48,6 +48,9 @@ const matches = new MatchRegistry();
 const profiles = new Map();
 const recordedMapVoteStats = new Set();
 const recordedMatchResults = new Set();
+const globalStats = {
+  factionWins: { cleo: 0, viking: 0 },
+};
 let nextProfileId = 1;
 let nextSessionId = 1;
 let shuttingDown = false;
@@ -655,24 +658,14 @@ function leaderboardSummary(rows = leaderboardSnapshot()) {
   let totalMatches = 0;
   let totalPowerups = 0;
   let totalKebabs = 0;
-  let cleoPoints = 0;
-  let vikingPoints = 0;
 
   for (const profile of profiles.values()) {
     const view = buildProfileView(profile);
-    const points = Math.max(0, Number(view.points) || 0);
     totalKills += view.kills;
     totalPlayMs += view.playMs;
     totalMatches += Math.max(0, Number(view.stats?.matches?.played) || 0);
     totalPowerups += Math.max(0, Number(view.stats?.powerups?.total) || 0);
     totalKebabs += Math.max(0, Number(view.stats?.powerups?.byKind?.kebab) || 0);
-
-    if (view.favoriteCharacter === 'Cleo') cleoPoints += points;
-    else if (view.favoriteCharacter === 'Viking') vikingPoints += points;
-    else {
-      cleoPoints += points / 2;
-      vikingPoints += points / 2;
-    }
   }
 
   return {
@@ -687,8 +680,8 @@ function leaderboardSummary(rows = leaderboardSnapshot()) {
     totalPowerups,
     totalKebabs,
     factionPoints: {
-      cleo: Math.round(cleoPoints),
-      viking: Math.round(vikingPoints),
+      cleo: globalStats.factionWins.cleo,
+      viking: globalStats.factionWins.viking,
     },
   };
 }
@@ -755,6 +748,7 @@ function loadProfiles() {
     const raw = fs.readFileSync(PROFILES_FILE, 'utf8');
     const data = migrateProfiles(JSON.parse(raw));
     nextProfileId = Math.max(1, Number(data.nextProfileId) || 1);
+    globalStats.factionWins = sanitizeFactionWins(data.globalStats?.factionWins);
 
     for (const row of data.profiles ?? []) {
       const clientId = cleanClientId(row.clientId);
@@ -805,9 +799,10 @@ function saveProfiles() {
   try {
     fs.mkdirSync(DATA_DIR, { recursive: true });
     const data = {
-      version: SCHEMA_VERSION,
-      nextProfileId,
-      profiles: [...profiles.entries()].map(([clientId, profile]) => ({
+        version: SCHEMA_VERSION,
+        nextProfileId,
+        globalStats,
+        profiles: [...profiles.entries()].map(([clientId, profile]) => ({
         clientId,
         profileId: profile.profileId,
         name: profile.name,
@@ -1007,6 +1002,13 @@ function sanitizeCounterMap(raw) {
     if (id && count) out[id] = count;
   }
   return out;
+}
+
+function sanitizeFactionWins(raw) {
+  return {
+    cleo: Math.max(0, Number(raw?.cleo) || 0),
+    viking: Math.max(0, Number(raw?.viking) || 0),
+  };
 }
 
 function ensureProfileStats(profile) {
@@ -1332,8 +1334,9 @@ function recordMatchResult(match, matchGame) {
 
   const score = match.finalScore ?? matchGame.score ?? { cleo: 0, viking: 0 };
   const winner = score.cleo === score.viking ? null : score.cleo > score.viking ? 'cleo' : 'viking';
+  if (winner) globalStats.factionWins[winner]++;
   const mapId = match.selectedMap || matchGame.mapId || 'unknown';
-  let dirty = false;
+  let dirty = !!winner;
 
   for (const player of matchGame.players.values()) {
     const profile = getProfileById(player.profileId);
