@@ -24,6 +24,8 @@ export class MatchRegistry {
       mapVotes: new Map(),
       selectedMap: null,
       finalScore: null,
+      resultCounts: true,
+      unrankedReason: null,
       finishedAt: 0,
       voteEndsAt: 0,
       countdownEndsAt: 0,
@@ -112,6 +114,8 @@ export class MatchRegistry {
     match.mapVotes.clear();
     match.selectedMap = null;
     match.finalScore = null;
+    match.resultCounts = true;
+    match.unrankedReason = null;
     match.finishedAt = 0;
     match.voteEndsAt = this.clock() + MAP_VOTE_MS;
     match.countdownEndsAt = 0;
@@ -169,6 +173,8 @@ export class MatchRegistry {
     match.mapVotes.clear();
     match.selectedMap = null;
     match.finalScore = null;
+    match.resultCounts = true;
+    match.unrankedReason = null;
     match.finishedAt = 0;
     match.voteEndsAt = 0;
     match.countdownEndsAt = 0;
@@ -201,7 +207,11 @@ export class MatchRegistry {
       }
 
       if (match.phase === MATCH_PHASES.playing && match.matchEndsAt && now >= match.matchEndsAt) {
-        completeMatch(match, scoreForMatch?.(match) ?? null, now);
+        const resultCounts = countPickedPlayers(match) >= 2;
+        completeMatch(match, scoreForMatch?.(match) ?? null, now, {
+          resultCounts,
+          unrankedReason: resultCounts ? null : 'soloTimeUp',
+        });
         changes.push({ match, from: MATCH_PHASES.playing, to: MATCH_PHASES.results, reason: 'timeUp' });
       }
     }
@@ -271,6 +281,8 @@ function snapshot(match) {
     mapVotes,
     selectedMap: match.selectedMap,
     finalScore: match.finalScore,
+    resultCounts: match.resultCounts !== false,
+    unrankedReason: match.unrankedReason ?? null,
     finishedAt: match.finishedAt,
     voteEndsAt: match.voteEndsAt,
     countdownEndsAt: match.countdownEndsAt,
@@ -280,14 +292,24 @@ function snapshot(match) {
   };
 }
 
-function completeMatch(match, finalScore, now) {
+function completeMatch(match, finalScore, now, { resultCounts = true, unrankedReason = null } = {}) {
   match.phase = MATCH_PHASES.results;
   match.finalScore = sanitizeScore(finalScore);
+  match.resultCounts = resultCounts !== false;
+  match.unrankedReason = match.resultCounts ? null : unrankedReason;
   match.finishedAt = now;
   match.voteEndsAt = 0;
   match.countdownEndsAt = 0;
   match.matchEndsAt = 0;
   match.updatedAt = now;
+}
+
+function countPickedPlayers(match) {
+  let count = 0;
+  for (const player of match.players.values()) {
+    if (player.character) count++;
+  }
+  return count;
 }
 
 function resolveSelectedMap(match) {

@@ -782,7 +782,11 @@ function renderRoundResults(match) {
     <span class="result-side cleo"><span>Cleo</span><strong>${cleo}</strong></span>
     <span class="result-vs"><span>VS</span></span>
     <span class="result-side viking"><span>Viking</span><strong>${viking}</strong></span>`;
-  roundResultNote.innerHTML = `${escapeHtml(resultLabel(cleo, viking))} - MVP <b>${escapeHtml(mvp || 'Host')}</b>`;
+  if (match.resultCounts === false) {
+    roundResultNote.textContent = unrankedResultLabel(match.unrankedReason);
+  } else {
+    roundResultNote.innerHTML = `${escapeHtml(resultLabel(cleo, viking))} - MVP <b>${escapeHtml(mvp || 'Host')}</b>`;
+  }
   achievementsUi.renderSummary(match);
   roundResults.classList.remove('vvc-enter');
   void roundResults.offsetWidth;
@@ -972,6 +976,11 @@ function playerStatus(player, match) {
 function resultLabel(cleo, viking) {
   if (cleo === viking) return 'Draw round';
   return cleo > viking ? 'Team Cleo takes the round' : 'Team Viking takes the round';
+}
+
+function unrankedResultLabel(reason) {
+  if (reason === 'soloTimeUp') return 'Unranked solo timeout - no win rate or faction points';
+  return 'Unranked round - no win rate or faction points';
 }
 
 function phaseLabel(phase) {

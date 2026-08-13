@@ -1327,6 +1327,12 @@ function recordMapVoteStats(match) {
 function recordMatchResult(match, matchGame) {
   if (!match || !matchGame || recordedMatchResults.has(match.id)) return;
   recordedMatchResults.add(match.id);
+  if (match.resultCounts === false) {
+    matchGame.feed = [];
+    matchGame.events = [];
+    return;
+  }
+
   processKillStats(matchGame.feed);
   matchGame.feed = [];
   processStatEvents(matchGame.events);

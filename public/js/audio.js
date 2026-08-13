@@ -938,6 +938,11 @@ export class AudioManager {
 
       source.buffer = buffer;
       source.loop = true;
+      // Bade den schemalagda kurvan och .value maste nollas. .value-getter:n som
+      // fadeMusicTo laser startvarde ur uppdateras av ljudtraden, och en context
+      // som legat suspendad (dold flik) har inte renderat om den - da ser faden
+      // startvardet 1 och tonar *ner* till mixernivan i stallet for upp.
+      gain.gain.value = 0;
       gain.gain.setValueAtTime(0, now);
       source.connect(gain);
       gain.connect(this.musicBus);
