@@ -7,7 +7,7 @@ import express from 'express';
 import { WebSocketServer } from 'ws';
 import { Game } from './game.js';
 import { MatchRegistry } from './matches.js';
-import { ACHIEVEMENTS, evaluateAchievements, publicAchievements } from '../shared/achievements.js';
+import { ACHIEVEMENTS, achievementUnlockStats, evaluateAchievements, publicAchievements } from '../shared/achievements.js';
 import { TICK_MS, TEAM_IDS, NAME_MAX, LAGCOMP, MATCH_PHASES, PLAYER, MAPS, mapLayoutFor } from '../shared/constants.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -15,6 +15,10 @@ const ROOT = path.join(__dirname, '..');
 const PORT = Number(process.env.PORT) || 3000;
 const DATA_DIR = path.join(ROOT, 'data');
 const PROFILES_FILE = path.join(DATA_DIR, 'profiles.json');
+const GAME_TIME_SCALE = Math.max(0.01, Number(process.env.GAME_TIME_SCALE) || 1);
+const GAME_CLOCK_STARTED_REAL = Date.now();
+const GAME_CLOCK_STARTED = GAME_CLOCK_STARTED_REAL;
+const gameNow = () => GAME_CLOCK_STARTED + (Date.now() - GAME_CLOCK_STARTED_REAL) * GAME_TIME_SCALE;
 
 // Formatversion for profiles.json. Hoj denna nar sparformatet andras pa ett
 // satt som kraver migrering, och lagg till ett steg i migrateProfiles().
@@ -42,7 +46,7 @@ const wss = new WebSocketServer({ server });
 
 // Legacy-spelet finns kvar for direktjoin-vagen, men lobby-matcher far egna
 // Game-instanser nar deras countdown startar.
-const game = new Game();
+const game = new Game({ clock: gameNow });
 const matchGames = new Map();
 const matches = new MatchRegistry();
 const profiles = new Map();
@@ -96,6 +100,7 @@ wss.on('connection', (ws) => {
     matches: matches.list(),
     lb,
     leaderboardSummary: leaderboardSummary(lb),
+    achievementStats: achievementStatsSnapshot(),
   });
 
   ws.on('message', (raw) => {
@@ -129,6 +134,7 @@ function handleMessage(ws, msg) {
         profile: profileSnapshotFor(ws),
         matches: matches.list(),
         match: ws.matchId ? matches.snapshot(ws.matchId) : null,
+        achievementStats: achievementStatsSnapshot(),
       });
       broadcastLobby();
       break;
@@ -377,6 +383,7 @@ function lobbySnapshotFor(ws) {
     match: ws.matchId ? matches.snapshot(ws.matchId) : null,
     lb,
     leaderboardSummary: leaderboardSummary(lb),
+    achievementStats: achievementStatsSnapshot(),
   };
 }
 
@@ -397,7 +404,7 @@ function sendMatch(match) {
 function prepareGameForMatch(match) {
   recordMapVoteStats(match);
   clearGameSessions(match.id);
-  const matchGame = new Game({ layout: mapLayoutFor(match.selectedMap), mapId: match.selectedMap });
+  const matchGame = new Game({ clock: gameNow, layout: mapLayoutFor(match.selectedMap), mapId: match.selectedMap });
   matchGames.set(match.id, matchGame);
 
   for (const row of match.players.values()) {
@@ -422,6 +429,7 @@ function prepareGameForMatch(match) {
       profileId: p.profileId,
       profile: profileSnapshotFor(ws),
       match: matches.snapshot(match.id),
+      achievementStats: achievementStatsSnapshot(),
     });
   }
 }
@@ -454,6 +462,7 @@ function spawnLateJoiner(match, ws) {
     profileId: p.profileId,
     profile: profileSnapshotFor(ws),
     match: matches.snapshot(match.id),
+    achievementStats: achievementStatsSnapshot(),
   });
 }
 
@@ -648,7 +657,12 @@ function leaderboardPayload(rows = leaderboardSnapshot()) {
     lb: rows,
     matches: leaderboardMatchesSnapshot(),
     summary: leaderboardSummary(rows),
+    achievementStats: achievementStatsSnapshot(),
   };
+}
+
+function achievementStatsSnapshot() {
+  return achievementUnlockStats([...profiles.values()].map((profile) => buildProfileView(profile)));
 }
 
 function leaderboardSummary(rows = leaderboardSnapshot()) {
@@ -725,6 +739,7 @@ function leaderboardSignature(payload) {
       ...payload.summary,
       totalPlayMs: Math.floor((payload.summary?.totalPlayMs ?? 0) / 1000),
     },
+    achievementStats: payload.achievementStats,
     matches: payload.matches.map((match) => [
       match.id,
       match.phase,
@@ -1077,6 +1092,7 @@ function notifyAchievementUnlocks(profile, ids) {
     serverNow: Date.now(),
     achievements: defs,
     profile: profileView,
+    achievementStats: achievementStatsSnapshot(),
   });
 
   for (const ws of wss.clients) {
