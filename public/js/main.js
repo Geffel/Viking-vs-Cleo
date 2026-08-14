@@ -8,15 +8,23 @@ import { initInput } from '/js/input.js';
 import { initLobbyInfo } from '/js/info.js';
 import {
   ACTION_SLOTS,
+  ABILITIES,
+  ABILITY_BINDS,
+  COMBO,
   MAPS,
   MAP_VOTE_MS,
   MATCH_DURATION_MS,
   MATCH_PHASES,
+  MELEE,
+  MELEE_ATTACKS,
+  MELEE_BINDS,
   NAME_MAX,
+  TEAMS,
   mapLayoutFor,
   mapSoundtrackFor,
   mapThemeFor,
 } from '/shared/constants.js';
+import { keycapFor, onBindingsChange } from '/js/keybinds.js';
 
 const net = new Net();
 const stage = document.getElementById('stage');
@@ -75,6 +83,12 @@ const fighterProfileName = document.getElementById('fighter-profile-name');
 const fighterProfileRating = document.getElementById('fighter-profile-rating');
 const fighterProfileRecord = document.getElementById('fighter-profile-record');
 const fighterProfileTiles = document.getElementById('fighter-profile-tiles');
+const openInstructionsBtn = document.getElementById('open-instructions');
+const instructionsOverlay = document.getElementById('instructions-overlay');
+const instructionsCloseBtn = document.getElementById('instructions-close');
+const instructionsTabs = [...document.querySelectorAll('[data-help-team]')];
+const instructionsBasics = document.getElementById('instructions-basics');
+const instructionsCombos = document.getElementById('instructions-combos');
 
 const TRANSITION_MS = 620;
 const AUDIO_DEBUG = new URLSearchParams(location.search).has('audioDebug');
@@ -120,6 +134,8 @@ let achievementsReturnView = 'lobby';
 let settingsReturnView = 'lobby';
 let screenPromptTimer = 0;
 let screenPromptKey = '';
+let instructionsTeam = 'cleo';
+let instructionsFocusReturn = null;
 
 const achievementsUi = new AchievementsUi({
   playerName: () => currentName,
@@ -131,6 +147,7 @@ const settingsUi = new SettingsUi({ audio, onBack: closeSettings });
 introName.value = currentName;
 initLobbyInfo();
 initPlayerCard();
+initInstructions();
 initAudioDebug();
 initMenuClicks();
 setView('intro');
@@ -248,6 +265,7 @@ net.on('appError', (msg) => {
 
 net.on('leaderboard', renderLeaderboard);
 net.on('profile', (profile) => achievementsUi.setProfile(profile));
+net.on('achievementStats', (stats) => achievementsUi.setAchievementStats(stats));
 net.on('achievementUnlocked', (msg) => achievementsUi.unlock(msg.achievements ?? [], msg.profile ?? null));
 
 // Legacy-vagen finns kvar tills matchlobbyn faktiskt startar spelet.
@@ -351,6 +369,7 @@ function setView(view) {
   // veta nar de inte langre ar framme.
   if (view !== 'settings') settingsUi.close();
   leaveBtn.hidden = view !== 'game';
+  if (view === 'intro' || view === 'game') closeInstructions({ restoreFocus: false });
 
   // Profil-overlayen hor bara hemma i globala lobbyn.
   if (view !== 'lobby' && openProfileId) closeProfile();
@@ -400,6 +419,165 @@ function openSettings(section) {
 function closeSettings() {
   const backTo = settingsReturnView === 'matchRoom' && net.match ? 'matchRoom' : 'lobby';
   setView(backTo);
+}
+
+function initInstructions() {
+  if (!openInstructionsBtn || !instructionsOverlay) return;
+
+  openInstructionsBtn.addEventListener('click', openInstructions);
+  instructionsCloseBtn?.addEventListener('click', () => closeInstructions());
+  instructionsOverlay.addEventListener('click', (e) => {
+    const tab = e.target.closest('[data-help-team]');
+    if (!tab) return;
+    instructionsTeam = tab.dataset.helpTeam === 'viking' ? 'viking' : 'cleo';
+    renderInstructions();
+  });
+  window.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || instructionsOverlay.hidden) return;
+    e.preventDefault();
+    closeInstructions();
+  });
+  onBindingsChange(() => {
+    if (!instructionsOverlay.hidden) renderInstructions();
+  });
+
+  renderInstructions();
+}
+
+function openInstructions() {
+  if (!instructionsOverlay) return;
+  hidePlayerCard();
+  instructionsFocusReturn = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  instructionsOverlay.hidden = false;
+  renderInstructions();
+  window.setTimeout(() => instructionsCloseBtn?.focus(), 0);
+}
+
+function closeInstructions({ restoreFocus = true } = {}) {
+  if (!instructionsOverlay || instructionsOverlay.hidden) return;
+  instructionsOverlay.hidden = true;
+  if (restoreFocus) instructionsFocusReturn?.focus?.();
+  instructionsFocusReturn = null;
+}
+
+function renderInstructions() {
+  if (!instructionsOverlay || !instructionsBasics || !instructionsCombos) return;
+
+  const team = instructionsTeam === 'viking' ? 'viking' : 'cleo';
+  const accent = TEAMS[team]?.color ?? '#ff4d9d';
+  instructionsOverlay.style.setProperty('--instructions-accent', accent);
+
+  for (const tab of instructionsTabs) {
+    const on = tab.dataset.helpTeam === team;
+    tab.classList.toggle('on', on);
+    tab.setAttribute('aria-pressed', on ? 'true' : 'false');
+  }
+
+  instructionsBasics.innerHTML = instructionsBasicRows(team)
+    .map(
+      (row) => `
+        <div class="instructions-row">
+          <span class="instructions-keychain">${keyChainMarkup(row.tokens)}</span>
+          <span class="instructions-row-copy">
+            <b>${escapeHtml(row.name)}</b>
+            <span>${escapeHtml(row.desc)}</span>
+          </span>
+        </div>`,
+    )
+    .join('');
+
+  instructionsCombos.innerHTML = COMBO.list.map((combo, index) => {
+    const bonus = comboBonus(combo);
+    return `
+      <article class="instructions-combo" style="--combo-delay:${(index * 0.05).toFixed(2)}s">
+        <div class="instructions-combo-head">
+          <b>${escapeHtml(combo.name)}</b>
+          <span class="instructions-combo-bonus">${escapeHtml(bonus)}<small>finisher</small></span>
+        </div>
+        <div class="instructions-keychain combo">${keyChainFromSlots(combo.seq)}</div>
+        <p>${escapeHtml(comboTip(combo, team))}</p>
+      </article>`;
+  }).join('');
+}
+
+function instructionsBasicRows(team) {
+  const melee = MELEE_ATTACKS[team] ?? {};
+  const abilities = ABILITIES[team] ?? {};
+  const rows = [
+    { tokens: slotTokens(['left', 'right'], '/'), name: 'Move', desc: 'Walk left or right' },
+    { tokens: slotTokens(['jump']), name: 'Jump', desc: 'Leap onto platforms' },
+    { tokens: slotTokens(['drop']), name: 'Drop', desc: 'Fall through one-way platforms' },
+  ];
+
+  for (const bind of MELEE_BINDS) {
+    const info = melee[bind.slot];
+    rows.push({
+      tokens: slotTokens([bind.slot]),
+      name: info?.name ?? bind.slot,
+      desc: `${MELEE.damageMin}-${MELEE.damageMax} damage right in front of you`,
+    });
+  }
+
+  for (const bind of ABILITY_BINDS) {
+    const info = abilities[bind.slot];
+    if (!info) continue;
+    rows.push({
+      tokens: slotTokens([bind.slot]),
+      name: info.name,
+      desc: info.desc,
+    });
+  }
+
+  return rows;
+}
+
+function slotTokens(slots, joiner = null) {
+  return slots.flatMap((slot, index) => {
+    const token = { type: 'key', value: keycapFor(slot) };
+    if (!joiner || index === 0) return [token];
+    return [{ type: 'join', value: joiner }, token];
+  });
+}
+
+function keyChainFromSlots(slots) {
+  return keyChainMarkup(slotTokens(slots, '->'), true);
+}
+
+function keyChainMarkup(tokens, arrows = false) {
+  return tokens
+    .map((token) => {
+      if (token.type === 'join') {
+        const label = arrows && token.value === '->' ? '&rarr;' : escapeHtml(token.value);
+        return `<span class="instructions-joiner">${label}</span>`;
+      }
+      return `<kbd>${escapeHtml(token.value)}</kbd>`;
+    })
+    .join('');
+}
+
+function comboBonus(combo) {
+  if (!combo.finisherMul || combo.finisherMul === 1) return 'Ready';
+  return `+${Math.round((combo.finisherMul - 1) * 100)}%`;
+}
+
+function comboTip(combo, team) {
+  const chain = combo.seq.map((slot) => moveName(team, slot)).join(' -> ');
+  const parts = [`Land ${chain}`];
+  if (combo.finisherMul && combo.finisherMul !== 1) parts.push(`finisher deals ${comboBonus(combo)} damage`);
+  if (combo.refundCooldown) parts.push('melee cooldown refreshes instantly');
+  if (combo.knockback && combo.knockback.y < MELEE.knockbackY) parts.push('launches the target upward');
+  if (combo.stunMs) parts.push(`stuns for ${secondsText(combo.stunMs)}`);
+  if (combo.healSelf) parts.push(`heals you ${combo.healSelf} HP`);
+  return `${parts.join('. ')}.`;
+}
+
+function moveName(team, slot) {
+  return MELEE_ATTACKS[team]?.[slot]?.name ?? slot;
+}
+
+function secondsText(ms) {
+  const seconds = ms / 1000;
+  return `${Number.isInteger(seconds) ? seconds : seconds.toFixed(1)} second${seconds === 1 ? '' : 's'}`;
 }
 
 function applyMatchUpdate(match, previousPhase = lastMatchPhase, after = null) {
