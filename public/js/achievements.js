@@ -21,6 +21,7 @@ export class AchievementsUi {
     this.playerName = playerName;
     this.onBack = onBack;
     this.profile = null;
+    this.achievementStats = null;
     this.cat = 'all';
     this.status = 'all';
     this.toastId = 0;
@@ -61,6 +62,12 @@ export class AchievementsUi {
 
   setProfile(profile) {
     this.profile = profile ?? null;
+    if (profile?.achievementStats) this.achievementStats = profile.achievementStats;
+    this.renderPage();
+  }
+
+  setAchievementStats(stats) {
+    this.achievementStats = stats ?? null;
     this.renderPage();
   }
 
@@ -182,10 +189,12 @@ export class AchievementsUi {
       const progress = achievementProgress(def, this.profile ?? {});
       const unlockedAt = Math.max(0, Number(unlockedMap[def.id]) || 0);
       const unlocked = !!unlockedAt || progress.unlocked;
-      const rarity = rarityForPct(def.pct);
+      const pct = this.globalPctFor(def);
+      const rarity = rarityForPct(pct);
       const tone = ACHIEVEMENT_TONES[def.cat] ?? '#ffd166';
       return {
         ...publicAchievement(def),
+        pct,
         cur: progress.cur,
         max: progress.max,
         progressPct: Math.min(100, Math.round((progress.cur / progress.max) * 100)),
@@ -202,13 +211,21 @@ export class AchievementsUi {
     const def = ACHIEVEMENTS.find((a) => a.id === raw?.id) ?? raw;
     if (!def?.id) return null;
     const pub = publicAchievement(def);
-    const rarity = rarityForPct(pub.pct);
+    const pct = this.globalPctFor(def);
+    const rarity = rarityForPct(pct);
     return {
       ...pub,
+      pct,
       rarity: rarity.label,
       rarityTone: rarity.tone,
       tone: ACHIEVEMENT_TONES[pub.cat] ?? '#ffd166',
     };
+  }
+
+  globalPctFor(def) {
+    const value = this.achievementStats?.pcts?.[def?.id];
+    const n = Number(value);
+    return Number.isFinite(n) ? n : Number(def?.pct) || 0;
   }
 
   pushToast(item) {
