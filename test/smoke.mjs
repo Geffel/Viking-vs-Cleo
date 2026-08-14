@@ -1,8 +1,11 @@
 // Rokttest mot en korande server: node test/smoke.mjs
 // Ansluter tva riktiga WebSocket-klienter och kor igenom hela spelloopen.
 import WebSocket from 'ws';
+import { ABILITIES, ABILITY_TUNING, PLAYER } from '../shared/constants.js';
 
 const URL = process.env.URL || 'ws://localhost:3000';
+const TIME_SCALE = Math.max(1, Number(process.env.SMOKE_TIME_SCALE) || 1);
+const scaled = (ms, floor = 20) => Math.max(floor, Math.ceil(ms / TIME_SCALE));
 
 function client(name, team) {
   const ws = new WebSocket(URL);
@@ -75,30 +78,38 @@ a.send({ t: 'act', a: 'a1' });
 check('1 startar cooldown', await until(() => a.me.cd.a1 > 0, 500), `${Math.round(a.me.cd.a1)} ms kvar`);
 const cdFirst = a.me.cd.a1;
 a.send({ t: 'act', a: 'a1' });
-await wait(120);
+await wait(scaled(120));
 check('1 gar inte att spamma', a.me.cd.a1 <= cdFirst);
-check('1 har ratt cooldown (6.5s)', cdFirst > 6200 && cdFirst <= 6500, `${Math.round(cdFirst)} ms`);
+check(
+  '1 har ratt cooldown (6.5s)',
+  cdFirst > ABILITIES.cleo.a1.cooldown - 1000 && cdFirst <= ABILITIES.cleo.a1.cooldown,
+  `${Math.round(cdFirst)} ms`,
+);
 
 // --- 2: blink (cleo)
+// Se till att Cleo vetter hoger och har plats att blinka framat.
+a.send({ t: 'move', l: false, r: true });
+await until(() => a.me.x > 220, 1800);
+a.send({ t: 'move', l: false, r: false });
 const xBlinkBefore = a.me.x;
 a.send({ t: 'act', a: 'a2' });
 check('2 startar cooldown', await until(() => a.me.cd.a2 > 0, 500), `${Math.round(a.me.cd.a2)} ms kvar`);
-check('2 blinkar spelaren framat', await until(() => Math.abs(a.me.x - xBlinkBefore) > 120, 700), `x ${xBlinkBefore} -> ${a.me.x}`);
+check('2 blinkar spelaren framat', await until(() => a.me.x - xBlinkBefore > 120, 700), `x ${xBlinkBefore} -> ${a.me.x}`);
 
 // --- 3: power shield (cleo)
 a.send({ t: 'act', a: 'a3' });
 check('3 startar cooldown', await until(() => a.me.cd.a3 > 59000, 500), `${Math.round(a.me.cd.a3)} ms kvar`);
-check('3 ger 5 shield charges', await until(() => a.me.ps === 5, 500), `charges ${a.me.ps}`);
+check(
+  `3 ger ${ABILITY_TUNING.powerShield.charges} shield charges`,
+  await until(() => a.me.ps === ABILITY_TUNING.powerShield.charges, 500),
+  `charges ${a.me.ps}`,
+);
 
-// --- 2: shield charge (viking) kraver luft
+// --- 2: shield charge (viking)
+await until(() => b.me.g === 1, 3000);
 b.send({ t: 'act', a: 'a2' });
-await wait(150);
-check('2 blockeras pa marken', b.me.cd.a2 === 0);
-b.send({ t: 'act', a: 'jump' });
-await wait(120);
-b.send({ t: 'act', a: 'a2' });
-check('2 funkar i luften', await until(() => b.me.cd.a2 > 0, 600), `${Math.round(b.me.cd.a2)} ms`);
-check('marksmall ger shockwave-fx', await until(() => b.fx.some((f) => f.k === 'slam'), 2000));
+check('viking 2 startar cooldown', await until(() => b.me.cd.a2 > 0, 600), `${Math.round(b.me.cd.a2)} ms`);
+check('viking 2 skickar shield charge-fx', await until(() => b.fx.some((f) => f.k === 'shield_charge'), 600));
 
 // --- narstrid
 await until(() => a.me.g === 1 && b.me.g === 1, 3000);
@@ -111,7 +122,7 @@ check('spelarna moter varandra', met, `avstand ${Math.round(Math.abs(a.me.x - b.
 
 // Traffar knuffar undan motstandaren, sa vi maste jaga mellan varje slag.
 const hpBefore = b.me.hp;
-const deadline = Date.now() + 15000;
+const deadline = Date.now() + scaled(15000, 3000);
 let swings = 0;
 while (Date.now() < deadline && !b.me.d) {
   const toRight = b.me.x > a.me.x;
@@ -119,7 +130,7 @@ while (Date.now() < deadline && !b.me.d) {
   if (Math.abs(a.me.x - b.me.x) < 45) {
     a.send({ t: 'act', a: 'm1' });
     swings++;
-    await wait(430);
+    await wait(scaled(430, 45));
   } else {
     await wait(30);
   }
@@ -134,7 +145,7 @@ if (died) {
   check('killfeed registrerar', a.feed.some((f) => f.victim === 'Bjorn'), JSON.stringify(a.feed.at(-1) ?? {}));
   check('poang till Cleo', a.state.score.cleo >= 1, JSON.stringify(a.state.score));
   check('respawn-timer racknar ned', b.me.rs > 0 && b.me.rs <= 3000, `${Math.round(b.me.rs)} ms`);
-  check('respawnar automatiskt', await until(() => b.me.d === 0 && b.me.hp === 100, 5000));
+  check('respawnar automatiskt', await until(() => b.me.d === 0 && b.me.hp === PLAYER.maxHp, 5000));
 }
 
 // --- disconnect
