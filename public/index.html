@@ -64,6 +64,12 @@
     <div id="lobby" class="hidden app-view">
       <div class="panel">
         <section class="flow-screen" id="global-lobby" aria-labelledby="global-lobby-title">
+          <button id="open-instructions" class="instructions-open" type="button" title="How to fight - movelist and combos" aria-haspopup="dialog" aria-controls="instructions-overlay">
+            <span class="instructions-open-glyph">?</span>
+            <span>Instructions</span>
+            <span class="instructions-open-sheen" aria-hidden="true"></span>
+          </button>
+
           <div class="screen-head">
             <div>
               <div class="screen-step">Step 02</div>
@@ -304,6 +310,37 @@
           </div>
 
           <button id="leave-match-fallback" class="leave-match-fallback" type="button">Back to lobby</button>
+        </section>
+
+        <section class="instructions-overlay" id="instructions-overlay" role="dialog" aria-modal="true" aria-labelledby="instructions-title" hidden>
+          <div class="instructions-head">
+            <div>
+              <div class="instructions-eyebrow">How to fight</div>
+              <h1 id="instructions-title">Movelist &amp; Combos</h1>
+            </div>
+            <div class="instructions-actions">
+              <button id="instructions-tab-cleo" class="instructions-tab" type="button" data-help-team="cleo">Cleo</button>
+              <button id="instructions-tab-viking" class="instructions-tab" type="button" data-help-team="viking">Viking</button>
+              <button id="instructions-close" class="instructions-close" type="button" aria-label="Close instructions">x</button>
+            </div>
+          </div>
+
+          <div class="instructions-body">
+            <section class="instructions-column" aria-labelledby="instructions-basics-title">
+              <h2 id="instructions-basics-title">Basic inputs</h2>
+              <div class="instructions-basics" id="instructions-basics"></div>
+            </section>
+
+            <section class="instructions-column" aria-labelledby="instructions-combos-title">
+              <h2 id="instructions-combos-title">Signature combos</h2>
+              <div class="instructions-combos" id="instructions-combos"></div>
+            </section>
+          </div>
+
+          <div class="instructions-foot">
+            <span></span>
+            <b>Esc</b> to close
+          </div>
         </section>
 
         <p class="err" id="lobby-error"></p>
