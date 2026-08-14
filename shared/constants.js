@@ -491,6 +491,7 @@ export const MAPS = [
       volume: 0.58,
       fadeInMs: 900,
       fadeOutMs: 700,
+      resume: true,
     },
   },
   {
