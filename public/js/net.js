@@ -27,6 +27,8 @@ export class Net {
     this.name = '';
     this.profileId = 0;
     this.profile = null;
+    this.achievementStats = null;
+    this.achievementStatsSig = '';
     this.matches = [];
     this.match = null;
     this.connected = false;
@@ -63,6 +65,7 @@ export class Net {
     ws.onmessage = (ev) => {
       const msg = JSON.parse(ev.data);
       this.updateServerTime(msg);
+      this.setAchievementStats(msg.achievementStats);
       if (msg.t === 'state') this.onState(msg);
       else if (msg.t === 'joined') {
         this.selfId = msg.id;
@@ -296,8 +299,24 @@ export class Net {
 
   setProfile(profile) {
     if (!profile) return;
-    this.profile = profile;
-    this.emit('profile', profile);
+    if (profile.achievementStats) this.achievementStats = profile.achievementStats;
+    this.profile = this.achievementStats ? { ...profile, achievementStats: this.achievementStats } : profile;
+    this.emit('profile', this.profile);
+  }
+
+  setAchievementStats(stats) {
+    if (!stats) return;
+    const normalized = {
+      totalProfiles: Math.max(0, Number(stats.totalProfiles) || 0),
+      unlocked: stats.unlocked ?? {},
+      pcts: stats.pcts ?? {},
+    };
+    const sig = JSON.stringify(normalized);
+    if (sig === this.achievementStatsSig) return;
+    this.achievementStats = normalized;
+    this.achievementStatsSig = sig;
+    this.emit('achievementStats', normalized);
+    if (this.profile) this.setProfile({ ...this.profile, achievementStats: normalized });
   }
 }
 
