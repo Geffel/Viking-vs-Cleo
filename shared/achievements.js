@@ -615,6 +615,30 @@ export function publicAchievements(defs = ACHIEVEMENTS) {
   return defs.map(publicAchievement);
 }
 
+export function achievementUnlockStats(profiles = [], defs = ACHIEVEMENTS) {
+  const list = Array.from(typeof profiles?.values === 'function' ? profiles.values() : profiles ?? []);
+  const totalProfiles = list.length;
+  const unlocked = {};
+  const pcts = {};
+
+  for (const def of defs) {
+    let count = 0;
+    for (const profile of list) {
+      if (isAchievementUnlocked(def, profile)) count++;
+    }
+    unlocked[def.id] = count;
+    pcts[def.id] = totalProfiles ? Math.round((count / totalProfiles) * 1000) / 10 : 0;
+  }
+
+  return { totalProfiles, unlocked, pcts };
+}
+
+export function isAchievementUnlocked(def, profile) {
+  if (!def?.id) return false;
+  if (profile?.achievements?.unlocked?.[def.id]) return true;
+  return achievementProgress(def, profile).unlocked;
+}
+
 export function rarityForPct(pct) {
   const n = Number(pct) || 0;
   if (n < 2) return { label: 'Legendary', tone: '#c58bff' };
