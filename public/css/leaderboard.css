@@ -274,7 +274,7 @@ body[data-connection="offline"] .gl-live-pill {
   pointer-events: none;
 }
 
-.gl-scan::before {
+.gl-row.top .gl-scan::before {
   content: "";
   position: absolute;
   top: 0;

@@ -12,6 +12,9 @@ const climberEl = document.getElementById('leaderboard-climber');
 const tickerEl = document.getElementById('leaderboard-ticker');
 
 const LIVE_PHASES = new Set(['countdown', 'playing']);
+// "Recent" i rorelse-kolumnen och Top Climber betyder detta fonster. Utan det
+// mats allt mot sidladdningen och tavlan fryser efter nagra timmar uppe.
+const MOVEMENT_WINDOW_MS = 10 * 60 * 1000;
 const state = {
   rows: [],
   matches: [],
@@ -19,9 +22,14 @@ const state = {
   serverOffsetMs: 0,
   lastUpdateAt: 0,
   baselineRanks: new Map(),
+  baselineAt: 0,
   previousRows: new Map(),
   changedRows: new Set(),
   gains: new Map(),
+  gainEvents: [],
+  rowNodes: new Map(),
+  tickerHtml: '',
+  countersHtml: '',
   ws: null,
   reconnectTimer: 0,
 };
@@ -87,20 +95,30 @@ function applyData({ rows = null, matches = null, summary = null, serverNow = nu
 }
 
 function updateMovementTrackers(rows) {
-  if (!state.baselineRanks.size && rows.length) {
-    rows.forEach((entry, index) => state.baselineRanks.set(entry.id, index + 1));
+  const now = serverNowMs();
+
+  // Ny baslinje nar fonstret lopt ut, annars visar UP/DOWN rorelse fran i gar.
+  if (rows.length && (!state.baselineRanks.size || now - state.baselineAt > MOVEMENT_WINDOW_MS)) {
+    state.baselineRanks = new Map(rows.map((entry, index) => [entry.id, index + 1]));
+    state.baselineAt = now;
   }
 
   state.changedRows = new Set();
-  for (const entry of rows) {
+  rows.forEach((entry, index) => {
     const prev = state.previousRows.get(entry.id);
-    const rank = rows.indexOf(entry) + 1;
+    const rank = index + 1;
     const gained = Math.max(0, Number(entry.pts) - Number(prev?.pts ?? entry.pts));
-    if (gained) state.gains.set(entry.id, (state.gains.get(entry.id) ?? 0) + gained);
+    if (gained) state.gainEvents.push({ id: entry.id, pts: gained, at: now });
     if (prev && (prev.rank !== rank || prev.pts !== Number(entry.pts) || prev.kills !== Number(entry.kills) || prev.deaths !== Number(entry.deaths))) {
       state.changedRows.add(entry.id);
     }
-  }
+  });
+
+  // Summera bara okningar inom fonstret - listan sallas samtidigt sa den inte vaxer.
+  const cutoff = now - MOVEMENT_WINDOW_MS;
+  state.gainEvents = state.gainEvents.filter((event) => event.at >= cutoff);
+  state.gains = new Map();
+  for (const event of state.gainEvents) state.gains.set(event.id, (state.gains.get(event.id) ?? 0) + event.pts);
 
   state.previousRows = new Map(
     rows.map((entry, index) => [
@@ -126,58 +144,120 @@ function render() {
 
 function renderRows() {
   if (!state.rows.length) {
-    rowsEl.innerHTML = '<div class="gl-empty">No stats yet</div>';
+    if (state.rowNodes.size || !rowsEl.firstElementChild) {
+      state.rowNodes.clear();
+      rowsEl.innerHTML = '<div class="gl-empty">No stats yet</div>';
+    }
     return;
   }
 
+  rowsEl.querySelector('.gl-empty')?.remove();
   const topScore = Math.max(1, ...state.rows.map((entry) => Number(entry.pts) || 0));
+  const seen = new Set();
 
-  rowsEl.innerHTML = state.rows
-    .map((entry, index) => {
-      const rank = index + 1;
-      const tone = rankTone(entry, rank);
-      const stats = entry.stats ?? {};
-      const matches = Number(stats.matches?.played) || 0;
-      const wins = Number(stats.matches?.wins) || 0;
-      const kills = Number(entry.kills) || 0;
-      const deaths = Number(entry.deaths) || 0;
-      const points = Number(entry.pts) || 0;
-      const baseline = state.baselineRanks.get(entry.id) ?? rank;
-      const delta = baseline - rank;
-      const gain = state.gains.get(entry.id) ?? 0;
-      const changed = hasRowChanged(entry, rank);
+  // Raderna ateranvands i stallet for att byggas om. En ny nod nollstaller sina
+  // CSS-animationer, och med en broadcast i sekunden hann skimret aldrig rulla.
+  state.rows.forEach((entry, index) => {
+    let node = state.rowNodes.get(entry.id);
+    if (!node) {
+      node = createRow();
+      state.rowNodes.set(entry.id, node);
+    }
 
-      return `
-        <div class="gl-row ${rank <= 3 ? 'top' : ''} ${changed ? 'changed' : ''}" style="--tone:${tone};--score-width:${Math.max(
-          4,
-          Math.round((points / topScore) * 100),
-        )}%">
-          ${rank <= 3 ? '<span class="gl-scan"></span>' : ''}
-          <div class="gl-rank-cell">
-            <span class="gl-rank-num">${rank}</span>
-            <span class="gl-rank-move ${delta > 0 ? 'up' : delta < 0 ? 'down' : ''}">${movementLabel(delta)}</span>
-          </div>
-          <span class="gl-avatar"><img src="${fighterAsset(entry.fav)}" alt="" /></span>
-          <div class="gl-fighter-cell">
-            <div>
-              <span class="gl-name">${escapeHtml(entry.n)}</span>
-              <span class="gl-faction-tag">${escapeHtml(sideLabel(entry.fav))}</span>
-            </div>
-            <div class="gl-row-meta">
-              <span>${gain ? `+${formatNumber(gain)} pts` : 'no recent gain'}</span>
-              <span>${escapeHtml(formatPlayTime(entry.ms))}</span>
-            </div>
-          </div>
-          <div class="gl-num">${formatNumber(matches)}</div>
-          <div class="gl-win">${matches ? Math.round((wins / matches) * 100) : 0}%</div>
-          <div class="gl-kd">${killDeathRatio(kills, deaths)}</div>
-          <div class="gl-score">
-            <span>${formatNumber(points)}</span>
-            <i></i>
-          </div>
-        </div>`;
-    })
-    .join('');
+    updateRow(node, entry, index + 1, topScore);
+    seen.add(entry.id);
+    // Flyttar bara nar rankningen faktiskt bytt plats: CSS raknar nth-child.
+    if (rowsEl.children[index] !== node) rowsEl.insertBefore(node, rowsEl.children[index] ?? null);
+  });
+
+  for (const [id, node] of state.rowNodes) {
+    if (seen.has(id)) continue;
+    node.remove();
+    state.rowNodes.delete(id);
+  }
+}
+
+function createRow() {
+  const node = document.createElement('div');
+  node.className = 'gl-row';
+  node.innerHTML = `
+      <span class="gl-scan"></span>
+      <div class="gl-rank-cell">
+        <span class="gl-rank-num"></span>
+        <span class="gl-rank-move"></span>
+      </div>
+      <span class="gl-avatar"><img alt="" /></span>
+      <div class="gl-fighter-cell">
+        <div>
+          <span class="gl-name"></span>
+          <span class="gl-faction-tag"></span>
+        </div>
+        <div class="gl-row-meta">
+          <span class="gl-row-gain"></span>
+          <span class="gl-row-time"></span>
+        </div>
+      </div>
+      <div class="gl-num"></div>
+      <div class="gl-win"></div>
+      <div class="gl-kd"></div>
+      <div class="gl-score">
+        <span></span>
+        <i></i>
+      </div>`;
+  return node;
+}
+
+function updateRow(node, entry, rank, topScore) {
+  const stats = entry.stats ?? {};
+  const matches = Number(stats.matches?.played) || 0;
+  const wins = Number(stats.matches?.wins) || 0;
+  const kills = Number(entry.kills) || 0;
+  const deaths = Number(entry.deaths) || 0;
+  const points = Number(entry.pts) || 0;
+  const delta = (state.baselineRanks.get(entry.id) ?? rank) - rank;
+  const gain = state.gains.get(entry.id) ?? 0;
+
+  node.classList.toggle('top', rank <= 3);
+  setVar(node, '--tone', rankTone(entry, rank));
+  setVar(node, '--score-width', `${Math.max(4, Math.round((points / topScore) * 100))}%`);
+
+  const move = node.querySelector('.gl-rank-move');
+  move.classList.toggle('up', delta > 0);
+  move.classList.toggle('down', delta < 0);
+
+  setSrc(node.querySelector('.gl-avatar img'), fighterAsset(entry.fav));
+  setText(node.querySelector('.gl-rank-num'), String(rank));
+  setText(move, movementLabel(delta));
+  setText(node.querySelector('.gl-name'), entry.n);
+  setText(node.querySelector('.gl-faction-tag'), sideLabel(entry.fav));
+  setText(node.querySelector('.gl-row-gain'), gain ? `+${formatNumber(gain)} pts` : 'no recent gain');
+  setText(node.querySelector('.gl-row-time'), formatPlayTime(entry.ms));
+  setText(node.querySelector('.gl-num'), formatNumber(matches));
+  setText(node.querySelector('.gl-win'), `${matches ? Math.round((wins / matches) * 100) : 0}%`);
+  setText(node.querySelector('.gl-kd'), killDeathRatio(kills, deaths));
+  setText(node.querySelector('.gl-score span'), formatNumber(points));
+
+  if (state.changedRows.has(entry.id)) flashRow(node);
+}
+
+function flashRow(node) {
+  // Noden lever vidare, sa blinken maste startas om for hand.
+  node.classList.remove('changed');
+  void node.offsetWidth;
+  node.classList.add('changed');
+}
+
+function setText(el, value) {
+  const text = String(value);
+  if (el.textContent !== text) el.textContent = text;
+}
+
+function setSrc(el, value) {
+  if (el.getAttribute('src') !== value) el.setAttribute('src', value);
+}
+
+function setVar(el, name, value) {
+  if (el.style.getPropertyValue(name) !== value) el.style.setProperty(name, value);
 }
 
 function renderFactionWar() {
@@ -215,7 +295,8 @@ function renderCounters() {
   ];
 
   onlineEl.textContent = `${formatNumber(summary.activePlayers ?? 0)} fighters online`;
-  summaryEl.innerHTML = counters
+
+  const html = counters
     .map(
       (counter) => `
         <div class="gl-counter" style="--tone:${counter.tone}">
@@ -224,6 +305,10 @@ function renderCounters() {
         </div>`,
     )
     .join('');
+
+  if (html === state.countersHtml) return;
+  state.countersHtml = html;
+  summaryEl.innerHTML = html;
 }
 
 function renderClimber() {
@@ -233,15 +318,17 @@ function renderClimber() {
   const entry = climber.entry;
   const tone = fighterAccent(entry.fav);
   climberEl.style.setProperty('--tone', tone);
-  climberEl.querySelector('.gl-climber-avatar').innerHTML = `<img src="${fighterAsset(entry.fav)}" alt="" />`;
-  climberEl.querySelector('.gl-climber-name').textContent = entry.n;
-  climberEl.querySelector('.gl-climber-jump').textContent = `+${formatNumber(Math.max(0, climber.jump))} ranks`;
-  climberEl.querySelector('.gl-climber-note').textContent = `+${formatNumber(climber.gain)} points / now #${climber.rank}`;
+  setSrc(climberEl.querySelector('.gl-climber-avatar img'), fighterAsset(entry.fav));
+  setText(climberEl.querySelector('.gl-climber-name'), entry.n);
+  setText(climberEl.querySelector('.gl-climber-jump'), `+${formatNumber(Math.max(0, climber.jump))} ranks`);
+  setText(climberEl.querySelector('.gl-climber-note'), `+${formatNumber(climber.gain)} points / now #${climber.rank}`);
 }
 
 function renderTicker() {
   const items = tickerItems();
   const text = items.map((item) => `<span>${escapeHtml(item)}</span>`).join('');
+  if (text === state.tickerHtml) return;
+  state.tickerHtml = text;
   tickerEl.innerHTML = `${text}${text}`;
 }
 
@@ -257,10 +344,6 @@ function setConnection(mode) {
     return;
   }
   statusEl.textContent = mode === 'connecting' ? 'Connecting' : 'Reconnecting';
-}
-
-function hasRowChanged(entry, rank) {
-  return state.changedRows.has(entry.id);
 }
 
 function topClimber() {

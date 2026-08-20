@@ -28,6 +28,8 @@ const SCHEMA_VERSION = 4;
 // hard krasch (stromavbrott, kill -9) forlorar da som mest denna tid.
 const AUTOSAVE_MS = 30000;
 const LEADERBOARD_BROADCAST_MS = 1000;
+// Leaderboarden visar bara toppen: profiles vaxer, men listan stannar pa denna langd.
+const LEADERBOARD_MAX_ROWS = 10;
 
 const app = express();
 app.use(
@@ -647,7 +649,7 @@ function leaderboardSnapshot() {
   }
 
   rows.sort((a, b) => b.pts - a.pts || b.ms - a.ms || a.n.localeCompare(b.n, 'sv'));
-  return rows.slice(0, 12);
+  return rows.slice(0, LEADERBOARD_MAX_ROWS);
 }
 
 function leaderboardPayload(rows = leaderboardSnapshot()) {
