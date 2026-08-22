@@ -36,6 +36,64 @@ body {
   -webkit-user-select: none;
 }
 
+.gamepad-cursor {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 120;
+  width: 28px;
+  height: 32px;
+  pointer-events: none;
+  opacity: 0;
+  transform-origin: 2px 2px;
+  transition: opacity 0.12s ease, filter 0.08s ease;
+  will-change: transform, opacity;
+  contain: layout style paint;
+}
+
+.gamepad-cursor.visible {
+  opacity: 1;
+}
+
+.gamepad-cursor.clicking {
+  filter: drop-shadow(0 0 10px rgba(255, 209, 102, 0.8));
+}
+
+.gamepad-cursor::before,
+.gamepad-cursor::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  clip-path: polygon(0 0, 0 26px, 7px 20px, 11px 31px, 17px 29px, 13px 18px, 23px 18px);
+}
+
+.gamepad-cursor::before {
+  width: 28px;
+  height: 34px;
+  transform: translate(2px, 2px);
+  background: rgba(0, 0, 0, 0.72);
+}
+
+.gamepad-cursor::after {
+  width: 24px;
+  height: 32px;
+  background: linear-gradient(145deg, #ffffff, #ffd166 56%, #ff9f43);
+  filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.48));
+}
+
+.gamepad-hover:not(:disabled) {
+  outline: 2px solid rgba(255, 209, 102, 0.86);
+  outline-offset: 3px;
+}
+
+button.gamepad-hover:not(:disabled),
+a.gamepad-hover,
+.lb-row.gamepad-hover,
+[role="slider"].gamepad-hover {
+  filter: brightness(1.08);
+}
+
 /* ------------------------------------------------------------ spelplanen */
 
 #stage {

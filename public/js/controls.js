@@ -54,6 +54,7 @@ export class ControlsUi {
     this.draft = bindings();
     this.listening = null;
     this.padFrame = 0;
+    this.padIgnore = new Set();
 
     this.page = document.getElementById('controls-view');
     this.title = document.getElementById('controls-title');
@@ -141,6 +142,7 @@ export class ControlsUi {
       return;
     }
 
+    this.padIgnore = box === 'pad' ? pressedPadButtons(firstPad()) : new Set();
     this.listening = { slot, box };
     this.render();
     if (box === 'pad') this.pollPad();
@@ -154,7 +156,12 @@ export class ControlsUi {
       if (this.listening?.box !== 'pad' || this.page?.hidden) return;
 
       const pad = firstPad();
-      const button = pad?.buttons?.findIndex((b) => b?.pressed || b?.value > PAD_PRESS) ?? -1;
+      const buttons = pressedPadButtons(pad);
+      for (const ignored of [...this.padIgnore]) {
+        if (!buttons.has(ignored)) this.padIgnore.delete(ignored);
+      }
+
+      const button = [...buttons].find((index) => !this.padIgnore.has(index)) ?? -1;
       if (button >= 0) {
         this.assignPad(this.listening.slot, button);
         return;
@@ -165,6 +172,7 @@ export class ControlsUi {
 
   stopListening() {
     this.listening = null;
+    this.padIgnore.clear();
     if (this.padFrame) cancelAnimationFrame(this.padFrame);
     this.padFrame = 0;
   }
@@ -327,6 +335,15 @@ function slotClasses(listening, empty) {
 
 function firstPad() {
   return [...(navigator.getGamepads?.() ?? [])].find((pad) => pad?.connected) ?? null;
+}
+
+function pressedPadButtons(gamepad) {
+  const buttons = new Set();
+  for (let i = 0; i < (gamepad?.buttons?.length ?? 0); i++) {
+    const btn = gamepad.buttons[i];
+    if (btn?.pressed || btn?.value > PAD_PRESS) buttons.add(i);
+  }
+  return buttons;
 }
 
 function rowTitle(slot) {

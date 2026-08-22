@@ -5,6 +5,7 @@ import { Hud } from '/js/hud.js';
 import { AchievementsUi } from '/js/achievements.js';
 import { SettingsUi } from '/js/settings.js';
 import { initInput } from '/js/input.js';
+import { initGamepadCursor } from '/js/gamepad-cursor.js';
 import { initLobbyInfo } from '/js/info.js';
 import {
   ACTION_SLOTS,
@@ -163,6 +164,7 @@ const achievementsUi = new AchievementsUi({
 });
 
 const settingsUi = new SettingsUi({ audio, onBack: closeSettings });
+const gamepadCursor = initGamepadCursor();
 
 introName.value = currentName;
 initLobbyInfo();
@@ -442,6 +444,7 @@ function setView(view) {
   }
 
   markViewEntry(view);
+  syncGamepadCursor();
 }
 
 function openAchievements() {
@@ -996,6 +999,12 @@ function syncGameAccess(match = net.match) {
 
   updateFightOverlay(match);
   updateMatchClock(match);
+  syncGamepadCursor(match);
+}
+
+function syncGamepadCursor(match = net.match) {
+  const gameInputOwnsPad = currentView === 'game' && match?.phase === MATCH_PHASES.playing && net.localPlayerIds().length;
+  gamepadCursor.setEnabled(!gameInputOwnsPad);
 }
 
 function sharedCanStartMatch(match, seats = sharedSeatsFor(match)) {
