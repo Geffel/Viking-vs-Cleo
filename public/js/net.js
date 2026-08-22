@@ -16,6 +16,7 @@ export class Net {
     this.ws = null;
     this.selfId = 0;
     this.selfTeam = null;
+    this.localPlayers = new Map();
     this.buffer = [];
     this.latest = null;
     this.leaderboard = [];
@@ -70,6 +71,7 @@ export class Net {
       else if (msg.t === 'joined') {
         this.selfId = msg.id;
         this.selfTeam = msg.team;
+        this.localPlayers.clear();
         this.emit('joined', msg);
       } else if (msg.t === 'welcome') {
         this.sessionId = msg.sessionId ?? this.sessionId;
@@ -103,8 +105,22 @@ export class Net {
         if (!isLiveGamePhase(this.match?.phase)) this.clearLiveGame();
         this.emit('match', this.match);
       } else if (msg.t === 'gameReady') {
-        this.selfId = msg.id;
-        this.selfTeam = msg.team;
+        this.localPlayers = new Map(
+          (msg.localPlayers ?? [])
+            .map((player) => [
+              String(player.seatId ?? ''),
+              {
+                seatId: String(player.seatId ?? ''),
+                playerId: Math.max(0, Number(player.playerId) || 0),
+                team: player.team ?? null,
+                name: player.name ?? String(player.seatId ?? ''),
+              },
+            ])
+            .filter(([seatId, player]) => seatId && player.playerId),
+        );
+        const primary = this.localPlayers.size ? [...this.localPlayers.values()][0] : null;
+        this.selfId = primary?.playerId ?? msg.id;
+        this.selfTeam = primary?.team ?? msg.team;
         this.match = msg.match ?? this.match;
         this.buffer = [];
         this.latest = null;
@@ -138,6 +154,30 @@ export class Net {
     this.send({ t: 'joinMatch', id });
   }
 
+  setSharedScreenMode(enabled) {
+    this.send({ t: 'setSharedScreenMode', enabled });
+  }
+
+  wakeLocalSeat(inputDevice) {
+    this.send({ t: 'wakeLocalSeat', inputDevice });
+  }
+
+  setLocalSeatCharacter(seatId, character) {
+    this.send({ t: 'setLocalSeatCharacter', seatId, character });
+  }
+
+  setLocalSeatReady(seatId, ready) {
+    this.send({ t: 'setLocalSeatReady', seatId, ready });
+  }
+
+  removeLocalSeat(seatId) {
+    this.send({ t: 'removeLocalSeat', seatId });
+  }
+
+  setLocalSeatConnected(inputDevice, connected) {
+    this.send({ t: 'setLocalSeatConnected', inputDevice, connected });
+  }
+
   leaveMatch() {
     this.send({ t: 'leaveMatch' });
     this.match = null;
@@ -158,6 +198,10 @@ export class Net {
 
   voteMap(mapId) {
     this.send({ t: 'voteMap', mapId });
+  }
+
+  voteLocalSeatMap(seatId, mapId) {
+    this.send({ t: 'voteMap', seatId, mapId });
   }
 
   resetMatch() {
@@ -191,7 +235,7 @@ export class Net {
     // Andras fordrojs lika mycket som kropparna sa att de hamnar ratt.
     const delayed = [];
     for (const fx of msg.fx) {
-      if (fx.id === this.selfId) this.emit('fx', fx);
+      if (this.isLocalPlayerId(fx.id) || this.isLocalPlayerId(fx.by)) this.emit('fx', fx);
       else delayed.push(fx);
     }
 
@@ -212,6 +256,7 @@ export class Net {
   clearLiveGame() {
     this.selfId = 0;
     this.selfTeam = null;
+    this.localPlayers.clear();
     this.buffer = [];
     this.latest = null;
     this.powerups = [];
@@ -221,6 +266,26 @@ export class Net {
 
   self() {
     return this.selfId ? this.latest?.players.get(this.selfId) ?? null : null;
+  }
+
+  localPlayerIds() {
+    if (this.localPlayers.size) return [...this.localPlayers.values()].map((player) => player.playerId).filter(Boolean);
+    return this.selfId ? [this.selfId] : [];
+  }
+
+  localPlayerForSeat(seatId) {
+    return this.localPlayers.get(String(seatId ?? '')) ?? null;
+  }
+
+  localSelfPlayers() {
+    return this.localPlayerIds()
+      .map((id) => this.latest?.players.get(id) ?? null)
+      .filter(Boolean);
+  }
+
+  isLocalPlayerId(playerId) {
+    const id = Math.max(0, Number(playerId) || 0);
+    return !!id && this.localPlayerIds().includes(id);
   }
 
   /** Spelarlista att rita just nu. */
@@ -236,13 +301,17 @@ export class Net {
     const b = buf[i + 1];
     const out = [];
 
+    const localIds = new Set(this.localPlayerIds());
+
     for (const p of a.players.values()) {
-      if (p.i === this.selfId) continue; // egen spelare ritas fran latest
+      if (localIds.has(p.i)) continue; // egna spelare ritas fran latest
       out.push(b ? lerpPlayer(p, b.players.get(p.i), clamp01((renderTime - a.time) / (b.time - a.time))) : p);
     }
 
-    const me = this.self();
-    if (me) out.push(me);
+    for (const id of localIds) {
+      const p = this.latest?.players.get(id);
+      if (p) out.push(p);
+    }
     return out;
   }
 
@@ -260,14 +329,16 @@ export class Net {
     const alpha = b ? clamp01((renderTime - a.time) / (b.time - a.time)) : 0;
     const out = [];
 
+    const localIds = new Set(this.localPlayerIds());
+
     for (const pr of a.projectiles ?? []) {
-      if (pr.o === this.selfId) continue;
+      if (localIds.has(pr.o)) continue;
       const next = b?.projectiles?.find((p) => p.i === pr.i);
       out.push(next ? lerpProjectile(pr, next, alpha) : pr);
     }
 
     for (const pr of this.latest?.projectiles ?? []) {
-      if (pr.o === this.selfId) out.push(pr);
+      if (localIds.has(pr.o)) out.push(pr);
     }
     return out;
   }

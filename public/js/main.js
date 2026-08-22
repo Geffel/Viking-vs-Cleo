@@ -11,9 +11,12 @@ import {
   ABILITIES,
   ABILITY_BINDS,
   COMBO,
+  GAMEPAD_BINDS,
+  LOCAL_SEAT_IDS,
   MAPS,
   MAP_VOTE_MS,
   MATCH_DURATION_MS,
+  MATCH_MODES,
   MATCH_PHASES,
   MELEE,
   MELEE_ATTACKS,
@@ -56,6 +59,7 @@ const matchRoomPhase = document.getElementById('match-room-phase');
 const matchPlayerList = document.getElementById('match-player-list');
 const characterSelect = document.getElementById('character-select');
 const readyToggle = document.getElementById('ready-toggle');
+const sharedScreenToggle = document.getElementById('shared-screen-toggle');
 const startMatchBtn = document.getElementById('start-match');
 const resetMatchBtn = document.getElementById('reset-match');
 const mapVote = document.getElementById('map-vote');
@@ -117,6 +121,14 @@ const MENU_SOUNDTRACK = {
   resume: true,
 };
 const MENU_MUSIC_PHASES = new Set([MATCH_PHASES.matchLobby, MATCH_PHASES.mapVote, MATCH_PHASES.results]);
+const CHARACTER_IDS = ['cleo', 'viking'];
+const HOST_SEAT_ID = LOCAL_SEAT_IDS[0] ?? 'P1';
+const SHARED_PAD_DEADZONE = 0.55;
+const SHARED_PAD_WAKE_DEADZONE = 0.65;
+const SHARED_PAD_BUTTON_DEADZONE = 0.5;
+const SHARED_CONFIRM_BUTTON = GAMEPAD_BINDS.jump.button ?? 0;
+const SHARED_CANCEL_BUTTON = 1;
+const SHARED_WAKE_BUTTONS = new Set([SHARED_CONFIRM_BUTTON, SHARED_CANCEL_BUTTON, 12, 13, 14, 15]);
 
 const clientId = loadClientId();
 let currentName = localStorage.getItem('vvc.name') ?? '';
@@ -136,6 +148,14 @@ let screenPromptTimer = 0;
 let screenPromptKey = '';
 let instructionsTeam = 'cleo';
 let instructionsFocusReturn = null;
+const sharedSeatInput = {
+  frame: 0,
+  pads: new Map(),
+  cursorBySeat: new Map(),
+  mapCursorBySeat: new Map(),
+  pendingGamepads: new Set(),
+  pendingConnections: new Set(),
+};
 
 const achievementsUi = new AchievementsUi({
   playerName: () => currentName,
@@ -178,14 +198,25 @@ characterSelect.addEventListener('click', (e) => {
   const btn = e.target.closest('[data-character]');
   if (!btn) return;
   lobbyError.textContent = '';
-  net.setCharacter(btn.dataset.character);
+  if (isSharedScreenMatch(net.match)) net.setLocalSeatCharacter(HOST_SEAT_ID, btn.dataset.character);
+  else net.setCharacter(btn.dataset.character);
 });
 
 readyToggle.addEventListener('click', () => {
-  const me = currentMatchPlayer();
+  const match = net.match;
+  const sharedScreen = isSharedScreenMatch(match);
+  const me = sharedScreen ? localSeatById(match, HOST_SEAT_ID) : currentMatchPlayer(match);
   if (!me) return;
   lobbyError.textContent = '';
-  net.setReady(!me.ready);
+  if (sharedScreen) net.setLocalSeatReady(HOST_SEAT_ID, !me.ready);
+  else net.setReady(!me.ready);
+});
+
+sharedScreenToggle?.addEventListener('click', () => {
+  const match = net.match;
+  if (!match) return;
+  lobbyError.textContent = '';
+  net.setSharedScreenMode(!isSharedScreenMatch(match));
 });
 
 startMatchBtn.addEventListener('click', () => {
@@ -201,6 +232,13 @@ resetMatchBtn.addEventListener('click', () => {
 mapLockBtn?.addEventListener('click', () => {
   const match = net.match;
   if (match?.phase !== MATCH_PHASES.mapVote) return;
+  if (isSharedScreenMatch(match)) {
+    const seat = localSeatById(match, HOST_SEAT_ID);
+    const mapId = seat?.mapVote ?? match.mapVotes?.[0]?.id ?? match.maps?.[0]?.id;
+    if (mapId) net.voteLocalSeatMap(HOST_SEAT_ID, mapId);
+    return;
+  }
+
   const me = currentMatchPlayer(match);
   const mapId = me?.mapVote ?? match.mapVotes?.[0]?.id ?? match.maps?.[0]?.id;
   if (mapId) net.voteMap(mapId);
@@ -210,7 +248,8 @@ mapVoteList.addEventListener('click', (e) => {
   const btn = e.target.closest('[data-map-id]');
   if (!btn || btn.disabled) return;
   lobbyError.textContent = '';
-  net.voteMap(btn.dataset.mapId);
+  if (isSharedScreenMatch(net.match)) net.voteLocalSeatMap(HOST_SEAT_ID, btn.dataset.mapId);
+  else net.voteMap(btn.dataset.mapId);
 });
 
 leaveBtn.addEventListener('click', leaveCurrentMatch);
@@ -277,11 +316,12 @@ net.on('joined', ({ team }) => {
   document.activeElement?.blur();
 });
 
-net.on('gameReady', ({ team, match }) => {
+net.on('gameReady', ({ team, match, localPlayers }) => {
   achievementsUi.clearMatch();
   const previousPhase = lastMatchPhase;
   applyMatchUpdate(match, previousPhase, () => {
-    hud.setTeam(team);
+    if (localPlayers?.length) hud.setSharedMode(true);
+    else hud.setTeam(team);
     syncGameAccess(match);
     document.activeElement?.blur();
   });
@@ -322,13 +362,17 @@ function frame(now) {
   const arena = currentArena();
   renderer.setArena(arena.asset, arena.theme);
   renderer.setMapLayout(arena.layout);
-  renderer.draw(players, net.powerups, net.sampleProjectiles(), net.selfId, dt);
+  renderer.draw(players, net.powerups, net.sampleProjectiles(), net.localPlayerIds(), dt);
 
   hud.updateScore(net.score);
-  const me = net.self();
-  if (me) {
-    hud.sync(me);
-    hud.updateSelf(me);
+  if (isSharedScreenMatch(net.match) && net.localPlayers.size) {
+    hud.updateShared(net.localSelfPlayers(), sharedSeatsFor(net.match));
+  } else {
+    const me = net.self();
+    if (me) {
+      hud.sync(me);
+      hud.updateSelf(me);
+    }
   }
   hud.update(dt);
   updatePhaseTimers();
@@ -389,8 +433,13 @@ function setView(view) {
     lobbyPlayerName.textContent = currentName ? `Connected as ${currentName}` : 'Global lobby';
   }
 
-  if (view === 'matchRoom') syncScreenPrompt(net.match);
-  else clearScreenPrompt();
+  if (view === 'matchRoom') {
+    syncScreenPrompt(net.match);
+    syncSharedSeatScanner(net.match);
+  } else {
+    clearScreenPrompt();
+    syncSharedSeatScanner(null);
+  }
 
   markViewEntry(view);
 }
@@ -721,23 +770,29 @@ function renderMatches(matches) {
 
   matchList.innerHTML = matches
     .map((match, index) => {
-      // Ingen match ar last langre - man far joina aven en pagaende match.
+      // Vanliga matcher kan fortfarande joinas sent; shared screen ar stangd.
       const inLobby = match.phase === MATCH_PHASES.matchLobby;
+      const sharedScreen = isSharedScreenMatch(match);
+      const closed = !!match.closed || sharedScreen;
       const mapLabel = match.selectedMap ? mapName(match, match.selectedMap) : '';
       const accent = ROW_ACCENTS[index % ROW_ACCENTS.length];
+      const joinLabel = closed ? 'Closed' : inLobby ? 'Join' : 'Jump in';
+      const joinTitle = closed ? 'Shared screen matches are local only.' : '';
       return `
-        <div class="match-row" data-match-id="${escapeHtml(match.id)}" style="--row-accent:${accent};--row-delay:${(index * 0.06).toFixed(2)}s">
+        <div class="match-row ${closed ? 'closed' : ''}" data-match-id="${escapeHtml(match.id)}" style="--row-accent:${accent};--row-delay:${(index * 0.06).toFixed(2)}s">
           <div class="match-main">
             <span class="match-title">${escapeHtml(match.title)}</span>
             <span class="match-meta">
               <span>host <b>${escapeHtml(match.hostName)}</b></span>
               <span class="phase-badge ${inLobby ? '' : 'locked'}">${phaseLabel(match.phase)}</span>
+              ${sharedScreen ? '<span class="phase-badge shared">Shared screen</span>' : ''}
+              ${closed ? '<span class="phase-badge closed">Closed</span>' : ''}
               ${mapLabel ? `<span class="match-map">🗺 ${escapeHtml(mapLabel)}</span>` : ''}
             </span>
           </div>
           <div class="match-side">
             <span class="match-count">${match.playerCount}</span>
-            <button type="button" data-join-match="${escapeHtml(match.id)}">${inLobby ? 'Join' : 'Jump in'}</button>
+            <button type="button" data-join-match="${escapeHtml(match.id)}" ${closed ? 'disabled' : ''} title="${escapeHtml(joinTitle)}">${joinLabel}</button>
           </div>
         </div>`;
     })
@@ -747,48 +802,82 @@ function renderMatches(matches) {
 function renderMatchRoom(match) {
   net.match = match;
   if (!match || !matchRoom) {
-    if (matchRoom) matchRoom.dataset.phase = '';
+    if (matchRoom) {
+      matchRoom.dataset.phase = '';
+      matchRoom.dataset.mode = '';
+    }
     if (matchPlayerList) matchPlayerList.innerHTML = '';
+    if (sharedScreenToggle) sharedScreenToggle.hidden = true;
     if (mapVote) mapVote.hidden = true;
     if (roundResults) roundResults.hidden = true;
     if (leaveMatchFallback) leaveMatchFallback.hidden = true;
+    renderCharacterSeatMarkers(null);
+    syncSharedSeatScanner(null);
     return;
   }
 
   const me = currentMatchPlayer(match);
   const isHost = me?.id === match.hostId;
   const inMatchLobby = match.phase === MATCH_PHASES.matchLobby;
+  const sharedScreen = isSharedScreenMatch(match);
+  const localSeats = sharedScreen ? sharedSeatsFor(match) : [];
+  const hostSeat = sharedScreen ? localSeatById(match, HOST_SEAT_ID) : null;
   const inResults = match.phase === MATCH_PHASES.results;
   // En sen anslutare som annu inte spawnats (ingen selfId, ingen karaktar) far
   // valja sida for att hoppa in i en match som redan startat.
   const preGame = [MATCH_PHASES.mapVote, MATCH_PHASES.countdown, MATCH_PHASES.playing].includes(match.phase);
   const joiningLive = preGame && !!me && !me.character && !net.selfId;
-  const canPick = inMatchLobby || joiningLive;
+  const canPick = sharedScreen ? inMatchLobby && isHost : inMatchLobby || joiningLive;
   matchRoom.dataset.phase = match.phase;
+  matchRoom.dataset.mode = sharedScreen ? MATCH_MODES.sharedScreen : MATCH_MODES.online;
   matchRoomTitle.textContent = match.title;
   const selectedMap = mapName(match, match.selectedMap);
+  const modeLabel = sharedScreen ? 'Shared screen - ' : '';
+  const visibleReadyCount = sharedScreen ? match.localReadyCount ?? localSeats.filter((seat) => seat.ready).length : match.readyCount;
+  const visiblePlayerCount = sharedScreen ? match.localSeatCount ?? localSeats.length : match.playerCount;
+  const visiblePickedCount = sharedScreen ? match.localCharactersChosenCount ?? localSeats.filter((seat) => seat.character).length : 0;
+  const progressLabel = sharedScreen ? `Picked ${visiblePickedCount}/${visiblePlayerCount}` : `Ready ${visibleReadyCount}/${visiblePlayerCount}`;
   matchRoomPhase.textContent = joiningLive
     ? 'Pick a character to jump into the match' + (selectedMap ? ` - Map: ${selectedMap}` : '')
-    : `${phaseLabel(match.phase)} - Host ${match.hostName} - Ready ${match.readyCount}/${match.playerCount}` +
+    : `${modeLabel}${phaseLabel(match.phase)} - Host ${match.hostName} - ${progressLabel}` +
       (selectedMap ? ` - Map: ${selectedMap}` : '');
 
   characterSelect.hidden = !canPick;
 
   for (const btn of characterSelect.querySelectorAll('[data-character]')) {
-    const on = btn.dataset.character === me?.character;
+    const on = btn.dataset.character === (sharedScreen ? hostSeat?.character : me?.character);
     btn.classList.toggle('on', on);
     btn.setAttribute('aria-pressed', on ? 'true' : 'false');
     btn.disabled = !canPick;
   }
+  renderCharacterSeatMarkers(match);
+  syncSharedSeatScanner(match);
 
-  readyToggle.hidden = !inMatchLobby;
-  readyToggle.textContent = me?.ready ? 'Ready' : 'Ready up';
-  readyToggle.classList.toggle('on', !!me?.ready);
-  readyToggle.disabled = !inMatchLobby || !me?.character;
+  readyToggle.hidden = !inMatchLobby || sharedScreen;
+  const readySource = sharedScreen ? hostSeat : me;
+  readyToggle.textContent = readySource?.ready ? 'Ready' : 'Ready up';
+  readyToggle.classList.toggle('on', !!readySource?.ready);
+  readyToggle.disabled = !inMatchLobby || sharedScreen || !readySource?.character;
 
+  if (sharedScreenToggle) {
+    const canToggleSharedScreen = isHost && inMatchLobby;
+    const blockedByGuests = canToggleSharedScreen && !sharedScreen && match.playerCount > 1;
+    sharedScreenToggle.hidden = !canToggleSharedScreen;
+    sharedScreenToggle.disabled = blockedByGuests;
+    sharedScreenToggle.classList.toggle('on', sharedScreen);
+    sharedScreenToggle.setAttribute('aria-pressed', sharedScreen ? 'true' : 'false');
+    sharedScreenToggle.textContent = sharedScreen ? 'Shared screen on' : 'Shared screen';
+    sharedScreenToggle.title = blockedByGuests ? 'Only available when the host is the only online player.' : '';
+  }
+
+  const canStartMatch = sharedScreen ? sharedCanStartMatch(match, localSeats) : match.allCharactersChosen;
   startMatchBtn.hidden = !isHost || !inMatchLobby;
-  startMatchBtn.disabled = !match.allCharactersChosen;
-  startMatchBtn.title = match.allCharactersChosen ? '' : 'Everyone must pick a character first.';
+  startMatchBtn.disabled = !canStartMatch;
+  startMatchBtn.title = sharedScreen
+    ? sharedStartTitle(match, localSeats)
+    : match.allCharactersChosen
+      ? ''
+      : 'Everyone must pick a character first.';
   resetMatchBtn.hidden = !isHost || !inResults;
   if (leaveMatchFallback) leaveMatchFallback.hidden = inResults;
   if (leaveMatchBtn) leaveMatchBtn.hidden = !inResults;
@@ -796,25 +885,33 @@ function renderMatchRoom(match) {
   renderMapVote(match);
   renderRoundResults(match);
 
-  matchPlayerList.innerHTML = match.players
+  const roster = sharedScreen ? localSeats : match.players;
+  matchPlayerList.innerHTML = roster
     .map(
       (player) => {
         const character = player.character ?? '';
         const accent = characterColor(character);
+        const displayName = sharedScreen ? player.name ?? player.id : player.n;
         const avatar = character
           ? `<img src="/assets/${escapeHtml(character)}/idle.png" alt="" />`
           : `<span class="avatar-empty">?</span>`;
+        const isHostRow = sharedScreen ? player.id === HOST_SEAT_ID : player.id === match.hostId;
+        const inputLabel = sharedScreen ? localSeatInputLabel(player) : '';
+        const readyLabel = sharedScreen ? (player.character ? 'Picked' : 'Choosing') : player.ready ? 'Ready' : 'Not ready';
         return `
-        <div class="match-player ${player.ready ? 'ready' : 'not-ready'}" data-session-id="${player.id}" style="--player-accent:${accent}">
+        <div class="match-player ${player.ready ? 'ready' : 'not-ready'} ${sharedScreen ? 'local-seat' : ''} ${
+          sharedScreen && player.connected === false ? 'disconnected' : ''
+        }" data-session-id="${player.id}" style="--player-accent:${accent}">
           <span class="player-avatar ${escapeHtml(character)}">${avatar}</span>
           <span class="player-copy">
             <span class="player-name-line">
-              <b>${escapeHtml(player.n)}</b>
-              ${player.id === match.hostId ? '<span class="host-mark">&#9819; host</span>' : ''}
+              <b>${escapeHtml(displayName)}</b>
+              ${isHostRow ? '<span class="host-mark">&#9819; host</span>' : ''}
+              ${inputLabel ? `<span class="host-mark local-device">${escapeHtml(inputLabel)}</span>` : ''}
             </span>
-            <span class="player-character">${escapeHtml(playerStatus(player, match))}</span>
+            <span class="player-character">${escapeHtml(sharedScreen ? localSeatStatus(player, match) : playerStatus(player, match))}</span>
           </span>
-          <span class="ready-badge ${player.ready ? 'ready' : ''}">${player.ready ? 'Ready' : 'Not ready'}</span>
+          <span class="ready-badge ${player.ready || (sharedScreen && player.character) ? 'ready' : ''}">${readyLabel}</span>
         </div>`;
       },
     )
@@ -842,7 +939,7 @@ function routeForMatch(match, previousPhase = lastMatchPhase) {
   // Sen anslutare som annu inte spawnats (ingen selfId) stannar i matchrummet
   // och valjer karaktar - forst nar de faktiskt ar med i arenan gar de till spelvyn.
   const live = match.phase === MATCH_PHASES.countdown || match.phase === MATCH_PHASES.playing;
-  if (live && net.selfId) setView('game');
+  if (live && net.localPlayerIds().length) setView('game');
   else setView('matchRoom');
 
   syncGameAccess(match);
@@ -894,11 +991,263 @@ function screenPromptFor(match) {
 }
 
 function syncGameAccess(match = net.match) {
-  if (match?.phase === MATCH_PHASES.playing && net.selfId) input.enable();
+  if (match?.phase === MATCH_PHASES.playing && net.localPlayerIds().length) input.enable();
   else input.disable();
 
   updateFightOverlay(match);
   updateMatchClock(match);
+}
+
+function sharedCanStartMatch(match, seats = sharedSeatsFor(match)) {
+  if (!isSharedScreenMatch(match)) return false;
+  return seats.length >= 2 && seats.every((seat) => !!seat.character);
+}
+
+function sharedStartTitle(match, seats = sharedSeatsFor(match)) {
+  if (sharedCanStartMatch(match, seats)) return '';
+  if (seats.length < 2) return 'Wake at least one gamepad so shared screen has two local players.';
+
+  const missing = seats.filter((seat) => !seat.character).map((seat) => seat.id);
+  if (missing.length) return `${missing.join(', ')} must pick a fighter first.`;
+  return 'Every local player must pick a fighter first.';
+}
+
+function syncSharedSeatScanner(match = net.match) {
+  if (canUseSharedSeatScanner(match)) startSharedSeatScanner();
+  else stopSharedSeatScanner();
+}
+
+function canUseSharedSeatScanner(match = net.match) {
+  return (
+    currentView === 'matchRoom' &&
+    isSharedScreenMatch(match) &&
+    [MATCH_PHASES.matchLobby, MATCH_PHASES.mapVote].includes(match?.phase) &&
+    currentMatchPlayer(match)?.id === match.hostId &&
+    !!navigator.getGamepads
+  );
+}
+
+function startSharedSeatScanner() {
+  if (sharedSeatInput.frame || !navigator.getGamepads) return;
+  sharedSeatInput.frame = requestAnimationFrame(pollSharedSeatGamepads);
+}
+
+function stopSharedSeatScanner() {
+  if (sharedSeatInput.frame) cancelAnimationFrame(sharedSeatInput.frame);
+  sharedSeatInput.frame = 0;
+  sharedSeatInput.pads.clear();
+  sharedSeatInput.pendingGamepads.clear();
+  sharedSeatInput.pendingConnections.clear();
+}
+
+function pollSharedSeatGamepads() {
+  sharedSeatInput.frame = 0;
+  const match = net.match;
+  if (!canUseSharedSeatScanner(match)) {
+    stopSharedSeatScanner();
+    return;
+  }
+
+  const seen = new Set();
+  const pads = [...(navigator.getGamepads?.() ?? [])];
+  for (const [fallbackIndex, pad] of pads.entries()) {
+    if (!pad?.connected) continue;
+    const index = Number.isInteger(pad.index) ? pad.index : fallbackIndex;
+    seen.add(index);
+    syncSharedSeatGamepad(match, pad, index);
+  }
+
+  for (const index of [...sharedSeatInput.pads.keys()]) {
+    if (seen.has(index)) continue;
+    const seat = localSeatForGamepad(match, index);
+    if (seat && seat.connected !== false && match.phase === MATCH_PHASES.matchLobby) {
+      net.setLocalSeatConnected({ type: 'gamepad', index }, false);
+    }
+    sharedSeatInput.pads.delete(index);
+    sharedSeatInput.pendingGamepads.delete(index);
+    sharedSeatInput.pendingConnections.delete(index);
+  }
+
+  startSharedSeatScanner();
+}
+
+function syncSharedSeatGamepad(match, gamepad, index) {
+  const previous = sharedSeatInput.pads.get(index) ?? {
+    buttons: new Set(),
+    xDir: 0,
+    yDir: 0,
+    wakeX: 0,
+    wakeY: 0,
+  };
+  const buttons = pressedPadButtons(gamepad);
+  const xDir = padDirection(gamepad, 0, 14, 15, SHARED_PAD_DEADZONE);
+  const yDir = padDirection(gamepad, 1, 12, 13, SHARED_PAD_DEADZONE);
+  const wakeX = axisDirection(axis(gamepad, 0), SHARED_PAD_WAKE_DEADZONE);
+  const wakeY = axisDirection(axis(gamepad, 1), SHARED_PAD_WAKE_DEADZONE);
+  const seat = localSeatForGamepad(match, index);
+
+  if (match.phase === MATCH_PHASES.mapVote) {
+    if (seat) syncSharedSeatMapVoteGamepad(match, seat, buttons, previous, xDir || yDir);
+    sharedSeatInput.pads.set(index, { buttons, xDir, yDir, wakeX, wakeY });
+    return;
+  }
+
+  if (!seat) {
+    const wakeButton = [...SHARED_WAKE_BUTTONS].some((buttonIndex) => buttons.has(buttonIndex) && !previous.buttons.has(buttonIndex));
+    const wakeAxis = (wakeX && !previous.wakeX) || (wakeY && !previous.wakeY);
+    if ((wakeButton || wakeAxis) && !sharedSeatInput.pendingGamepads.has(index)) {
+      sharedSeatInput.pendingGamepads.add(index);
+      net.wakeLocalSeat({ type: 'gamepad', index, label: gamepad.id ?? '' });
+    }
+  } else {
+    sharedSeatInput.pendingGamepads.delete(index);
+    if (seat.connected === false && !sharedSeatInput.pendingConnections.has(index)) {
+      sharedSeatInput.pendingConnections.add(index);
+      net.setLocalSeatConnected({ type: 'gamepad', index, label: gamepad.id ?? '' }, true);
+    } else if (seat.connected !== false) {
+      sharedSeatInput.pendingConnections.delete(index);
+    }
+    const navDir = xDir || yDir;
+    const previousNavDir = previous.xDir || previous.yDir;
+    if (navDir && navDir !== previousNavDir) moveSeatCursor(seat.id, navDir);
+    if (buttons.has(SHARED_CONFIRM_BUTTON) && !previous.buttons.has(SHARED_CONFIRM_BUTTON)) {
+      net.setLocalSeatCharacter(seat.id, characterAtSeatCursor(seat));
+    }
+    if (buttons.has(SHARED_CANCEL_BUTTON) && !previous.buttons.has(SHARED_CANCEL_BUTTON)) {
+      if (seat.character) net.setLocalSeatCharacter(seat.id, null);
+      else if (seat.id !== HOST_SEAT_ID) net.removeLocalSeat(seat.id);
+    }
+  }
+
+  sharedSeatInput.pads.set(index, { buttons, xDir, yDir, wakeX, wakeY });
+}
+
+function syncSharedSeatMapVoteGamepad(match, seat, buttons, previous, navDir) {
+  const previousNavDir = previous.xDir || previous.yDir;
+  if (navDir && navDir !== previousNavDir) moveSeatMapCursor(seat.id, navDir, match);
+
+  if (buttons.has(SHARED_CONFIRM_BUTTON) && !previous.buttons.has(SHARED_CONFIRM_BUTTON)) {
+    const map = mapAtSeatCursor(seat, match.mapVotes?.length ? match.mapVotes : match.maps ?? []);
+    if (map?.id) net.voteLocalSeatMap(seat.id, map.id);
+  }
+}
+
+function renderCharacterSeatMarkers(match = net.match) {
+  if (!characterSelect) return;
+  for (const btn of characterSelect.querySelectorAll('[data-character]')) {
+    btn.classList.remove('has-seat-markers');
+    const markerWrap = btn.querySelector('.seat-markers');
+    if (markerWrap) markerWrap.innerHTML = '';
+  }
+
+  if (!isSharedScreenMatch(match)) {
+    sharedSeatInput.cursorBySeat.clear();
+    return;
+  }
+
+  const seats = sharedSeatsFor(match);
+  const activeSeatIds = new Set(seats.map((seat) => seat.id));
+  for (const seatId of [...sharedSeatInput.cursorBySeat.keys()]) {
+    if (!activeSeatIds.has(seatId)) sharedSeatInput.cursorBySeat.delete(seatId);
+  }
+
+  for (const seat of seats) {
+    const character = seat.character || characterAtSeatCursor(seat);
+    const btn = characterSelect.querySelector(`[data-character="${character}"]`);
+    const markerWrap = btn?.querySelector('.seat-markers');
+    if (!btn || !markerWrap) continue;
+
+    const marker = document.createElement('span');
+    marker.className = `seat-marker ${seat.character ? 'picked' : 'cursor'}`;
+    marker.textContent = seat.id;
+    marker.title = `${seat.id} ${seat.character ? 'picked' : 'selecting'} ${characterLabel(character)}`;
+    marker.style.setProperty('--seat-accent', characterColor(character));
+    markerWrap.appendChild(marker);
+    btn.classList.add('has-seat-markers');
+  }
+}
+
+function pressedPadButtons(gamepad) {
+  const buttons = new Set();
+  for (let i = 0; i < (gamepad.buttons?.length ?? 0); i++) {
+    if (padButton(gamepad, i)) buttons.add(i);
+  }
+  return buttons;
+}
+
+function padButton(gamepad, index) {
+  const btn = gamepad?.buttons?.[index];
+  return !!btn && (btn.pressed || btn.value > SHARED_PAD_BUTTON_DEADZONE);
+}
+
+function padDirection(gamepad, axisIndex, negativeButton, positiveButton, deadzone) {
+  if (padButton(gamepad, negativeButton)) return -1;
+  if (padButton(gamepad, positiveButton)) return 1;
+  return axisDirection(axis(gamepad, axisIndex), deadzone);
+}
+
+function axisDirection(value, deadzone) {
+  if (value < -deadzone) return -1;
+  if (value > deadzone) return 1;
+  return 0;
+}
+
+function axis(gamepad, index) {
+  const value = Number(gamepad?.axes?.[index]);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function moveSeatCursor(seatId, dir) {
+  const current = sharedSeatInput.cursorBySeat.get(seatId) ?? defaultSeatCursor(seatId);
+  const next = (current + (dir > 0 ? 1 : -1) + CHARACTER_IDS.length) % CHARACTER_IDS.length;
+  sharedSeatInput.cursorBySeat.set(seatId, next);
+  renderCharacterSeatMarkers(net.match);
+}
+
+function characterAtSeatCursor(seat) {
+  const selectedIndex = CHARACTER_IDS.indexOf(seat?.character);
+  if (selectedIndex >= 0) {
+    sharedSeatInput.cursorBySeat.set(seat.id, selectedIndex);
+    return CHARACTER_IDS[selectedIndex];
+  }
+
+  if (!sharedSeatInput.cursorBySeat.has(seat?.id)) {
+    sharedSeatInput.cursorBySeat.set(seat.id, defaultSeatCursor(seat?.id));
+  }
+  return CHARACTER_IDS[sharedSeatInput.cursorBySeat.get(seat.id)] ?? CHARACTER_IDS[0];
+}
+
+function defaultSeatCursor(seatId) {
+  const n = Math.max(1, Number(String(seatId ?? '').replace(/\D/g, '')) || 1);
+  return n % 2 === 0 ? 1 : 0;
+}
+
+function moveSeatMapCursor(seatId, dir, match = net.match) {
+  const maps = match?.mapVotes?.length ? match.mapVotes : match?.maps ?? [];
+  if (!maps.length) return;
+  const current = sharedSeatInput.mapCursorBySeat.get(seatId) ?? defaultMapCursor(seatId, maps);
+  const next = (current + (dir > 0 ? 1 : -1) + maps.length) % maps.length;
+  sharedSeatInput.mapCursorBySeat.set(seatId, next);
+  renderMapVote(match);
+}
+
+function mapAtSeatCursor(seat, maps) {
+  if (!maps.length) return null;
+  const votedIndex = maps.findIndex((map) => map.id === seat?.mapVote);
+  if (votedIndex >= 0) {
+    sharedSeatInput.mapCursorBySeat.set(seat.id, votedIndex);
+    return maps[votedIndex];
+  }
+
+  if (!sharedSeatInput.mapCursorBySeat.has(seat?.id)) {
+    sharedSeatInput.mapCursorBySeat.set(seat.id, defaultMapCursor(seat?.id, maps));
+  }
+  return maps[sharedSeatInput.mapCursorBySeat.get(seat.id)] ?? maps[0];
+}
+
+function defaultMapCursor(seatId, maps) {
+  const n = Math.max(1, Number(String(seatId ?? '').replace(/\D/g, '')) || 1);
+  return maps.length ? (n - 1) % maps.length : 0;
 }
 
 function renderMapVote(match) {
@@ -912,12 +1261,17 @@ function renderMapVote(match) {
 
   updateMapVoteTimer(match);
   const maps = match.mapVotes?.length ? match.mapVotes : match.maps ?? [];
-  const myVote = currentMatchPlayer(match)?.mapVote ?? null;
+  const sharedScreen = isSharedScreenMatch(match);
+  const seats = sharedScreen ? sharedSeatsFor(match) : [];
+  const myVote = sharedScreen ? localSeatById(match, HOST_SEAT_ID)?.mapVote ?? null : currentMatchPlayer(match)?.mapVote ?? null;
   if (mapLockBtn) mapLockBtn.disabled = !maps.length;
 
   mapVoteList.innerHTML = maps
     .map((map, index) => {
       const voters = map.voters ?? [];
+      const cursorSeats = sharedScreen
+        ? seats.filter((seat) => !seat.mapVote && mapAtSeatCursor(seat, maps)?.id === map.id)
+        : [];
       const chosen = myVote === map.id;
       const tone = mapTone(map.id, index);
       // Forhandsbilden om den finns, annars arenabilden i full storlek.
@@ -933,7 +1287,13 @@ function renderMapVote(match) {
             ${voters
               .map(
                 (voter) =>
-                  `<span class="vote-pill ${escapeHtml(voter.character ?? '')}" title="${escapeHtml(voter.n)}">${escapeHtml(initials(voter.n))}</span>`,
+                  `<span class="vote-pill ${escapeHtml(voter.character ?? '')}" title="${escapeHtml(voter.n)}">${escapeHtml(voter.seatId ?? initials(voter.n))}</span>`,
+              )
+              .join('')}
+            ${cursorSeats
+              .map(
+                (seat) =>
+                  `<span class="vote-pill cursor ${escapeHtml(seat.character ?? '')}" title="${escapeHtml(`${seat.id} selecting`)}">${escapeHtml(seat.id)}</span>`,
               )
               .join('')}
           </span>
@@ -952,7 +1312,10 @@ function renderRoundResults(match) {
   const viking = Math.max(0, Number(match.finalScore?.viking) || 0);
   const winner = cleo === viking ? '' : cleo > viking ? 'cleo' : 'viking';
   const winnerColor = winner === 'viking' ? 'rgba(77,195,255,' : 'rgba(255,77,157,';
-  const mvp = match.players.find((player) => player.character === winner)?.n ?? match.hostName ?? currentName;
+  const resultRoster = isSharedScreenMatch(match)
+    ? sharedSeatsFor(match).map((seat) => ({ character: seat.character, n: seat.name ?? seat.id }))
+    : match.players;
+  const mvp = resultRoster.find((player) => player.character === winner)?.n ?? match.hostName ?? currentName;
 
   roundResults.style.setProperty('--winner-bg', winner ? `${winnerColor}0.14)` : 'rgba(255,209,102,0.14)');
   roundResults.style.setProperty('--winner-border', winner ? `${winnerColor}0.4)` : 'rgba(255,209,102,0.42)');
@@ -965,6 +1328,7 @@ function renderRoundResults(match) {
   } else {
     roundResultNote.innerHTML = `${escapeHtml(resultLabel(cleo, viking))} - MVP <b>${escapeHtml(mvp || 'Host')}</b>`;
   }
+  if (viewAchievementsResultBtn) viewAchievementsResultBtn.hidden = match.statsEnabled === false;
   achievementsUi.renderSummary(match);
   roundResults.classList.remove('vvc-enter');
   void roundResults.offsetWidth;
@@ -1120,6 +1484,31 @@ function currentMatchPlayer(match = net.match) {
   return match?.players?.find((player) => player.id === net.sessionId) ?? null;
 }
 
+function sharedSeatsFor(match = net.match) {
+  const seats = match?.localSeats ?? match?.seats ?? [];
+  return [...seats].sort((a, b) => seatSortIndex(a.id) - seatSortIndex(b.id));
+}
+
+function seatSortIndex(seatId) {
+  const index = LOCAL_SEAT_IDS.indexOf(seatId);
+  return index < 0 ? LOCAL_SEAT_IDS.length : index;
+}
+
+function localSeatById(match, seatId) {
+  return sharedSeatsFor(match).find((seat) => seat.id === seatId) ?? null;
+}
+
+function localSeatForGamepad(match, index) {
+  const wanted = Number(index);
+  return (
+    sharedSeatsFor(match).find((seat) => seat.inputDevice?.type === 'gamepad' && Number(seat.inputDevice.index) === wanted) ?? null
+  );
+}
+
+function isSharedScreenMatch(match) {
+  return !!match?.sharedScreen || match?.mode === MATCH_MODES.sharedScreen;
+}
+
 function mapName(match, mapId) {
   if (!mapId) return '';
   const map = match?.maps?.find((item) => item.id === mapId);
@@ -1151,12 +1540,28 @@ function playerStatus(player, match) {
   return character;
 }
 
+function localSeatStatus(seat, match) {
+  const character = characterLabel(seat.character);
+  if (match.phase === MATCH_PHASES.matchLobby) return seat.character ? `${character} - local` : 'Choose a fighter';
+  if (match.phase === MATCH_PHASES.mapVote) return `${character} - ${mapName(match, seat.mapVote) || 'no vote'}`;
+  if (match.phase === MATCH_PHASES.results) return `${character} - ready for next round`;
+  return character;
+}
+
+function localSeatInputLabel(seat) {
+  const offline = seat.connected === false ? ' offline' : '';
+  if (seat.inputDevice?.type === 'keyboard') return `keyboard${offline}`;
+  if (seat.inputDevice?.type === 'gamepad') return `Pad ${Number(seat.inputDevice.index) + 1}${offline}`;
+  return '';
+}
+
 function resultLabel(cleo, viking) {
   if (cleo === viking) return 'Draw round';
   return cleo > viking ? 'Team Cleo takes the round' : 'Team Viking takes the round';
 }
 
 function unrankedResultLabel(reason) {
+  if (reason === 'sharedScreen') return 'Shared screen - no stats recorded';
   if (reason === 'soloTimeUp') return 'Unranked solo timeout - no win rate or faction points';
   return 'Unranked round - no win rate or faction points';
 }

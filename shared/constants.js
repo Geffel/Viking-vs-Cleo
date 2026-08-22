@@ -41,6 +41,12 @@ export const MATCH_PHASES = {
 };
 
 export const MATCH_PHASE_IDS = Object.values(MATCH_PHASES);
+export const MATCH_MODES = {
+  online: 'online',
+  sharedScreen: 'sharedScreen',
+};
+export const LOCAL_SEAT_IDS = ['P1', 'P2', 'P3', 'P4'];
+export const SHARED_SCREEN_MAX_SEATS = LOCAL_SEAT_IDS.length;
 export const MAP_VOTE_MS = 30000;
 export const MATCH_COUNTDOWN_MS = 5000;
 export const MATCH_DURATION_MS = 6 * 60 * 1000;

@@ -8,7 +8,18 @@ import { WebSocketServer } from 'ws';
 import { Game } from './game.js';
 import { MatchRegistry } from './matches.js';
 import { ACHIEVEMENTS, achievementUnlockStats, evaluateAchievements, publicAchievements } from '../shared/achievements.js';
-import { TICK_MS, TEAM_IDS, NAME_MAX, LAGCOMP, MATCH_PHASES, PLAYER, MAPS, mapLayoutFor } from '../shared/constants.js';
+import {
+  TICK_MS,
+  TEAM_IDS,
+  NAME_MAX,
+  LAGCOMP,
+  LOCAL_SEAT_IDS,
+  MATCH_MODES,
+  MATCH_PHASES,
+  PLAYER,
+  MAPS,
+  mapLayoutFor,
+} from '../shared/constants.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -30,6 +41,7 @@ const AUTOSAVE_MS = 30000;
 const LEADERBOARD_BROADCAST_MS = 1000;
 // Leaderboarden visar bara toppen: profiles vaxer, men listan stannar pa denna langd.
 const LEADERBOARD_MAX_ROWS = 10;
+const HOST_SEAT_ID = LOCAL_SEAT_IDS[0] ?? 'P1';
 
 const app = express();
 app.use(
@@ -160,15 +172,91 @@ function handleMessage(ws, msg) {
         send(ws, { t: 'appError', message: 'That match no longer exists.' });
         return;
       }
+      if (match.closed || match.mode === MATCH_MODES.sharedScreen) {
+        send(ws, { t: 'appError', message: 'That match is shared screen and closed to online joiners.' });
+        return;
+      }
       if (ws.matchId && ws.matchId !== matchId) leaveLobbyMatch(ws);
       const joined = matches.addPlayer(matchId, sessionPlayer(ws));
       if (!joined) {
-        send(ws, { t: 'appError', message: "That match can't be joined right now." });
+        send(ws, {
+          t: 'appError',
+          message: match.closed ? 'That match is closed to online joiners.' : "That match can't be joined right now.",
+        });
         return;
       }
       ws.matchId = joined.id;
       broadcastLobby();
       sendMatch(joined);
+      break;
+    }
+    case 'setSharedScreenMode': {
+      const result = requireMatch(ws);
+      if (!result) return;
+      const { match, error } = matches.setSharedScreenMode(result.id, ws.sessionId, !!msg.enabled);
+      if (error) {
+        send(ws, { t: 'appError', message: error });
+        return;
+      }
+      broadcastLobby();
+      sendMatch(match);
+      break;
+    }
+    case 'wakeLocalSeat': {
+      const result = requireMatch(ws);
+      if (!result) return;
+      const { match, error } = matches.addLocalSeat(result.id, ws.sessionId, cleanInputDevice(msg.inputDevice));
+      if (error) {
+        send(ws, { t: 'appError', message: error });
+        return;
+      }
+      broadcastLobby();
+      sendMatch(match);
+      break;
+    }
+    case 'setLocalSeatCharacter': {
+      const result = requireMatch(ws);
+      if (!result) return;
+      const { match, error } = matches.setLocalSeatCharacter(result.id, ws.sessionId, msg.seatId, msg.character);
+      if (error) {
+        send(ws, { t: 'appError', message: error });
+        return;
+      }
+      sendMatch(match);
+      break;
+    }
+    case 'setLocalSeatReady': {
+      const result = requireMatch(ws);
+      if (!result) return;
+      const { match, error } = matches.setLocalSeatReady(result.id, ws.sessionId, msg.seatId, !!msg.ready);
+      if (error) {
+        send(ws, { t: 'appError', message: error });
+        return;
+      }
+      sendMatch(match);
+      break;
+    }
+    case 'removeLocalSeat': {
+      const result = requireMatch(ws);
+      if (!result) return;
+      const { match, error } = matches.removeLocalSeat(result.id, ws.sessionId, msg.seatId);
+      if (error) {
+        send(ws, { t: 'appError', message: error });
+        return;
+      }
+      broadcastLobby();
+      sendMatch(match);
+      break;
+    }
+    case 'setLocalSeatConnected': {
+      const result = requireMatch(ws);
+      if (!result) return;
+      const { match, error } = matches.setLocalSeatConnected(result.id, ws.sessionId, cleanInputDevice(msg.inputDevice), !!msg.connected);
+      if (error) {
+        send(ws, { t: 'appError', message: error });
+        return;
+      }
+      sendMatch(match);
       break;
     }
     case 'leaveMatch': {
@@ -253,7 +341,7 @@ function handleMessage(ws, msg) {
     case 'voteMap': {
       const result = requireMatch(ws);
       if (!result) return;
-      const { match, error, change } = matches.voteMap(result.id, ws.sessionId, msg.mapId);
+      const { match, error, change } = matches.voteMap(result.id, ws.sessionId, msg.mapId, msg.seatId);
       if (error) {
         send(ws, { t: 'appError', message: error });
         return;
@@ -283,24 +371,18 @@ function handleMessage(ws, msg) {
       break;
     }
     case 'move': {
-      if (!canControlGame(ws)) return;
-      const sessionGame = gameForSocket(ws);
-      const p = sessionGame?.players.get(ws.playerId);
-      if (p) sessionGame.setMove(p, msg.l, msg.r);
+      const control = controlledPlayerForMessage(ws, msg);
+      if (control?.player) control.game.setMove(control.player, msg.l, msg.r);
       break;
     }
     case 'act': {
-      if (!canControlGame(ws)) return;
-      const sessionGame = gameForSocket(ws);
-      const p = sessionGame?.players.get(ws.playerId);
-      if (p) sessionGame.action(p, msg.a);
+      const control = controlledPlayerForMessage(ws, msg);
+      if (control?.player) control.game.action(control.player, msg.a);
       break;
     }
     case 'actup': {
-      if (!canControlGame(ws)) return;
-      const sessionGame = gameForSocket(ws);
-      const p = sessionGame?.players.get(ws.playerId);
-      if (p) sessionGame.releaseAction(p, msg.a);
+      const control = controlledPlayerForMessage(ws, msg);
+      if (control?.player) control.game.releaseAction(control.player, msg.a);
       break;
     }
     case 'leave': {
@@ -349,6 +431,24 @@ function canControlGame(ws) {
   if (!ws.matchId) return true;
   const match = ws.matchId ? matches.get(ws.matchId) : null;
   return match?.phase === MATCH_PHASES.playing;
+}
+
+function controlledPlayerForMessage(ws, msg) {
+  const match = ws.matchId ? matches.get(ws.matchId) : null;
+  if (match?.mode === MATCH_MODES.sharedScreen && msg?.seatId) {
+    if (match.phase !== MATCH_PHASES.playing || match.hostId !== ws.sessionId) return null;
+    const seatId = cleanSeatId(msg.seatId);
+    const seat = seatId ? match.localSeats.get(seatId) : null;
+    const playerId = seat ? match.seatPlayerIds.get(seat.id) || seat.playerId : 0;
+    const matchGame = matchGames.get(match.id);
+    const player = playerId ? matchGame?.players.get(playerId) : null;
+    return player && matchGame ? { game: matchGame, player } : null;
+  }
+
+  if (!canControlGame(ws)) return null;
+  const sessionGame = gameForSocket(ws);
+  const player = sessionGame?.players.get(ws.playerId);
+  return player && sessionGame ? { game: sessionGame, player } : null;
 }
 
 function sessionPlayer(ws) {
@@ -408,6 +508,43 @@ function prepareGameForMatch(match) {
   clearGameSessions(match.id);
   const matchGame = new Game({ clock: gameNow, layout: mapLayoutFor(match.selectedMap), mapId: match.selectedMap });
   matchGames.set(match.id, matchGame);
+
+  if (match.mode === MATCH_MODES.sharedScreen) {
+    const hostWs = socketBySession(match.hostId);
+    if (!hostWs || hostWs.readyState !== hostWs.OPEN) return;
+
+    const localPlayers = [...match.localSeats.values()]
+      .sort((a, b) => LOCAL_SEAT_IDS.indexOf(a.id) - LOCAL_SEAT_IDS.indexOf(b.id))
+      .filter((seat) => seat.character)
+      .map((seat) => {
+        const p = matchGame.addPlayer(seat.name || seat.id, seat.character, {
+          clientId: null,
+          profileId: 0,
+        });
+        p.halfRtt = hostWs.halfRtt;
+        p.invulnUntil = Math.max(p.invulnUntil, match.countdownEndsAt + PLAYER.spawnProtectionMs);
+        matches.setLocalSeatPlayer(match.id, seat.id, p.id);
+        if (seat.id === HOST_SEAT_ID) hostWs.playerId = p.id;
+        return { seatId: seat.id, playerId: p.id, team: p.team, name: p.name };
+      });
+
+    const primary = localPlayers.find((player) => player.seatId === HOST_SEAT_ID) ?? localPlayers[0] ?? null;
+    if (!primary) return;
+
+    send(hostWs, {
+      t: 'gameReady',
+      serverNow: Date.now(),
+      id: primary.playerId,
+      name: primary.name,
+      team: primary.team,
+      profileId: 0,
+      localPlayers,
+      profile: profileSnapshotFor(hostWs),
+      match: matches.snapshot(match.id),
+      achievementStats: achievementStatsSnapshot(),
+    });
+    return;
+  }
 
   for (const row of match.players.values()) {
     const ws = socketBySession(row.id);
@@ -473,6 +610,13 @@ function beginFight(match) {
   const matchGame = matchGames.get(match.id);
   if (!matchGame) return;
   matchGame.markStarted(now);
+
+  if (match.mode === MATCH_MODES.sharedScreen) {
+    for (const p of matchGame.players.values()) {
+      p.invulnUntil = Math.max(p.invulnUntil, now + PLAYER.spawnProtectionMs);
+    }
+    return;
+  }
 
   for (const row of match.players.values()) {
     const ws = socketBySession(row.id);
@@ -543,6 +687,21 @@ function cleanName(raw) {
 function cleanClientId(raw) {
   const id = String(raw ?? '').replace(CONTROL_CHARS, '').trim().slice(0, 80);
   return /^[a-zA-Z0-9-]+$/.test(id) ? id : '';
+}
+
+function cleanInputDevice(raw) {
+  const type = raw?.type === 'gamepad' ? 'gamepad' : raw?.type === 'keyboard' ? 'keyboard' : '';
+  if (type === 'keyboard') return { type };
+  if (type !== 'gamepad') return { type: '' };
+
+  const index = Math.max(0, Math.min(15, Math.floor(Number(raw.index) || 0)));
+  const label = String(raw.label ?? '').replace(CONTROL_CHARS, '').trim().slice(0, 80);
+  return label ? { type, index, label } : { type, index };
+}
+
+function cleanSeatId(raw) {
+  const id = String(raw ?? '').replace(CONTROL_CHARS, '').trim().toUpperCase();
+  return LOCAL_SEAT_IDS.includes(id) ? id : '';
 }
 
 function resolveIdentity(rawClientId, name) {
@@ -1319,6 +1478,7 @@ function applyHarpoonPullStats(ev) {
 function recordMapVoteStats(match) {
   if (!match || recordedMapVoteStats.has(match.id)) return;
   recordedMapVoteStats.add(match.id);
+  if (match.statsEnabled === false) return;
 
   let dirty = false;
   const players = [...match.players.values()];
@@ -1345,7 +1505,7 @@ function recordMapVoteStats(match) {
 function recordMatchResult(match, matchGame) {
   if (!match || !matchGame || recordedMatchResults.has(match.id)) return;
   recordedMatchResults.add(match.id);
-  if (match.resultCounts === false) {
+  if (match.statsEnabled === false || match.resultCounts === false) {
     matchGame.feed = [];
     matchGame.events = [];
     return;
@@ -1480,10 +1640,12 @@ function broadcastTo(str, predicate) {
   }
 }
 
-function sendGameSnapshot(targetGame, predicate) {
+function sendGameSnapshot(targetGame, predicate, { statsEnabled = true } = {}) {
   const snap = targetGame.snapshot();
-  processKillStats(snap.feed);
-  processStatEvents(snap.events);
+  if (statsEnabled) {
+    processKillStats(snap.feed);
+    processStatEvents(snap.events);
+  }
   delete snap.events;
   snap.lb = leaderboardSnapshot();
   broadcastTo(JSON.stringify(snap), predicate);
@@ -1541,7 +1703,7 @@ setInterval(() => {
       if (!match) matchGames.delete(matchId);
       continue;
     }
-    sendGameSnapshot(matchGame, (ws) => ws.matchId === matchId);
+    sendGameSnapshot(matchGame, (ws) => ws.matchId === matchId, { statsEnabled: match.statsEnabled !== false });
   }
 }, TICK_MS);
 

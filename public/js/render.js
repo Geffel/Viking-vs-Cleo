@@ -215,6 +215,7 @@ export class Renderer {
     this.silhouettes = new Map(); // bild -> farg -> fardig rod hinna (byggs en gang)
     this.shake = { amp: 0, x: 0, y: 0 }; // skarmskak, se punch()
     this.selfId = 0; // satts vid varje draw()
+    this.localPlayerIds = new Set();
     this.comboHit = { id: 0, until: 0 }; // vems nasta skadesiffra som ar en finisher
     this.debug = false; // window.vvc.renderer.debug = true ritar ut traffytorna
     this.resize();
@@ -555,7 +556,7 @@ export class Renderer {
         // Sista slaget i en combo landade. Det har ar kvallens hardaste traff -
         // den ska kannas i hela rutan, inte bara synas som en siffra. Var man
         // inte med sjalv racker en darring: annars skakar skarmen hela matchen.
-        const mine = fx.id === this.selfId || fx.by === this.selfId;
+        const mine = this.isLocalPlayer(fx.id) || this.isLocalPlayer(fx.by);
         this.punch(mine ? COMBO_FX.shake : COMBO_FX.shakeOther);
         // Skadesiffran som kommer strax efter far finisher-behandling.
         this.comboHit = { id: fx.id, until: t + 120 };
@@ -758,10 +759,11 @@ export class Renderer {
     return s.amp;
   }
 
-  draw(players, powerups, projectiles, selfId, dt) {
+  draw(players, powerups, projectiles, localPlayerIds, dt) {
     const ctx = this.ctx;
     this.dt = dt;
-    this.selfId = selfId; // effekterna behover veta vem som ar man sjalv
+    this.localPlayerIds = normalizeLocalPlayerIds(localPlayerIds);
+    this.selfId = this.localPlayerIds.values().next().value ?? 0; // effekterna behover veta vem som ar man sjalv
     this.updateShake(dt);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
@@ -806,7 +808,7 @@ export class Renderer {
     this.drawPowerups(ctx, powerups);
 
     for (const p of players) {
-      if (!p.d) this.drawPlayer(ctx, p, p.i === selfId);
+      if (!p.d) this.drawPlayer(ctx, p, this.isLocalPlayer(p.i));
     }
 
     this.drawReelRopes(ctx, players, projectiles);
@@ -874,6 +876,10 @@ export class Renderer {
 
     if (this.isForestArena()) this.drawForestDepth(ctx, t);
     else this.drawNordicDepth(ctx, t);
+  }
+
+  isLocalPlayer(playerId) {
+    return this.localPlayerIds.has(Math.max(0, Number(playerId) || 0));
   }
 
   drawNordicDepth(ctx, t) {
@@ -2571,6 +2577,11 @@ function strokeLine(ctx, x0, y0, x1, y1) {
   ctx.moveTo(x0, y0);
   ctx.lineTo(x1, y1);
   ctx.stroke();
+}
+
+function normalizeLocalPlayerIds(value) {
+  const raw = Array.isArray(value) || value instanceof Set ? [...value] : [value];
+  return new Set(raw.map((id) => Math.max(0, Number(id) || 0)).filter(Boolean));
 }
 
 // Harpunbilden ar en 1024x1024-duk dar sjalva harpunen sitter i detta utsnitt
