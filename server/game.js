@@ -1576,7 +1576,7 @@ export class Game {
         k: p.kills,
         de: p.deaths,
         rs: p.dead ? Math.max(0, p.respawnAt - t) : 0,
-        cd: Object.fromEntries(ACTION_SLOTS.map((slot) => [slot, Math.max(0, p.cd[slot] - t)])),
+        cd: cooldownSnapshot(p, t),
       });
     }
 
@@ -1711,6 +1711,15 @@ function overlaps(a, b) {
 
 function round(v) {
   return Math.round(v * 100) / 100;
+}
+
+function cooldownSnapshot(p, t) {
+  const out = {};
+  for (const slot of ACTION_SLOTS) {
+    const left = Math.max(0, Math.round(p.cd[slot] - t));
+    if (left > 0) out[slot] = left;
+  }
+  return out;
 }
 
 function clamp(v, min, max) {

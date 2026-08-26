@@ -38,7 +38,9 @@ const SCHEMA_VERSION = 4;
 // Hur ofta pagaende sessioners poang och speltid checkpointas till disk. En
 // hard krasch (stromavbrott, kill -9) forlorar da som mest denna tid.
 const AUTOSAVE_MS = 30000;
-const LEADERBOARD_BROADCAST_MS = 1000;
+const LEADERBOARD_BROADCAST_MS = 5000;
+const SNAPSHOT_RATE_HZ = Math.max(10, Math.min(Math.round(1000 / TICK_MS), Number(process.env.NET_SNAPSHOT_HZ) || 30));
+const SNAPSHOT_MS = 1000 / SNAPSHOT_RATE_HZ;
 // Leaderboarden visar bara toppen: profiles vaxer, men listan stannar pa denna langd.
 const LEADERBOARD_MAX_ROWS = 10;
 const HOST_SEAT_ID = LOCAL_SEAT_IDS[0] ?? 'P1';
@@ -114,7 +116,6 @@ wss.on('connection', (ws) => {
     matches: matches.list(),
     lb,
     leaderboardSummary: leaderboardSummary(lb),
-    achievementStats: achievementStatsSnapshot(),
   });
 
   ws.on('message', (raw) => {
@@ -137,6 +138,10 @@ wss.on('connection', (ws) => {
 
 function handleMessage(ws, msg) {
   switch (msg.t) {
+    case 'clientPing': {
+      send(ws, { t: 'clientPong', id: Math.max(0, Number(msg.id) || 0), serverNow: Date.now() });
+      break;
+    }
     case 'identify': {
       identifySocket(ws, msg);
       send(ws, {
@@ -485,7 +490,6 @@ function lobbySnapshotFor(ws) {
     match: ws.matchId ? matches.snapshot(ws.matchId) : null,
     lb,
     leaderboardSummary: leaderboardSummary(lb),
-    achievementStats: achievementStatsSnapshot(),
   };
 }
 
@@ -792,34 +796,44 @@ function leaderboardSnapshot() {
   for (const profile of profiles.values()) {
     const view = buildProfileView(profile);
 
-    rows.push({
-      id: profile.profileId,
-      n: view.name,
-      pts: view.points,
-      ms: view.playMs,
-      kills: view.kills,
-      deaths: view.deaths,
-      nemesis: view.nemesis,
-      prey: view.prey,
-      fav: view.favoriteCharacter,
-      stats: view.stats,
-      achievements: view.achievements,
-    });
+    rows.push(leaderboardRow(profile, view));
   }
 
   rows.sort((a, b) => b.pts - a.pts || b.ms - a.ms || a.n.localeCompare(b.n, 'sv'));
   return rows.slice(0, LEADERBOARD_MAX_ROWS);
 }
 
-function leaderboardPayload(rows = leaderboardSnapshot()) {
+function leaderboardRow(profile, view) {
+  const matches = view.stats?.matches ?? {};
   return {
+    id: profile.profileId,
+    n: view.name,
+    pts: view.points,
+    ms: view.playMs,
+    kills: view.kills,
+    deaths: view.deaths,
+    nemesis: view.nemesis,
+    prey: view.prey,
+    fav: view.favoriteCharacter,
+    stats: {
+      matches: {
+        played: Math.max(0, Number(matches.played) || 0),
+        wins: Math.max(0, Number(matches.wins) || 0),
+      },
+    },
+  };
+}
+
+function leaderboardPayload(rows = leaderboardSnapshot(), { includeAchievementStats = false } = {}) {
+  const payload = {
     t: 'leaderboard',
     serverNow: Date.now(),
     lb: rows,
     matches: leaderboardMatchesSnapshot(),
     summary: leaderboardSummary(rows),
-    achievementStats: achievementStatsSnapshot(),
   };
+  if (includeAchievementStats) payload.achievementStats = achievementStatsSnapshot();
+  return payload;
 }
 
 function achievementStatsSnapshot() {
@@ -863,7 +877,17 @@ function leaderboardSummary(rows = leaderboardSnapshot()) {
 
 function leaderboardMatchesSnapshot() {
   return matches.list().map((match) => ({
-    ...match,
+    id: match.id,
+    title: match.title,
+    phase: match.phase,
+    mode: match.mode,
+    sharedScreen: match.sharedScreen,
+    playerCount: match.playerCount,
+    selectedMap: match.selectedMap,
+    finalScore: match.finalScore,
+    voteEndsAt: match.voteEndsAt,
+    countdownEndsAt: match.countdownEndsAt,
+    matchEndsAt: match.matchEndsAt,
     liveScore: matchGames.get(match.id)?.score ?? match.finalScore ?? null,
   }));
 }
@@ -895,12 +919,13 @@ function leaderboardSignature(payload) {
       entry.prey?.name,
       entry.prey?.count,
       entry.fav,
+      entry.stats?.matches?.played ?? 0,
+      entry.stats?.matches?.wins ?? 0,
     ]),
     summary: {
       ...payload.summary,
       totalPlayMs: Math.floor((payload.summary?.totalPlayMs ?? 0) / 1000),
     },
-    achievementStats: payload.achievementStats,
     matches: payload.matches.map((match) => [
       match.id,
       match.phase,
@@ -1647,7 +1672,6 @@ function sendGameSnapshot(targetGame, predicate, { statsEnabled = true } = {}) {
     processStatEvents(snap.events);
   }
   delete snap.events;
-  snap.lb = leaderboardSnapshot();
   broadcastTo(JSON.stringify(snap), predicate);
 }
 
@@ -1678,11 +1702,14 @@ setInterval(() => {
 // --------------------------------------------------------------- spelloopen
 
 let acc = 0;
+let snapshotAcc = SNAPSHOT_MS;
 let last = performance.now();
 
 setInterval(() => {
   const nowMs = performance.now();
-  acc += nowMs - last;
+  const elapsed = nowMs - last;
+  acc += elapsed;
+  snapshotAcc += elapsed;
   last = nowMs;
 
   // Ta igen missade tick, men aldrig mer an 5 i rad (undviker dodsspiral).
@@ -1694,6 +1721,9 @@ setInterval(() => {
     steps++;
   }
   if (steps === 5) acc = 0;
+
+  if (snapshotAcc < SNAPSHOT_MS) return;
+  snapshotAcc %= SNAPSHOT_MS;
 
   sendGameSnapshot(game, (ws) => !ws.matchId && !!ws.playerId);
 

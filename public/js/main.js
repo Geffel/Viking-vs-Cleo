@@ -96,7 +96,12 @@ const instructionsBasics = document.getElementById('instructions-basics');
 const instructionsCombos = document.getElementById('instructions-combos');
 
 const TRANSITION_MS = 620;
-const AUDIO_DEBUG = new URLSearchParams(location.search).has('audioDebug');
+const DEBUG_PARAMS = new URLSearchParams(location.search);
+const AUDIO_DEBUG = DEBUG_PARAMS.has('audioDebug');
+const NET_DEBUG = DEBUG_PARAMS.has('netDebug') || localStorage.getItem('vvc.netDebug') === '1';
+const NET_LOG_SAMPLE_MS = 1000;
+const NET_LOG_MAX_ROWS = 3600;
+const NET_LOG_VERSION = 1;
 const ROW_ACCENTS = ['#ff4d9d', '#4dc3ff', '#ffd166', '#ff86bf'];
 const MAP_TONES = {
   arena_01: '#ffd166',
@@ -171,6 +176,7 @@ initLobbyInfo();
 initPlayerCard();
 initInstructions();
 initAudioDebug();
+const netDebug = initNetDebug(NET_DEBUG);
 initMenuClicks();
 setView('intro');
 syncMatchMusic(null);
@@ -378,6 +384,7 @@ function frame(now) {
   }
   hud.update(dt);
   updatePhaseTimers();
+  netDebug.update(now);
 
   requestAnimationFrame(frame);
 }
@@ -1469,6 +1476,226 @@ function initAudioDebug() {
   document.body.appendChild(btn);
 }
 
+function initNetDebug(enabled = false) {
+  const el = document.createElement('div');
+  el.id = 'net-debug';
+  el.hidden = true;
+  document.body.appendChild(el);
+
+  const api = {
+    enabled: false,
+    lastUpdate: 0,
+    lastLogAt: 0,
+    rows: [],
+    droppedRows: 0,
+    lastExportName: '',
+    statusText: '',
+    set(on) {
+      this.enabled = !!on;
+      el.hidden = !this.enabled;
+      localStorage.setItem('vvc.netDebug', this.enabled ? '1' : '0');
+      this.logEvent(this.enabled ? 'enabled' : 'disabled');
+      if (this.enabled) this.sample(performance.now());
+      if (this.enabled) this.update(performance.now(), true);
+    },
+    toggle() {
+      this.set(!this.enabled);
+    },
+    sample(now = performance.now()) {
+      const metrics = net.metricsSnapshot();
+      this.lastLogAt = now;
+      this.append({
+        type: 'sample',
+        ts: new Date().toISOString(),
+        perfMs: Math.round(now),
+        view: currentView,
+        match: netLogMatchContext(),
+        metrics: netLogMetrics(metrics),
+      });
+      return metrics;
+    },
+    logEvent(event, extra = {}) {
+      this.append({
+        type: 'event',
+        event,
+        ts: new Date().toISOString(),
+        perfMs: Math.round(performance.now()),
+        view: currentView,
+        match: netLogMatchContext(),
+        ...extra,
+      });
+    },
+    append(row) {
+      this.rows.push(row);
+      while (this.rows.length > NET_LOG_MAX_ROWS) {
+        this.rows.shift();
+        this.droppedRows++;
+      }
+    },
+    download() {
+      if (this.enabled) this.sample(performance.now());
+      const exportedAt = new Date();
+      const meta = {
+        type: 'meta',
+        version: NET_LOG_VERSION,
+        exportedAt: exportedAt.toISOString(),
+        page: location.href,
+        userAgent: navigator.userAgent,
+        droppedRows: this.droppedRows,
+        rowCount: this.rows.length,
+        sampleMs: NET_LOG_SAMPLE_MS,
+      };
+      const text = `${[meta, ...this.rows].map((row) => JSON.stringify(row)).join('\n')}\n`;
+      const filename = netLogFilename(exportedAt);
+      downloadTextFile(filename, text, 'application/x-ndjson');
+      this.lastExportName = filename;
+      this.statusText = `saved ${formatDebugTime(exportedAt)}`;
+      this.update(performance.now(), true);
+      return { filename, rows: this.rows.length, bytes: text.length };
+    },
+    clear() {
+      this.rows = [];
+      this.droppedRows = 0;
+      this.statusText = 'cleared';
+      this.update(performance.now(), true);
+    },
+    update(now, force = false) {
+      if (this.enabled && now - this.lastLogAt >= NET_LOG_SAMPLE_MS) this.sample(now);
+      if (!this.enabled || (!force && now - this.lastUpdate < 250)) return;
+      this.lastUpdate = now;
+      renderNetDebug(el, net.metricsSnapshot(), this);
+    },
+  };
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'F8' && (e.ctrlKey || e.shiftKey)) {
+      e.preventDefault();
+      api.toggle();
+    } else if (e.key === 'F9' && (e.ctrlKey || e.shiftKey)) {
+      e.preventDefault();
+      api.download();
+    }
+  });
+
+  api.set(enabled);
+  return api;
+}
+
+function renderNetDebug(el, m, log) {
+  el.innerHTML = `
+    <div class="net-debug-head">
+      <span>NET</span>
+      <b class="${m.connected ? 'ok' : 'bad'}">${m.connected ? 'online' : 'offline'}</b>
+    </div>
+    <div class="net-debug-grid">
+      <span>RTT</span><b>${fmtMs(m.rttMs)} <small>last ${fmtMs(m.rttLastMs)}</small></b>
+      <span>jitter</span><b>${fmtMs(m.rttJitterMs)}</b>
+      <span>state</span><b>${fmtHz(m.stateHz)} <small>${fmtMs(m.stateIntervalMs)} gap</small></b>
+      <span>state size</span><b>${fmtBytes(m.stateBytesAvg)} <small>last ${fmtBytes(m.stateBytesLast)}</small></b>
+      <span>down</span><b>${fmtKbps(m.inKbps)} <small>${fmtRate(m.inMsgPs)} msg/s</small></b>
+      <span>up</span><b>${fmtKbps(m.outKbps)} <small>${fmtRate(m.outMsgPs)} msg/s</small></b>
+      <span>buffer</span><b>${fmtMs(m.bufferMs)} <small>${m.bufferFrames} frames</small></b>
+      <span>ticks</span><b>${m.tick ?? '-'} <small>miss ${m.tickGaps}</small></b>
+      <span>input-FX</span><b>${fmtMs(m.localFxDelayMs)} <small>last ${fmtMs(m.localFxDelayLastMs)}</small></b>
+      <span>log</span><b>${log.rows.length} rows <small>${escapeHtml(log.statusText || 'ready')}</small></b>
+    </div>
+  `;
+}
+
+function netLogMatchContext() {
+  const match = net.match;
+  return {
+    id: match?.id ?? null,
+    phase: match?.phase ?? null,
+    mode: match?.mode ?? null,
+    sharedScreen: !!match?.sharedScreen,
+    playerCount: match?.playerCount ?? match?.players?.length ?? null,
+    localPlayerIds: net.localPlayerIds(),
+  };
+}
+
+function netLogMetrics(m) {
+  return {
+    connected: m.connected,
+    interpMs: roundMetric(m.interpMs),
+    serverOffsetMs: roundMetric(m.serverOffsetMs),
+    rttMs: roundMetric(m.rttMs),
+    rttLastMs: roundMetric(m.rttLastMs),
+    rttJitterMs: roundMetric(m.rttJitterMs),
+    pingLost: m.pingLost,
+    inKbps: roundMetric(m.inKbps),
+    outKbps: roundMetric(m.outKbps),
+    inMsgPs: roundMetric(m.inMsgPs),
+    outMsgPs: roundMetric(m.outMsgPs),
+    stateHz: roundMetric(m.stateHz),
+    stateBytesAvg: roundMetric(m.stateBytesAvg),
+    stateBytesLast: m.stateBytesLast,
+    stateIntervalMs: roundMetric(m.stateIntervalMs),
+    stateJitterMs: roundMetric(m.stateJitterMs),
+    tick: m.tick,
+    tickGaps: m.tickGaps,
+    outOfOrderStates: m.outOfOrderStates,
+    bufferMs: roundMetric(m.bufferMs),
+    bufferFrames: m.bufferFrames,
+    localFxDelayMs: roundMetric(m.localFxDelayMs),
+    localFxDelayLastMs: roundMetric(m.localFxDelayLastMs),
+    localFxDelayWindowMs: roundMetric(m.localFxDelayWindowMs),
+    localFxSamples: m.localFxSamples,
+    totals: m.totals,
+    types: m.types,
+  };
+}
+
+function roundMetric(value) {
+  return Number.isFinite(value) ? Math.round(value * 10) / 10 : 0;
+}
+
+function netLogFilename(date = new Date()) {
+  const pad = (value) => String(value).padStart(2, '0');
+  return `vvc-netlog-${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(
+    date.getMinutes(),
+  )}${pad(date.getSeconds())}.jsonl`;
+}
+
+function downloadTextFile(filename, text, type = 'text/plain') {
+  const blob = new Blob([text], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function formatDebugTime(date) {
+  const pad = (value) => String(value).padStart(2, '0');
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+function fmtMs(value) {
+  return value > 0 ? `${Math.round(value)}ms` : '-';
+}
+
+function fmtHz(value) {
+  return value > 0 ? `${value.toFixed(1)}Hz` : '-';
+}
+
+function fmtRate(value) {
+  return value > 0 ? value.toFixed(1) : '-';
+}
+
+function fmtKbps(value) {
+  if (value <= 0) return '-';
+  return value >= 1000 ? `${(value / 1000).toFixed(2)}Mbps` : `${Math.round(value)}kbps`;
+}
+
+function fmtBytes(value) {
+  if (value <= 0) return '-';
+  return value >= 1024 ? `${(value / 1024).toFixed(1)}KB` : `${Math.round(value)}B`;
+}
+
 function initMenuClicks() {
   document.addEventListener(
     'click',
@@ -1622,7 +1849,7 @@ function formatClock(ms) {
 
 // ------------------------------------------------------------------ hjalp
 
-window.vvc = { net, renderer, hud, audio };
+window.vvc = { net, renderer, hud, audio, netDebug };
 
 function formatPlayTime(ms) {
   const total = Math.max(0, Math.floor(ms / 1000));

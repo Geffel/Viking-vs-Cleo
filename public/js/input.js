@@ -85,6 +85,7 @@ export function initInput(net, onAction) {
     sources.add(source);
     if (!active || !firstPress) return;
 
+    net.noteLocalAction?.(action, state.seatId || null);
     sendForState(state, { t: 'act', a: action });
     onAction?.(action, state.seatId || null);
   }
