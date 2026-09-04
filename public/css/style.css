@@ -7842,6 +7842,20 @@ body > .instructions-overlay {
   aspect-ratio: 16 / 9;
   z-index: 60;
   border-radius: 16px;
+  /* Basanimationen vvc-in slutar pa "transform: none" och skulle da ata upp
+     centreringen ovan. Har tonar vi in utan att rora transform. */
+  animation: vvc-instr-fade 0.32s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+
+@keyframes vvc-instr-fade {
+  from {
+    opacity: 0;
+    filter: blur(7px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+  }
 }
 
 body > .instructions-overlay.in-game {
