@@ -54,6 +54,8 @@ export const TRAINING = {
   abilityCooldownMs: 5000,
   // Hur stor del av kartans bredd NPC:n patrullerar, centrerat i mitten.
   patrolWidthFrac: 0.5,
+  // NPC:n gar i halv fart mot en riktig spelare - lattare att ova traffar pa.
+  botSpeedMul: 0.5,
 };
 export const LOCAL_SEAT_IDS = ['P1', 'P2', 'P3', 'P4'];
 export const SHARED_SCREEN_MAX_SEATS = LOCAL_SEAT_IDS.length;

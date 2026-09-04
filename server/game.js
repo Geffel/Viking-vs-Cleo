@@ -147,6 +147,7 @@ export class Game {
       comboAt: 0, // nar den senaste traffen i kedjan landade
       bot: false, // traningsdockan: styrs av servern, slass aldrig tillbaka
       patrol: null, // { minX, maxX, dir } - bandet boten gar fram och tillbaka i
+      speedMul: 1, // permanent fartfaktor - traningsdockan gar i halvfart
       stats: freshMatchStats(),
     };
     this.spawn(p);
@@ -173,6 +174,7 @@ export class Game {
     const p = this.addPlayer(TRAINING_BOT_NAME, team, { clientId: null, profileId: 0 });
     p.bot = true;
     p.patrol = patrolBand(widthFrac);
+    p.speedMul = TRAINING.botSpeedMul;
     // Boten borjar mitt i bandet i stallet for pa lagets spawn, sa att den
     // syns direkt dar man ska ova.
     p.x = (p.patrol.minX + p.patrol.maxX) / 2;
@@ -1001,7 +1003,8 @@ export class Game {
       // applyPull har redan satt vx och facing mot fangaren - ror dem inte.
     } else if (!locked) {
       const dir = (p.input.right ? 1 : 0) - (p.input.left ? 1 : 0);
-      const speedMul = p.channel?.id === 'sunFire' ? ABILITY_TUNING.sunFire.moveSpeedMul : 1;
+      const channelMul = p.channel?.id === 'sunFire' ? ABILITY_TUNING.sunFire.moveSpeedMul : 1;
+      const speedMul = channelMul * (p.speedMul ?? 1);
       const maxSpeed = PLAYER.maxSpeed * speedMul;
       if (dir !== 0) {
         p.vx += dir * PLAYER.accel * speedMul;

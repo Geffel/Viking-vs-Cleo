@@ -336,7 +336,9 @@ export class MatchRegistry {
       match.selectedMap = resolveSelectedMap(match);
       match.phase = MATCH_PHASES.countdown;
       match.voteEndsAt = 0;
-      match.countdownEndsAt = now + MATCH_COUNTDOWN_MS;
+      // Traningen raknar inte ned - fasen passeras direkt, men behovs anda for
+      // att arenan ska hinna byggas innan spelet borjar.
+      match.countdownEndsAt = isTraining(match) ? now : now + MATCH_COUNTDOWN_MS;
       match.matchEndsAt = 0;
       match.updatedAt = now;
       return { match, change: { match, from: MATCH_PHASES.mapVote, to: MATCH_PHASES.countdown } };
@@ -376,7 +378,7 @@ export class MatchRegistry {
       if (match.phase === MATCH_PHASES.mapVote && match.voteEndsAt && now >= match.voteEndsAt) {
         match.selectedMap = resolveSelectedMap(match);
         match.phase = MATCH_PHASES.countdown;
-        match.countdownEndsAt = now + MATCH_COUNTDOWN_MS;
+        match.countdownEndsAt = isTraining(match) ? now : now + MATCH_COUNTDOWN_MS;
         match.matchEndsAt = 0;
         match.updatedAt = now;
         changes.push({ match, from: MATCH_PHASES.mapVote, to: MATCH_PHASES.countdown });

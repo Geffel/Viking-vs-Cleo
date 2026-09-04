@@ -689,7 +689,9 @@ function selectMatchWipe(match, previousPhase) {
     return null;
   }
 
-  if (previousPhase === MATCH_PHASES.mapVote && match.phase === MATCH_PHASES.countdown) return WIPES.countdown;
+  if (previousPhase === MATCH_PHASES.mapVote && match.phase === MATCH_PHASES.countdown) {
+    return isTrainingMatch(match) ? null : WIPES.countdown;
+  }
   if (match.phase === MATCH_PHASES.results && previousPhase !== MATCH_PHASES.results) return WIPES.results;
   if (match.phase === MATCH_PHASES.mapVote && previousPhase !== MATCH_PHASES.mapVote) return WIPES.mapVote;
 
@@ -1427,7 +1429,7 @@ function updateMapVoteTimer(match) {
 function updateFightOverlay(match = net.match) {
   if (!fightOverlay || !fightCopy) return;
 
-  if (match?.phase === MATCH_PHASES.countdown) {
+  if (match?.phase === MATCH_PHASES.countdown && !isTrainingMatch(match)) {
     fightOverlay.hidden = false;
     fightOverlay.classList.add('countdown-mode');
     fightOverlay.classList.remove('fight-mode');
