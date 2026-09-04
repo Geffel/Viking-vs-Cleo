@@ -28,3 +28,6 @@ desktop.ini
 .vscode/
 .idea/
 *.swp
+
+# Maskinlokala Claude Code-installningar (absoluta sokvagar, per utvecklare)
+.claude/settings.local.json
