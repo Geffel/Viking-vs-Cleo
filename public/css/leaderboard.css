@@ -530,8 +530,19 @@ body[data-connection="offline"] .gl-live-pill {
 }
 
 .gl-team b,
-.gl-team strong {
+.gl-team strong,
+.gl-team .gl-team-wins {
   display: block;
+}
+
+.gl-team-wins {
+  color: rgba(242, 245, 255, 0.6);
+  font-family: "Oswald", sans-serif;
+  font-size: 11px;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 .gl-team b {

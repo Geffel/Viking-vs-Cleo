@@ -5,6 +5,8 @@ const clockEl = document.getElementById('leaderboard-clock');
 const onlineEl = document.getElementById('leaderboard-online');
 const cleoPctEl = document.getElementById('leaderboard-cleo-pct');
 const vikingPctEl = document.getElementById('leaderboard-viking-pct');
+const cleoWinsEl = document.getElementById('leaderboard-cleo-wins');
+const vikingWinsEl = document.getElementById('leaderboard-viking-wins');
 const cleoBarEl = document.getElementById('leaderboard-cleo-bar');
 const vikingBarEl = document.getElementById('leaderboard-viking-bar');
 const leadEl = document.getElementById('leaderboard-lead');
@@ -270,6 +272,8 @@ function renderFactionWar() {
 
   cleoPctEl.textContent = `${cleoPct}%`;
   vikingPctEl.textContent = `${vikingPct}%`;
+  cleoWinsEl.textContent = winsLabel(cleo);
+  vikingWinsEl.textContent = winsLabel(viking);
   cleoBarEl.style.width = `${cleoPct}%`;
   vikingBarEl.style.width = `${vikingPct}%`;
 
@@ -283,6 +287,10 @@ function renderFactionWar() {
     leadEl.textContent = 'Viking clans lead the arena';
     leadEl.style.color = '#4dc3ff';
   }
+}
+
+function winsLabel(wins) {
+  return `${formatNumber(wins)} ${wins === 1 ? 'win' : 'wins'}`;
 }
 
 function renderCounters() {
