@@ -84,6 +84,7 @@ const fightCopy = document.getElementById('fight-copy');
 const connEl = document.getElementById('conn');
 const leaveBtn = document.getElementById('leave');
 const matchClock = document.getElementById('match-clock');
+const scoreboard = document.getElementById('scoreboard');
 const boardBody = document.getElementById('lobby-board-body');
 const playerCard = document.getElementById('player-card');
 const fighterProfile = document.getElementById('fighter-profile');
@@ -1050,6 +1051,9 @@ function syncGameAccess(match = net.match) {
 function syncTrainingOverlay(match = net.match) {
   const show = currentView === 'game' && isTrainingMatch(match);
   if (gameInstructionsBtn) gameInstructionsBtn.hidden = !show;
+  // Karaktarsvaljaren tar scoreboardens plats - poangen sager anda ingenting
+  // nar motstandet ar en docka som inte slass tillbaka.
+  if (scoreboard) scoreboard.hidden = show;
   if (!trainingSwitch) return;
 
   trainingSwitch.hidden = !show;
