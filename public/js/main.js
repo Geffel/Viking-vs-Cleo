@@ -24,6 +24,7 @@ import {
   MELEE_BINDS,
   NAME_MAX,
   TEAMS,
+  TRAINING,
   mapLayoutFor,
   mapSoundtrackFor,
   mapThemeFor,
@@ -50,6 +51,7 @@ const lobbyError = document.getElementById('lobby-error');
 const globalLobby = document.getElementById('global-lobby');
 const matchList = document.getElementById('match-list');
 const createMatchBtn = document.getElementById('create-match');
+const trainingModeBtn = document.getElementById('training-mode');
 const openAchievementsBtn = document.getElementById('open-achievements');
 const achievementsView = document.getElementById('achievements-view');
 const openSettingsBtn = document.getElementById('open-settings');
@@ -66,6 +68,10 @@ const resetMatchBtn = document.getElementById('reset-match');
 const mapVote = document.getElementById('map-vote');
 const mapVoteList = document.getElementById('map-vote-list');
 const mapVoteTimer = document.getElementById('map-vote-timer');
+const mapVoteStep = document.getElementById('map-vote-step');
+const mapVoteTitle = document.getElementById('map-vote-title');
+const mapVoteClock = document.getElementById('map-vote-clock');
+const mapVoteFoot = document.querySelector('.map-vote-foot');
 const mapLockBtn = document.getElementById('map-lock');
 const roundResults = document.getElementById('round-results');
 const roundResultScore = document.getElementById('round-result-score');
@@ -89,6 +95,8 @@ const fighterProfileRating = document.getElementById('fighter-profile-rating');
 const fighterProfileRecord = document.getElementById('fighter-profile-record');
 const fighterProfileTiles = document.getElementById('fighter-profile-tiles');
 const openInstructionsBtn = document.getElementById('open-instructions');
+const gameInstructionsBtn = document.getElementById('game-instructions');
+const trainingSwitch = document.getElementById('training-switch');
 const instructionsOverlay = document.getElementById('instructions-overlay');
 const instructionsCloseBtn = document.getElementById('instructions-close');
 const instructionsTabs = [...document.querySelectorAll('[data-help-team]')];
@@ -189,6 +197,17 @@ introForm.addEventListener('submit', (e) => {
 createMatchBtn.addEventListener('click', () => {
   lobbyError.textContent = '';
   net.createMatch();
+});
+
+trainingModeBtn?.addEventListener('click', () => {
+  lobbyError.textContent = '';
+  net.createMatch({ training: true });
+});
+
+trainingSwitch?.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-training-character]');
+  if (!btn || btn.disabled) return;
+  net.trainingSwitchCharacter(btn.dataset.trainingCharacter);
 });
 
 openAchievementsBtn?.addEventListener('click', () => openAchievements());
@@ -328,6 +347,8 @@ net.on('gameReady', ({ team, match, localPlayers }) => {
   achievementsUi.clearMatch();
   const previousPhase = lastMatchPhase;
   applyMatchUpdate(match, previousPhase, () => {
+    // Taket forst: setTeam laser av det nar rutornas nedrakning byggs.
+    hud.setCooldownCap(isTrainingMatch(match) ? TRAINING.abilityCooldownMs : 0);
     if (localPlayers?.length) hud.setSharedMode(true);
     else hud.setTeam(team);
     syncGameAccess(match);
@@ -410,6 +431,7 @@ function submitName() {
 }
 
 function setView(view) {
+  const changedView = currentView !== view;
   currentView = view;
 
   intro.classList.toggle('hidden', view !== 'intro');
@@ -422,7 +444,7 @@ function setView(view) {
   // veta nar de inte langre ar framme.
   if (view !== 'settings') settingsUi.close();
   leaveBtn.hidden = view !== 'game';
-  if (view === 'intro' || view === 'game') closeInstructions({ restoreFocus: false });
+  if (changedView) closeInstructions({ restoreFocus: false });
 
   // Profil-overlayen hor bara hemma i globala lobbyn.
   if (view !== 'lobby' && openProfileId) closeProfile();
@@ -450,6 +472,7 @@ function setView(view) {
     syncSharedSeatScanner(null);
   }
 
+  syncTrainingOverlay();
   markViewEntry(view);
   syncGamepadCursor();
 }
@@ -484,6 +507,7 @@ function initInstructions() {
   if (!openInstructionsBtn || !instructionsOverlay) return;
 
   openInstructionsBtn.addEventListener('click', openInstructions);
+  gameInstructionsBtn?.addEventListener('click', openInstructions);
   instructionsCloseBtn?.addEventListener('click', () => closeInstructions());
   instructionsOverlay.addEventListener('click', (e) => {
     const tab = e.target.closest('[data-help-team]');
@@ -507,6 +531,10 @@ function openInstructions() {
   if (!instructionsOverlay) return;
   hidePlayerCard();
   instructionsFocusReturn = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  // I spelvyn ligger overlayen over arenan i stallet for over lobbypanelen, och
+  // tangenterna far inte lacka igenom till figuren bakom.
+  instructionsOverlay.classList.toggle('in-game', currentView === 'game');
+  if (currentView === 'game') input.disable();
   instructionsOverlay.hidden = false;
   renderInstructions();
   window.setTimeout(() => instructionsCloseBtn?.focus(), 0);
@@ -515,8 +543,10 @@ function openInstructions() {
 function closeInstructions({ restoreFocus = true } = {}) {
   if (!instructionsOverlay || instructionsOverlay.hidden) return;
   instructionsOverlay.hidden = true;
+  instructionsOverlay.classList.remove('in-game');
   if (restoreFocus) instructionsFocusReturn?.focus?.();
   instructionsFocusReturn = null;
+  syncGameAccess();
 }
 
 function renderInstructions() {
@@ -830,6 +860,7 @@ function renderMatchRoom(match) {
   const isHost = me?.id === match.hostId;
   const inMatchLobby = match.phase === MATCH_PHASES.matchLobby;
   const sharedScreen = isSharedScreenMatch(match);
+  const training = isTrainingMatch(match);
   const localSeats = sharedScreen ? sharedSeatsFor(match) : [];
   const hostSeat = sharedScreen ? localSeatById(match, HOST_SEAT_ID) : null;
   const inResults = match.phase === MATCH_PHASES.results;
@@ -839,7 +870,7 @@ function renderMatchRoom(match) {
   const joiningLive = preGame && !!me && !me.character && !net.selfId;
   const canPick = sharedScreen ? inMatchLobby && isHost : inMatchLobby || joiningLive;
   matchRoom.dataset.phase = match.phase;
-  matchRoom.dataset.mode = sharedScreen ? MATCH_MODES.sharedScreen : MATCH_MODES.online;
+  matchRoom.dataset.mode = training ? MATCH_MODES.training : sharedScreen ? MATCH_MODES.sharedScreen : MATCH_MODES.online;
   matchRoomTitle.textContent = match.title;
   const selectedMap = mapName(match, match.selectedMap);
   const modeLabel = sharedScreen ? 'Shared screen - ' : '';
@@ -847,10 +878,12 @@ function renderMatchRoom(match) {
   const visiblePlayerCount = sharedScreen ? match.localSeatCount ?? localSeats.length : match.playerCount;
   const visiblePickedCount = sharedScreen ? match.localCharactersChosenCount ?? localSeats.filter((seat) => seat.character).length : 0;
   const progressLabel = sharedScreen ? `Picked ${visiblePickedCount}/${visiblePlayerCount}` : `Ready ${visibleReadyCount}/${visiblePlayerCount}`;
-  matchRoomPhase.textContent = joiningLive
-    ? 'Pick a character to jump into the match' + (selectedMap ? ` - Map: ${selectedMap}` : '')
-    : `${modeLabel}${phaseLabel(match.phase)} - Host ${match.hostName} - ${progressLabel}` +
-      (selectedMap ? ` - Map: ${selectedMap}` : '');
+  matchRoomPhase.textContent = training
+    ? 'Solo practice against a training dummy' + (selectedMap ? ` - Map: ${selectedMap}` : '')
+    : joiningLive
+      ? 'Pick a character to jump into the match' + (selectedMap ? ` - Map: ${selectedMap}` : '')
+      : `${modeLabel}${phaseLabel(match.phase)} - Host ${match.hostName} - ${progressLabel}` +
+        (selectedMap ? ` - Map: ${selectedMap}` : '');
 
   characterSelect.hidden = !canPick;
 
@@ -863,14 +896,14 @@ function renderMatchRoom(match) {
   renderCharacterSeatMarkers(match);
   syncSharedSeatScanner(match);
 
-  readyToggle.hidden = !inMatchLobby || sharedScreen;
+  readyToggle.hidden = !inMatchLobby || sharedScreen || training;
   const readySource = sharedScreen ? hostSeat : me;
   readyToggle.textContent = readySource?.ready ? 'Ready' : 'Ready up';
   readyToggle.classList.toggle('on', !!readySource?.ready);
-  readyToggle.disabled = !inMatchLobby || sharedScreen || !readySource?.character;
+  readyToggle.disabled = !inMatchLobby || sharedScreen || training || !readySource?.character;
 
   if (sharedScreenToggle) {
-    const canToggleSharedScreen = isHost && inMatchLobby;
+    const canToggleSharedScreen = isHost && inMatchLobby && !training;
     const blockedByGuests = canToggleSharedScreen && !sharedScreen && match.playerCount > 1;
     sharedScreenToggle.hidden = !canToggleSharedScreen;
     sharedScreenToggle.disabled = blockedByGuests;
@@ -881,7 +914,7 @@ function renderMatchRoom(match) {
   }
 
   const canStartMatch = sharedScreen ? sharedCanStartMatch(match, localSeats) : match.allCharactersChosen;
-  startMatchBtn.hidden = !isHost || !inMatchLobby;
+  startMatchBtn.hidden = !isHost || !inMatchLobby || training;
   startMatchBtn.disabled = !canStartMatch;
   startMatchBtn.title = sharedScreen
     ? sharedStartTitle(match, localSeats)
@@ -1001,12 +1034,32 @@ function screenPromptFor(match) {
 }
 
 function syncGameAccess(match = net.match) {
-  if (match?.phase === MATCH_PHASES.playing && net.localPlayerIds().length) input.enable();
+  const overlayOpen = !!instructionsOverlay && !instructionsOverlay.hidden;
+  if (match?.phase === MATCH_PHASES.playing && net.localPlayerIds().length && !overlayOpen) input.enable();
   else input.disable();
 
+  syncTrainingOverlay(match);
   updateFightOverlay(match);
   updateMatchClock(match);
   syncGamepadCursor(match);
+}
+
+/** Instruktionsknappen och karaktarsvaljaren hor bara till traningsvyn. */
+function syncTrainingOverlay(match = net.match) {
+  const show = currentView === 'game' && isTrainingMatch(match);
+  if (gameInstructionsBtn) gameInstructionsBtn.hidden = !show;
+  if (!trainingSwitch) return;
+
+  trainingSwitch.hidden = !show;
+  if (!show) return;
+
+  const myTeam = net.selfTeam;
+  for (const btn of trainingSwitch.querySelectorAll('[data-training-character]')) {
+    const on = btn.dataset.trainingCharacter === myTeam;
+    btn.classList.toggle('on', on);
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    btn.disabled = on;
+  }
 }
 
 function syncGamepadCursor(match = net.match) {
@@ -1275,7 +1328,13 @@ function renderMapVote(match) {
     return;
   }
 
-  updateMapVoteTimer(match);
+  const training = isTrainingMatch(match);
+  mapVote.dataset.mode = training ? MATCH_MODES.training : '';
+  if (mapVoteClock) mapVoteClock.hidden = training;
+  if (mapVoteFoot) mapVoteFoot.hidden = training;
+  if (mapVoteStep) mapVoteStep.textContent = training ? 'Training - pick a map' : 'Step 05 - Vote now';
+  if (mapVoteTitle) mapVoteTitle.textContent = training ? 'Choose your practice arena' : 'Choose the arena';
+  if (!training) updateMapVoteTimer(match);
   const maps = match.mapVotes?.length ? match.mapVotes : match.maps ?? [];
   const sharedScreen = isSharedScreenMatch(match);
   const seats = sharedScreen ? sharedSeatsFor(match) : [];
@@ -1353,7 +1412,7 @@ function renderRoundResults(match) {
 
 function updatePhaseTimers() {
   const match = net.match;
-  if (match?.phase === MATCH_PHASES.mapVote) updateMapVoteTimer(match);
+  if (match?.phase === MATCH_PHASES.mapVote && !isTrainingMatch(match)) updateMapVoteTimer(match);
   updateMatchClock(match);
   if (currentView === 'game') updateFightOverlay(match);
 }
@@ -1392,7 +1451,8 @@ function updateFightOverlay(match = net.match) {
 function updateMatchClock(match = net.match) {
   if (!matchClock) return;
 
-  const live = match?.phase === MATCH_PHASES.countdown || match?.phase === MATCH_PHASES.playing;
+  const live =
+    (match?.phase === MATCH_PHASES.countdown || match?.phase === MATCH_PHASES.playing) && !isTrainingMatch(match);
   matchClock.hidden = !live;
   if (!live) {
     matchClock.textContent = formatClock(MATCH_DURATION_MS);
@@ -1739,6 +1799,10 @@ function localSeatForGamepad(match, index) {
   return (
     sharedSeatsFor(match).find((seat) => seat.inputDevice?.type === 'gamepad' && Number(seat.inputDevice.index) === wanted) ?? null
   );
+}
+
+function isTrainingMatch(match) {
+  return match?.mode === MATCH_MODES.training;
 }
 
 function isSharedScreenMatch(match) {

@@ -21,16 +21,19 @@ export class MatchRegistry {
     this.nextId = 1;
   }
 
-  create(host) {
+  create(host, { training = false } = {}) {
     const id = String(this.nextId++);
     const now = this.clock();
     const match = {
       id,
-      title: `Match ${id}`,
+      title: training ? `Training ${id}` : `Match ${id}`,
       phase: MATCH_PHASES.matchLobby,
-      mode: MATCH_MODES.online,
+      mode: training ? MATCH_MODES.training : MATCH_MODES.online,
+      // Traningen ar orankad: ingenting som hander dar far rora profilerna.
+      // Stangningen satts forst efter addPlayer nedan - en stangd match slapper
+      // inte in nagon, inte ens sin egen vard.
       closed: false,
-      statsEnabled: true,
+      statsEnabled: !training,
       hostId: host.sessionId,
       createdAt: now,
       updatedAt: now,
@@ -49,6 +52,8 @@ export class MatchRegistry {
     };
     this.matches.set(id, match);
     this.addPlayer(id, host);
+    // Traningen ar privat: ingen annan far joina.
+    match.closed = training;
     return match;
   }
 
@@ -299,7 +304,7 @@ export class MatchRegistry {
     match.resultCounts = true;
     match.unrankedReason = null;
     match.finishedAt = 0;
-    match.voteEndsAt = this.clock() + MAP_VOTE_MS;
+    match.voteEndsAt = isTraining(match) ? 0 : this.clock() + MAP_VOTE_MS;
     match.countdownEndsAt = 0;
     match.matchEndsAt = 0;
     match.updatedAt = this.clock();
@@ -368,7 +373,7 @@ export class MatchRegistry {
     const changes = [];
 
     for (const match of this.matches.values()) {
-      if (match.phase === MATCH_PHASES.mapVote && now >= match.voteEndsAt) {
+      if (match.phase === MATCH_PHASES.mapVote && match.voteEndsAt && now >= match.voteEndsAt) {
         match.selectedMap = resolveSelectedMap(match);
         match.phase = MATCH_PHASES.countdown;
         match.countdownEndsAt = now + MATCH_COUNTDOWN_MS;
@@ -380,7 +385,8 @@ export class MatchRegistry {
 
       if (match.phase === MATCH_PHASES.countdown && now >= match.countdownEndsAt) {
         match.phase = MATCH_PHASES.playing;
-        match.matchEndsAt = now + MATCH_DURATION_MS;
+        // Traningen har ingen klocka: 0 gor att tidsuttaget nedan aldrig slar till.
+        match.matchEndsAt = isTraining(match) ? 0 : now + MATCH_DURATION_MS;
         match.updatedAt = now;
         changes.push({ match, from: MATCH_PHASES.countdown, to: MATCH_PHASES.playing });
         continue;
@@ -410,7 +416,8 @@ export class MatchRegistry {
   }
 
   list() {
-    return [...this.matches.values()].map(snapshot);
+    // Traningsmatcher ar privata - de hor inte hemma i lobbyns matchlista.
+    return [...this.matches.values()].filter((match) => !isTraining(match)).map(snapshot);
   }
 }
 
@@ -490,6 +497,7 @@ function snapshot(match) {
     phase: match.phase,
     mode: match.mode ?? MATCH_MODES.online,
     sharedScreen,
+    training: isTraining(match),
     closed: !!match.closed,
     statsEnabled: match.statsEnabled !== false,
     hostId: match.hostId,
@@ -551,6 +559,10 @@ function resetMatchSetup(match, { keepLocalSeatCharacters = false } = {}) {
 
 function isSharedScreen(match) {
   return match?.mode === MATCH_MODES.sharedScreen;
+}
+
+function isTraining(match) {
+  return match?.mode === MATCH_MODES.training;
 }
 
 function ensureHostSeat(match) {
@@ -650,8 +662,12 @@ function cleanCharacter(character) {
 }
 
 function resultOptionsFor(match) {
-  if (match?.statsEnabled === false) return { resultCounts: false, unrankedReason: 'sharedScreen' };
+  if (match?.statsEnabled === false) return { resultCounts: false, unrankedReason: unrankedReasonFor(match) };
   return {};
+}
+
+function unrankedReasonFor(match) {
+  return isTraining(match) ? 'training' : 'sharedScreen';
 }
 
 function completeMatch(match, finalScore, now, { resultCounts = true, unrankedReason = null } = {}) {
@@ -659,7 +675,7 @@ function completeMatch(match, finalScore, now, { resultCounts = true, unrankedRe
   match.finalScore = sanitizeScore(finalScore);
   const statsEnabled = match.statsEnabled !== false;
   match.resultCounts = statsEnabled && resultCounts !== false;
-  match.unrankedReason = match.resultCounts ? null : unrankedReason ?? (statsEnabled ? null : 'sharedScreen');
+  match.unrankedReason = match.resultCounts ? null : unrankedReason ?? (statsEnabled ? null : unrankedReasonFor(match));
   match.finishedAt = now;
   match.voteEndsAt = 0;
   match.countdownEndsAt = 0;

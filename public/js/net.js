@@ -180,8 +180,8 @@ export class Net {
     this.send({ t: 'identify', name, clientId });
   }
 
-  createMatch() {
-    this.send({ t: 'createMatch' });
+  createMatch({ training = false } = {}) {
+    this.send({ t: 'createMatch', mode: training ? 'training' : 'online' });
   }
 
   joinMatch(id) {
@@ -224,6 +224,10 @@ export class Net {
 
   setCharacter(character) {
     this.send({ t: 'setCharacter', character });
+  }
+
+  trainingSwitchCharacter(character) {
+    this.send({ t: 'trainingSwitchCharacter', character });
   }
 
   startMatch() {

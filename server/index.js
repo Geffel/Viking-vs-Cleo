@@ -18,6 +18,7 @@ import {
   MATCH_PHASES,
   PLAYER,
   MAPS,
+  TRAINING,
   mapLayoutFor,
 } from '../shared/constants.js';
 
@@ -162,7 +163,7 @@ function handleMessage(ws, msg) {
       if (!requireIdentity(ws)) return;
       if (ws.playerId) removePlayerSession(ws);
       if (ws.matchId) leaveLobbyMatch(ws);
-      const match = matches.create(sessionPlayer(ws));
+      const match = matches.create(sessionPlayer(ws), { training: msg.mode === MATCH_MODES.training });
       ws.matchId = match.id;
       broadcastLobby();
       sendMatch(match);
@@ -175,6 +176,10 @@ function handleMessage(ws, msg) {
       const match = matches.get(matchId);
       if (!match) {
         send(ws, { t: 'appError', message: 'That match no longer exists.' });
+        return;
+      }
+      if (match.mode === MATCH_MODES.training) {
+        send(ws, { t: 'appError', message: 'That is a private training session.' });
         return;
       }
       if (match.closed || match.mode === MATCH_MODES.sharedScreen) {
@@ -294,12 +299,41 @@ function handleMessage(ws, msg) {
         send(ws, { t: 'appError', message: error });
         return;
       }
+      // Traningen har ingen att vanta pa: valt fighter tar en direkt till kartvalet.
+      if (isTrainingMatch(match) && match.phase === MATCH_PHASES.matchLobby) {
+        const started = matches.start(match.id, ws.sessionId);
+        sendMatch(started.match ?? match);
+        break;
+      }
       sendMatch(match);
       // Sen anslutare som valt karaktar mitt i countdown/playing spawnas direkt in.
       if (!ws.playerId && [MATCH_PHASES.countdown, MATCH_PHASES.playing].includes(match.phase)) {
         spawnLateJoiner(match, ws);
         broadcastLobby();
       }
+      break;
+    }
+    case 'trainingSwitchCharacter': {
+      const result = requireMatch(ws);
+      if (!result) return;
+      if (!isTrainingMatch(result)) {
+        send(ws, { t: 'appError', message: 'Character switching is training only.' });
+        return;
+      }
+      if (![MATCH_PHASES.countdown, MATCH_PHASES.playing].includes(result.phase)) {
+        send(ws, { t: 'appError', message: "The training session isn't running." });
+        return;
+      }
+      if (!TEAM_IDS.includes(msg.character)) {
+        send(ws, { t: 'appError', message: 'Unknown character.' });
+        return;
+      }
+      const { match, error } = switchTrainingCharacter(ws, result, msg.character);
+      if (error) {
+        send(ws, { t: 'appError', message: error });
+        return;
+      }
+      sendMatch(match);
       break;
     }
     case 'startMatch': {
@@ -510,7 +544,13 @@ function sendMatch(match) {
 function prepareGameForMatch(match) {
   recordMapVoteStats(match);
   clearGameSessions(match.id);
-  const matchGame = new Game({ clock: gameNow, layout: mapLayoutFor(match.selectedMap), mapId: match.selectedMap });
+  const training = isTrainingMatch(match);
+  const matchGame = new Game({
+    clock: gameNow,
+    layout: mapLayoutFor(match.selectedMap),
+    mapId: match.selectedMap,
+    abilityCooldownCap: training ? TRAINING.abilityCooldownMs : 0,
+  });
   matchGames.set(match.id, matchGame);
 
   if (match.mode === MATCH_MODES.sharedScreen) {
@@ -561,7 +601,8 @@ function prepareGameForMatch(match) {
     p.halfRtt = ws.halfRtt;
     p.invulnUntil = Math.max(p.invulnUntil, match.countdownEndsAt + PLAYER.spawnProtectionMs);
     ws.playerId = p.id;
-    activateProfile(p);
+    // Traningen ar orankad: speltid och kills far inte bokforas i profilen.
+    if (!training) activateProfile(p);
 
     send(ws, {
       t: 'gameReady',
@@ -575,6 +616,68 @@ function prepareGameForMatch(match) {
       achievementStats: achievementStatsSnapshot(),
     });
   }
+
+  if (training) syncTrainingBot(match, matchGame);
+}
+
+function isTrainingMatch(match) {
+  return match?.mode === MATCH_MODES.training;
+}
+
+/**
+ * Ser till att det star exakt en traningsdocka i arenan, av motsatt karaktar
+ * mot den spelaren valt. Kors bade nar matchen startar och vid karaktarsbyte.
+ */
+function syncTrainingBot(match, matchGame = matchGames.get(match.id)) {
+  if (!matchGame) return null;
+
+  for (const other of [...matchGame.players.values()]) {
+    if (other.bot) matchGame.removePlayer(other.id);
+  }
+
+  const hero = [...matchGame.players.values()][0];
+  if (!hero) return null;
+  return matchGame.addBot(oppositeTeam(hero.team));
+}
+
+function oppositeTeam(team) {
+  return team === 'viking' ? 'cleo' : 'viking';
+}
+
+/**
+ * Byter karaktar mitt i traningen: spelaren spawnas om som det andra laget och
+ * dockan byter till motsatt sida. Allt gammalt tillstand (cooldowns, buffar,
+ * combo) foljer inte med - den nya karaktaren borjar rent.
+ */
+function switchTrainingCharacter(ws, match, character) {
+  const matchGame = matchGames.get(match.id);
+  if (!matchGame) return { error: "The training session isn't running." };
+
+  const old = ws.playerId ? matchGame.players.get(ws.playerId) : null;
+  if (old?.team === character) return { match };
+
+  const { error } = matches.setCharacter(match.id, ws.sessionId, character);
+  if (error) return { error };
+
+  if (old) matchGame.removePlayer(old.id);
+  const p = matchGame.addPlayer(ws.name, character, { clientId: ws.clientId, profileId: ws.profileId });
+  p.halfRtt = ws.halfRtt;
+  p.invulnUntil = Math.max(p.invulnUntil, Date.now() + PLAYER.spawnProtectionMs);
+  ws.playerId = p.id;
+  syncTrainingBot(match, matchGame);
+
+  send(ws, {
+    t: 'gameReady',
+    serverNow: Date.now(),
+    id: p.id,
+    name: p.name,
+    team: p.team,
+    profileId: p.profileId,
+    profile: profileSnapshotFor(ws),
+    match: matches.snapshot(match.id),
+    achievementStats: achievementStatsSnapshot(),
+  });
+  return { match };
 }
 
 // Spawnar en spelare som joinade EFTER att arenan redan startat. Anvander samma

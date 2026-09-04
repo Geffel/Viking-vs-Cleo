@@ -34,6 +34,26 @@
           <div id="fight-copy">5</div>
         </div>
 
+        <button id="game-instructions" class="instructions-open training-only" type="button" title="How to fight - movelist and combos" aria-haspopup="dialog" aria-controls="instructions-overlay" hidden>
+          <span class="instructions-open-glyph">?</span>
+          <span>Instructions</span>
+          <span class="instructions-open-sheen" aria-hidden="true"></span>
+        </button>
+
+        <div id="training-switch" hidden>
+          <div class="training-switch-sign">Switch character</div>
+          <div class="training-switch-buttons">
+            <button type="button" data-training-character="cleo">
+              <img src="/assets/cleo/idle.png" alt="" />
+              <span>Cleo</span>
+            </button>
+            <button type="button" data-training-character="viking">
+              <img src="/assets/viking/idle.png" alt="" />
+              <span>Viking</span>
+            </button>
+          </div>
+        </div>
+
         <div id="hud" hidden></div>
         <div id="ability-tooltip" hidden></div>
         <div id="achievement-toasts" aria-live="polite"></div>
@@ -73,14 +93,17 @@
           <div class="screen-head">
             <div>
               <div class="screen-step">Step 02</div>
-              <h1 id="global-lobby-title">Lobby</h1>
+              <div class="screen-title-row">
+                <h1 id="global-lobby-title">Lobby</h1>
+                <span class="online-pill"><span></span><b id="lobby-player-name">Global lobby</b></span>
+              </div>
             </div>
             <div class="screen-actions">
-              <span class="online-pill"><span></span><b id="lobby-player-name">Global lobby</b></span>
               <a class="screen-link" href="/leaderboard.html" target="_blank" rel="noopener">Leaderboard</a>
               <button id="open-achievements" type="button">Achievements</button>
               <button id="open-settings" type="button">Settings</button>
               <button id="create-match" type="button">Create match</button>
+              <button id="training-mode" type="button" title="Practice solo against a training dummy">Training mode</button>
             </div>
           </div>
           <div class="lobby-grid">
@@ -283,10 +306,10 @@
           <div class="map-vote" id="map-vote" hidden>
             <div class="screen-head">
               <div>
-                <div class="screen-step">Step 05 - Vote now</div>
-                <h1>Choose the arena</h1>
+                <div class="screen-step" id="map-vote-step">Step 05 - Vote now</div>
+                <h1 id="map-vote-title">Choose the arena</h1>
               </div>
-              <div class="vote-clock">
+              <div class="vote-clock" id="map-vote-clock">
                 <strong id="map-vote-timer">0:30</strong>
                 <span>until start - host breaks ties</span>
               </div>
@@ -315,40 +338,40 @@
           <button id="leave-match-fallback" class="leave-match-fallback" type="button">Back to lobby</button>
         </section>
 
-        <section class="instructions-overlay" id="instructions-overlay" role="dialog" aria-modal="true" aria-labelledby="instructions-title" hidden>
-          <div class="instructions-head">
-            <div>
-              <div class="instructions-eyebrow">How to fight</div>
-              <h1 id="instructions-title">Movelist &amp; Combos</h1>
-            </div>
-            <div class="instructions-actions">
-              <button id="instructions-tab-cleo" class="instructions-tab" type="button" data-help-team="cleo">Cleo</button>
-              <button id="instructions-tab-viking" class="instructions-tab" type="button" data-help-team="viking">Viking</button>
-              <button id="instructions-close" class="instructions-close" type="button" aria-label="Close instructions">x</button>
-            </div>
-          </div>
-
-          <div class="instructions-body">
-            <section class="instructions-column" aria-labelledby="instructions-basics-title">
-              <h2 id="instructions-basics-title">Basic inputs</h2>
-              <div class="instructions-basics" id="instructions-basics"></div>
-            </section>
-
-            <section class="instructions-column" aria-labelledby="instructions-combos-title">
-              <h2 id="instructions-combos-title">Signature combos</h2>
-              <div class="instructions-combos" id="instructions-combos"></div>
-            </section>
-          </div>
-
-          <div class="instructions-foot">
-            <span></span>
-            <b>Esc</b> to close
-          </div>
-        </section>
-
         <p class="err" id="lobby-error"></p>
       </div>
     </div>
+
+    <section class="instructions-overlay" id="instructions-overlay" role="dialog" aria-modal="true" aria-labelledby="instructions-title" hidden>
+      <div class="instructions-head">
+        <div>
+          <div class="instructions-eyebrow">How to fight</div>
+          <h1 id="instructions-title">Movelist &amp; Combos</h1>
+        </div>
+        <div class="instructions-actions">
+          <button id="instructions-tab-cleo" class="instructions-tab" type="button" data-help-team="cleo">Cleo</button>
+          <button id="instructions-tab-viking" class="instructions-tab" type="button" data-help-team="viking">Viking</button>
+          <button id="instructions-close" class="instructions-close" type="button" aria-label="Close instructions">x</button>
+        </div>
+      </div>
+
+      <div class="instructions-body">
+        <section class="instructions-column" aria-labelledby="instructions-basics-title">
+          <h2 id="instructions-basics-title">Basic inputs</h2>
+          <div class="instructions-basics" id="instructions-basics"></div>
+        </section>
+
+        <section class="instructions-column" aria-labelledby="instructions-combos-title">
+          <h2 id="instructions-combos-title">Signature combos</h2>
+          <div class="instructions-combos" id="instructions-combos"></div>
+        </section>
+      </div>
+
+      <div class="instructions-foot">
+        <span></span>
+        <b>Esc</b> to close
+      </div>
+    </section>
 
     <div id="conn" hidden>Connecting...</div>
 

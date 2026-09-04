@@ -20,6 +20,7 @@ import {
   CRIT,
   COMBO,
   COMBO_MAX_LEN,
+  TRAINING,
 } from '../shared/constants.js';
 
 let nextId = 1;
@@ -49,11 +50,13 @@ const freshMatchStats = () => ({
 export class Game {
   // clock och rng gar att byta ut i tester sa att tiden kan stegas exakt och
   // kritiska traffar kan tvingas fram eller stangas av.
-  constructor({ clock = () => Date.now(), rng = Math.random, layout = mapLayoutFor(), mapId = null } = {}) {
+  constructor({ clock = () => Date.now(), rng = Math.random, layout = mapLayoutFor(), mapId = null, abilityCooldownCap = 0 } = {}) {
     this.now = clock;
     this.rng = rng;
     this.layout = layout;
     this.mapId = mapId;
+    // Traningslaget kapar langa cooldowns. 0 = inget tak, spelet som vanligt.
+    this.abilityCooldownCap = Math.max(0, Number(abilityCooldownCap) || 0);
     this.startedAt = this.now();
     this.powerupSpawns = layout.powerupSpawns ?? POWERUP_SPAWNS;
     this.players = new Map();
@@ -142,6 +145,8 @@ export class Game {
       lastHitAt: 0,
       comboSeq: [], // melee-platser som traffat i rad, senaste sist
       comboAt: 0, // nar den senaste traffen i kedjan landade
+      bot: false, // traningsdockan: styrs av servern, slass aldrig tillbaka
+      patrol: null, // { minX, maxX, dir } - bandet boten gar fram och tillbaka i
       stats: freshMatchStats(),
     };
     this.spawn(p);
@@ -152,6 +157,41 @@ export class Game {
   removePlayer(id) {
     this.players.delete(id);
     this.projectiles = this.projectiles.filter((pr) => pr.ownerId !== id);
+  }
+
+  /** Cooldownen som faktiskt galler - traningslaget kapar de langa. */
+  abilityCooldown(ability) {
+    if (!this.abilityCooldownCap) return ability.cooldown;
+    return Math.min(ability.cooldown, this.abilityCooldownCap);
+  }
+
+  /**
+   * Traningsdockan. Den slass aldrig tillbaka - servern satter bara gangriktning
+   * varje tick sa att den vandrar fram och tillbaka i mitten av kartan.
+   */
+  addBot(team, { widthFrac = TRAINING.patrolWidthFrac } = {}) {
+    const p = this.addPlayer(TRAINING_BOT_NAME, team, { clientId: null, profileId: 0 });
+    p.bot = true;
+    p.patrol = patrolBand(widthFrac);
+    // Boten borjar mitt i bandet i stallet for pa lagets spawn, sa att den
+    // syns direkt dar man ska ova.
+    p.x = (p.patrol.minX + p.patrol.maxX) / 2;
+    p.history.length = 0;
+    return p;
+  }
+
+  /** Gar mot bandets kant, vander, och gor ingenting annat. */
+  driveBot(p, t) {
+    if (!p.patrol) return;
+    if (t < p.stunnedUntil || t < p.pulledUntil) {
+      p.input.left = false;
+      p.input.right = false;
+      return;
+    }
+    if (p.x <= p.patrol.minX) p.patrol.dir = 1;
+    else if (p.x >= p.patrol.maxX) p.patrol.dir = -1;
+    p.input.left = p.patrol.dir < 0;
+    p.input.right = p.patrol.dir > 0;
   }
 
   stat(kind, data = {}) {
@@ -308,7 +348,7 @@ export class Game {
       const used = this.useAbility(p, ability.id, t);
       if (!used) return;
       this.noteAbilityUse(p, ability.id, t, { slot: kind, ...(used === true ? {} : used) });
-      p.cd[kind] = t + ability.cooldown;
+      p.cd[kind] = t + this.abilityCooldown(ability);
     }
   }
 
@@ -325,7 +365,7 @@ export class Game {
 
     if (t < p.stunnedUntil) return;
     this.releaseSunFire(p, channel, t);
-    p.cd[kind] = t + ability.cooldown;
+    p.cd[kind] = t + this.abilityCooldown(ability);
   }
 
   dropThrough(p, t) {
@@ -451,6 +491,7 @@ export class Game {
         if (t >= p.respawnAt) this.spawn(p);
         continue;
       }
+      if (p.bot) this.driveBot(p, t);
       this.movePlayer(p, t);
     }
 
@@ -1711,6 +1752,20 @@ function overlaps(a, b) {
 
 function round(v) {
   return Math.round(v * 100) / 100;
+}
+
+const TRAINING_BOT_NAME = 'Training dummy';
+
+/** Bandet mitt pa kartan som traningsdockan patrullerar i. */
+function patrolBand(widthFrac) {
+  const width = clamp(widthFrac, 0.1, 1) * WORLD.w;
+  const half = width / 2;
+  const center = WORLD.w / 2;
+  return {
+    minX: Math.max(0, center - half),
+    maxX: Math.min(WORLD.w - PLAYER.w, center + half),
+    dir: 1,
+  };
 }
 
 function cooldownSnapshot(p, t) {

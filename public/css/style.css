@@ -2957,6 +2957,18 @@ body {
   letter-spacing: 0.22em;
 }
 
+/* Titeln och "Connected as" star pa samma rad, baslinjejusterade. */
+.screen-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 6px 16px;
+}
+
+.screen-title-row .online-pill {
+  padding-bottom: 4px;
+}
+
 .screen-head h1,
 #match-room-title {
   margin: 2px 0 0;
@@ -7690,4 +7702,156 @@ body {
   #stage.vvc-shake {
     animation: none !important;
   }
+}
+
+/* -------------------------------------------------------- traningslaget */
+
+/* Samma form som Create match bredvid, men i konturform sa att den primara
+   knappen behaller sin tyngd. */
+#training-mode {
+  width: auto;
+  padding: 14px 22px;
+  border: 1px solid rgba(77, 195, 255, 0.55);
+  border-radius: 0;
+  background: rgba(77, 195, 255, 0.1);
+  color: var(--viking);
+  font-family: "Anton", sans-serif;
+  font-size: 16px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  clip-path: var(--slash);
+  cursor: pointer;
+}
+
+#training-mode:hover {
+  background: rgba(77, 195, 255, 0.2);
+  border-color: var(--viking);
+}
+
+/* Instruktionsknappen i arenan: samma skylt som i menyerna, men langst ned
+   till vanster i spelvyn - narmast kanten, till vanster om alla rutor. */
+#overlay .instructions-open {
+  left: 1.4%;
+  bottom: clamp(10px, 2.4%, 26px);
+  z-index: 20;
+  padding: 10px 18px 10px 13px;
+  font-size: clamp(12px, 1.6vh, 16px);
+  pointer-events: auto;
+}
+
+#overlay .instructions-open[hidden] {
+  display: none;
+}
+
+#overlay .instructions-open .instructions-open-glyph {
+  width: 20px;
+  height: 20px;
+  font-size: 13px;
+}
+
+/* Karaktarsvaljaren sitter under killfeeden i ovre hogra hornet. */
+#training-switch {
+  position: absolute;
+  top: 1.6%;
+  right: 1.4%;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  pointer-events: auto;
+}
+
+#training-switch[hidden] {
+  display: none;
+}
+
+.training-switch-sign {
+  padding: 0.3em 0.7em;
+  border: 1px solid rgba(255, 209, 102, 0.6);
+  background: rgba(8, 11, 22, 0.82);
+  color: var(--gold);
+  font-family: "Anton", sans-serif;
+  font-size: clamp(10px, 1.4vh, 13px);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%);
+}
+
+.training-switch-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.training-switch-buttons button {
+  --switch-tone: var(--cleo);
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px 5px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-bottom: 2px solid var(--switch-tone);
+  border-radius: 5px;
+  background: rgba(8, 11, 22, 0.82);
+  color: var(--text);
+  font-family: "Oswald", "Segoe UI", sans-serif;
+  font-size: clamp(11px, 1.5vh, 14px);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease, opacity 0.12s ease;
+}
+
+.training-switch-buttons button:nth-child(2) {
+  --switch-tone: var(--viking);
+}
+
+.training-switch-buttons button img {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.training-switch-buttons button:hover:not(:disabled) {
+  background: rgba(16, 22, 40, 0.92);
+  border-color: var(--switch-tone);
+}
+
+/* Den man redan spelar ar markerad och gar inte att klicka igen. */
+.training-switch-buttons button.on {
+  background: color-mix(in srgb, var(--switch-tone) 22%, rgba(8, 11, 22, 0.86));
+  border-color: var(--switch-tone);
+  cursor: default;
+}
+
+.training-switch-buttons button:disabled {
+  opacity: 1;
+}
+
+/* Instruktions-overlayen ligger numera utanfor lobbypanelen sa att den gar att
+   oppna aven i arenan. Den maste da spanna over samma 16:9-yta som vyn under. */
+body > .instructions-overlay {
+  position: fixed;
+  inset: auto;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(1280px, 96vw, calc(96vh * 16 / 9));
+  aspect-ratio: 16 / 9;
+  z-index: 60;
+  border-radius: 16px;
+}
+
+body > .instructions-overlay.in-game {
+  width: min(100vw, calc(100vh * 16 / 9));
+  border-radius: 0;
+  z-index: 90;
+}
+
+/* Traningen rostar inte om kartan - ett klick racker. */
+#map-vote[data-mode="training"] .map-vote-foot,
+#map-vote[data-mode="training"] .vote-clock {
+  display: none;
 }

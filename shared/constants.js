@@ -44,6 +44,16 @@ export const MATCH_PHASE_IDS = Object.values(MATCH_PHASES);
 export const MATCH_MODES = {
   online: 'online',
   sharedScreen: 'sharedScreen',
+  training: 'training',
+};
+
+// Traningslage: en ensam spelare mot en NPC som bara gar fram och tillbaka.
+// Cooldownen kapas sa att formagorna gar att ova pa utan langa pauser - taket
+// sanker bara det som ar langre an taket, korta formagor ar redan snabba nog.
+export const TRAINING = {
+  abilityCooldownMs: 5000,
+  // Hur stor del av kartans bredd NPC:n patrullerar, centrerat i mitten.
+  patrolWidthFrac: 0.5,
 };
 export const LOCAL_SEAT_IDS = ['P1', 'P2', 'P3', 'P4'];
 export const SHARED_SCREEN_MAX_SEATS = LOCAL_SEAT_IDS.length;
@@ -242,7 +252,7 @@ export const ABILITIES = {
       name: 'Shield charge',
       icon: '🛡️',
       cooldown: 8000,
-      desc: 'Barrel forward behind your shield: 5-10 damage and a 1.5 second stun.',
+      desc: 'Barrel forward behind your shield: 25-35 damage and a 2 second stun.',
     },
     a3: {
       id: 'mushrooms',
@@ -380,9 +390,9 @@ export const ABILITY_TUNING = {
     speed: 7,
     durationMs: 720,
     range: 300,
-    damageMin: 10,
-    damageMax: 18,
-    stunMs: 1500,
+    damageMin: 25,
+    damageMax: 35,
+    stunMs: 2000,
     hitW: 58,
     hitH: 52,
     knockbackX: 6.5,

@@ -35,6 +35,10 @@ export class Hud {
     this.stage = document.getElementById('stage');
     this.tooltip = document.getElementById('ability-tooltip');
     this.slots = {};
+    // Traningslaget kapar langa cooldowns pa servern. Ringen maste rakna mot
+    // samma tak, annars visar den fel fyllnad. 0 = inget tak.
+    this.cooldownCap = 0;
+    this.team = '';
     this.root.innerHTML = `
       <div class="shared-hud" hidden></div>
       <div class="personal-hud">
@@ -103,6 +107,7 @@ export class Hud {
   }
 
   setTeam(team) {
+    this.team = team;
     this.setSharedMode(false);
     const abilities = ABILITIES[team];
     const melee = MELEE_ATTACKS[team];
@@ -123,7 +128,7 @@ export class Hud {
       }
 
       slot.id = info.id ?? key;
-      slot.total = info.cooldown;
+      slot.total = this.cappedCooldown(key, info.cooldown);
       slot.name = info.name;
       slot.desc = info.desc;
       // Formagor med egen bild far den som ikon, ovriga sin emoji.
@@ -137,6 +142,20 @@ export class Hud {
     this.combo.el.style.setProperty('--team-color', TEAMS[team].color);
     this.showCombo(-1, 0, 0);
     this.root.hidden = false;
+  }
+
+  /** Satt cooldown-taket och rakna om rutornas nedrakningstider. */
+  setCooldownCap(ms) {
+    const next = Math.max(0, Number(ms) || 0);
+    if (next === this.cooldownCap) return;
+    this.cooldownCap = next;
+    if (this.team) this.setTeam(this.team);
+  }
+
+  /** Melee ar orort - taket galler bara formagorna. */
+  cappedCooldown(key, cooldown) {
+    if (!this.cooldownCap || MELEE_SLOT_SET.has(key)) return cooldown;
+    return Math.min(cooldown, this.cooldownCap);
   }
 
   setSharedMode(on) {
