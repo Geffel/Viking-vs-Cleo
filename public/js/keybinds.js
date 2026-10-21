@@ -205,7 +205,10 @@ function sanitize(raw) {
   const takenPads = new Set();
 
   for (const slot of BIND_SLOTS) {
-    const saved = raw?.[slot] ?? {};
+    // Nya actions som inte fanns nar en aldre sparfil skrevs far sin standard-
+    // bindning. En action som uttryckligen sparats som null forblir obunden.
+    const hasSaved = !!raw && Object.prototype.hasOwnProperty.call(raw, slot);
+    const saved = hasSaved ? raw[slot] ?? {} : defaultFor(slot);
     const entry = { primary: null, pad: null };
 
     const code = saved.primary;

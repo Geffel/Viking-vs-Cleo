@@ -271,6 +271,14 @@ export const ABILITIES = {
       cooldown: 9000,
       desc: 'Hook the first enemy ahead and reel them all the way in to you - 8-14 damage.',
     },
+    a5: {
+      id: 'iceSpikes',
+      name: 'Ice spikes',
+      icon: 'IS',
+      iconImage: '/assets/viking/ice_spikes/ice_spike_8.png',
+      cooldown: 1000, // tillfalligt testvarde; slutbalansen ar 60 sekunder
+      desc: 'Raise a tight line of ice spikes: 20-45 damage, an upward push and 25% slow for 7 seconds.',
+    },
   },
 };
 
@@ -279,6 +287,7 @@ export const ABILITY_BINDS = [
   { slot: 'a2', code: 'Digit2', keycap: '2' },
   { slot: 'a3', code: 'Digit3', keycap: '3' },
   { slot: 'a4', code: 'Digit4', keycap: '4' },
+  { slot: 'a5', code: 'Digit5', keycap: '5' },
 ];
 
 export const ABILITY_SLOTS = ABILITY_BINDS.map((bind) => bind.slot);
@@ -322,6 +331,7 @@ export const GAMEPAD_BINDS = {
   a2: { button: 4 },
   a3: { button: 6 },
   a4: { button: 7 },
+  a5: { button: 11 },
 };
 
 // Rorelsen bodde tidigare hardkodad i input.js. Nu star den bredvid melee och
@@ -446,6 +456,28 @@ export const ABILITY_TUNING = {
     reelSpeed: 10, // farten offret slapas in med
     releaseDist: 46, // slapps nar offret ar sa har nara (px, mitt till mitt)
     durationMs: 900, // bortre grans sa att repet aldrig blir sittande for evigt
+  },
+  iceSpikes: {
+    range: 450,
+    // En spik far skjutas upp om den har ens lite stod inom den har bredden.
+    groundProbeHalfWidth: 18,
+    groundLevelTolerance: 2,
+    hitHeight: 110,
+    groundTolerance: 18,
+    damageMin: 20,
+    damageMax: 45,
+    knockbackX: 0,
+    knockbackY: -6.875,
+    slowMul: 0.75,
+    slowMs: 7000,
+    count: 8,
+    stepMs: 70,
+    riseMs: 140,
+    holdMs: 500,
+    retractStepMs: 35,
+    retractMs: 180,
+    minHeight: 29,
+    maxHeight: 86,
   },
 };
 

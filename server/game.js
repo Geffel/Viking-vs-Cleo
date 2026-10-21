@@ -67,6 +67,7 @@ export class Game {
     this.events = []; // rena statistikhandelser, toms vid varje broadcast
     this.powerups = []; // powerups pa kartan just nu: { id, kind, spawn, x, y }
     this.projectiles = []; // kastade vapen: { id, ownerId, team, x, y, vx, vy, born }
+    this.iceSpikeWaves = []; // aktiva Ice spikes-vagor; varje spik traffar nar den skjuter upp
     this.nextPowerupId = 1;
     this.nextProjectileId = 1;
     this.nextPowerupAt = this.now() + POWERUP.firstSpawnMs;
@@ -82,6 +83,7 @@ export class Game {
     this.events = [];
     this.powerups = [];
     this.projectiles = [];
+    this.iceSpikeWaves = [];
     this.nextPowerupId = 1;
     this.nextProjectileId = 1;
     this.nextPowerupAt = this.now() + POWERUP.firstSpawnMs;
@@ -141,6 +143,7 @@ export class Game {
       dmgBuffUntil: 0, // kebab-buffen: skadan multipliceras sa lange den varar
       berserkUntil: 0, // flugsvampen: mer utdelad OCH mer mottagen skada
       rageUntil: 0, // combo-ursinnet: en combo-dodsstot ger mer utdelad skada
+      iceSlowUntil: 0, // Ice spikes: 25 % lagre rorelsefart sa lange tiden ar kvar
       lastHitBy: 0,
       lastHitAt: 0,
       comboSeq: [], // melee-platser som traffat i rad, senaste sist
@@ -158,6 +161,7 @@ export class Game {
   removePlayer(id) {
     this.players.delete(id);
     this.projectiles = this.projectiles.filter((pr) => pr.ownerId !== id);
+    this.iceSpikeWaves = this.iceSpikeWaves.filter((wave) => wave.ownerId !== id);
   }
 
   /** Cooldownen som faktiskt galler - traningslaget kapar de langa. */
@@ -276,6 +280,7 @@ export class Game {
     p.dmgBuffUntil = 0;
     p.berserkUntil = 0;
     p.rageUntil = 0;
+    p.iceSlowUntil = 0;
     // Historiken nollstalls: en spawn ar ett hopp i rummet, och att interpolera
     // over det skulle ge traffkontrollen positioner spelaren aldrig varit pa.
     p.history.length = 0;
@@ -470,6 +475,10 @@ export class Game {
         this.lasso(p, cfg, t);
         return true;
 
+      case 'iceSpikes':
+        this.iceSpikes(p, cfg, t);
+        return true;
+
       case 'slam':
         if (p.onGround) return false; // maste vara i luften
         p.vy = cfg.fallSpeed;
@@ -508,6 +517,7 @@ export class Game {
     }
 
     this.updateProjectiles(t);
+    this.updateIceSpikes(t);
     this.updatePowerups(t);
   }
 
@@ -594,6 +604,89 @@ export class Game {
     this.stun(target, cfg.stunMs, t, { source: p, cause: 'sandBlast' });
     this.damage(target, p, dmg, p.facing * cfg.knockbackX, cfg.knockbackY, t, meta);
     this.fx.push({ k: 'stun', id: target.id, x: target.x + PLAYER.w / 2, y: target.y + PLAYER.h * 0.18 });
+  }
+
+  iceSpikes(p, cfg, t) {
+    const cx = p.x + PLAYER.w / 2;
+    const groundY = p.y + PLAYER.h;
+    const count = this.iceSpikeGroundCount(cx, groundY, p.facing, cfg);
+    if (count <= 0) return;
+    this.fx.push({
+      k: 'ice_spikes',
+      id: p.id,
+      x: cx,
+      y: groundY,
+      f: p.facing,
+      team: p.team,
+      r: cfg.range,
+      n: count,
+    });
+    this.iceSpikeWaves.push({ ownerId: p.id, team: p.team, x: cx, y: groundY, f: p.facing, born: t, next: 0, count, hit: new Set() });
+  }
+
+  iceSpikeGroundCount(cx, groundY, facing, cfg) {
+    const spacing = cfg.range / cfg.count;
+    let count = 0;
+
+    for (let i = 0; i < cfg.count; i++) {
+      const x = cx + facing * (i + 1) * spacing;
+      const left = x - cfg.groundProbeHalfWidth;
+      const right = x + cfg.groundProbeHalfWidth;
+      const supported = this.layout.platforms.some(
+        (pl) =>
+          Math.abs(pl.y - groundY) <= cfg.groundLevelTolerance &&
+          right > pl.x &&
+          left < pl.x + pl.w,
+      );
+      if (!supported) break;
+      count++;
+    }
+
+    return count;
+  }
+
+  updateIceSpikes(t) {
+    const cfg = ABILITY_TUNING.iceSpikes;
+    const spacing = cfg.range / cfg.count;
+
+    for (let w = this.iceSpikeWaves.length - 1; w >= 0; w--) {
+      const wave = this.iceSpikeWaves[w];
+      const source = this.players.get(wave.ownerId);
+      if (!source) {
+        this.iceSpikeWaves.splice(w, 1);
+        continue;
+      }
+
+      while (wave.next < wave.count && t - wave.born >= wave.next * cfg.stepMs) {
+        const index = wave.next++;
+        const bandMin = index * spacing;
+        const bandMax = (index + 1) * spacing;
+
+        for (const target of this.players.values()) {
+          if (target.id === source.id || target.team === wave.team || target.dead || wave.hit.has(target.id)) continue;
+          const tx = target.x + PLAYER.w / 2;
+          const forward = (tx - wave.x) * wave.f;
+          const targetBottom = target.y + PLAYER.h;
+          const inBand = forward >= bandMin && forward <= bandMax;
+          const nearGround = targetBottom >= wave.y - cfg.hitHeight && target.y <= wave.y + cfg.groundTolerance;
+          if (!inBand || !nearGround) continue;
+
+          wave.hit.add(target.id);
+          const meta = {
+            cause: 'iceSpikes',
+            abilityId: 'iceSpikes',
+            range: round(forward),
+            longRange: forward >= cfg.range * LONG_RANGE_FRAC,
+          };
+          if (this.negateIncomingAttack(target, source, t, meta)) continue;
+
+          this.damage(target, source, this.rollDamage(cfg.damageMin, cfg.damageMax), cfg.knockbackX, cfg.knockbackY, t, meta);
+          if (!target.dead) target.iceSlowUntil = Math.max(target.iceSlowUntil, t + cfg.slowMs);
+        }
+      }
+
+      if (wave.next >= wave.count) this.iceSpikeWaves.splice(w, 1);
+    }
   }
 
   findSandBlastTarget(p, cfg, cx, cy) {
@@ -1004,7 +1097,8 @@ export class Game {
     } else if (!locked) {
       const dir = (p.input.right ? 1 : 0) - (p.input.left ? 1 : 0);
       const channelMul = p.channel?.id === 'sunFire' ? ABILITY_TUNING.sunFire.moveSpeedMul : 1;
-      const speedMul = channelMul * (p.speedMul ?? 1);
+      const iceSlowMul = t < p.iceSlowUntil ? ABILITY_TUNING.iceSpikes.slowMul : 1;
+      const speedMul = channelMul * iceSlowMul * (p.speedMul ?? 1);
       const maxSpeed = PLAYER.maxSpeed * speedMul;
       if (dir !== 0) {
         p.vx += dir * PLAYER.accel * speedMul;
@@ -1536,6 +1630,7 @@ export class Game {
     victim.slamming = false;
     victim.swing = null;
     victim.stunnedUntil = 0;
+    victim.iceSlowUntil = 0;
     victim.channel = null;
 
     const killer = killerId ? this.players.get(killerId) : null;
@@ -1613,6 +1708,7 @@ export class Game {
         db: Math.max(0, Math.round(p.dmgBuffUntil - t)), // ms kvar pa kebab-buffen, 0 = ingen
         bz: Math.max(0, Math.round(p.berserkUntil - t)), // ms kvar pa flugsvampen, 0 = nykter
         rg: Math.max(0, Math.round(p.rageUntil - t)), // ms kvar pa combo-ursinnet, 0 = lugn
+        is: Math.max(0, Math.round(p.iceSlowUntil - t)), // ms kvar pa Ice spikes-slow, 0 = normal fart
         sf: p.channel?.id === 'sunFire' ? Math.max(0.01, clamp((t - p.channel.started) / ABILITY_TUNING.sunFire.channelMaxMs, 0, 1)) : 0,
         cb: combo ? combo.index : -1, // pagaende combo, index i COMBO.list
         cs: combo ? combo.steps : 0, // hur manga steg som sitter

@@ -1,5 +1,5 @@
-// Formagor och projektiler: blink, sand, shield charge, yxa, harpun, sun fire
-// och svampbuffen. Allt kors direkt mot Game med en styrd klocka.
+// Formagor och projektiler: blink, sand, shield charge, yxa, harpun, isspikar,
+// sun fire och svampbuffen. Allt kors direkt mot Game med en styrd klocka.
 
 import { Game } from '../server/game.js';
 import { ABILITIES, ABILITY_TUNING, DAMAGE_BUFF, MAP, PLAYER, TICK_MS } from '../shared/constants.js';
@@ -160,6 +160,85 @@ const hasEvent = (g, kind, pred = () => true) => g.events.some((ev) => ev.k === 
   advance(g, 160);
   check('harpoon drar offret mot vikingen', target.x < xAfterHook, `x ${xAfterHook} -> ${target.x}`);
   check('harpoon slapper nar offret ar nara', until(g, () => target.pulledUntil === 0, 1500));
+}
+
+// ----------------------------------------------------------------- ice spikes
+
+{
+  clock = 100000;
+  let rngCall = 0;
+  const g = new Game({ clock: () => clock, rng: () => (rngCall++ % 2 === 0 ? 0.5 : 1) });
+  const viking = add(g, 'Ice', 'viking', 400, 1);
+  const near = add(g, 'Near', 'cleo', 500, -1);
+  const far = add(g, 'Far', 'cleo', 830, -1);
+  const outside = add(g, 'Outside', 'cleo', 980, -1);
+  const ally = add(g, 'Ally', 'viking', 620, 1);
+
+  g.action(viking, 'a5');
+  check('ice spikes startar test-cooldown', viking.cd.a5 === clock + ABILITIES.viking.a5.cooldown);
+  check(
+    'ice spikes skickar en tat spikrad',
+    hasFx(g, 'ice_spikes') && g.fx.find((fx) => fx.k === 'ice_spikes').n === ABILITY_TUNING.iceSpikes.count,
+  );
+  check('ice spikes gor inte skada direkt vid knapptrycket', near.hp === PLAYER.maxHp && far.hp === PLAYER.maxHp);
+
+  advance(g, ABILITY_TUNING.iceSpikes.stepMs + TICK_MS);
+  check('nara fienden traffas nar dess spik skjuter upp', near.hp < PLAYER.maxHp);
+  check('fienden vid max range har annu inte traffats', far.hp === PLAYER.maxHp);
+  const nearWasPushed = near.vy < 0;
+
+  check('spikvagen nar fienden vid max range senare', until(g, () => far.hp < PLAYER.maxHp, 1000));
+  const farWasPushed = far.vy < 0;
+  check('ice spikes traffar alla fiender inom range', near.hp < PLAYER.maxHp && far.hp < PLAYER.maxHp);
+  check(
+    'ice spikes gor skada i ratt spann',
+    damageIn(PLAYER.maxHp, near.hp, ABILITY_TUNING.iceSpikes.damageMin, ABILITY_TUNING.iceSpikes.damageMax) &&
+      damageIn(PLAYER.maxHp, far.hp, ABILITY_TUNING.iceSpikes.damageMin, ABILITY_TUNING.iceSpikes.damageMax),
+  );
+  check('ice spikes ger en latt push uppat vid respektive traff', nearWasPushed && farWasPushed);
+  check('ice spikes skadar inte fiender utanfor range', outside.hp === PLAYER.maxHp);
+  check('ice spikes skadar inte lagkamrater', ally.hp === PLAYER.maxHp);
+  check('ice spikes markeras som ability-hit', hasEvent(g, 'hit', (ev) => ev.abilityId === 'iceSpikes'));
+  check('ice spikes slow varar i 7 sekunder fran traffen', near.iceSlowUntil > clock && near.iceSlowUntil <= clock + ABILITY_TUNING.iceSpikes.slowMs);
+  check('ice spikes slow syns i snapshot', g.snapshot().players.find((p) => p.i === near.id).is > 0);
+
+  near.vx = 0;
+  near.vy = 0;
+  near.onGround = true;
+  g.setMove(near, false, true);
+  advance(g, 600);
+  const slowedMax = PLAYER.maxSpeed * ABILITY_TUNING.iceSpikes.slowMul;
+  check('ice spikes minskar movement speed med 25 procent', near.vx > 0 && near.vx <= slowedMax, `vx ${near.vx}`);
+
+  clock = near.iceSlowUntil;
+  g.update();
+  near.vx = 0;
+  advance(g, 600);
+  check('normal movement speed aterkommer efter 7 sekunder', near.vx > slowedMax, `vx ${near.vx}`);
+  check('ice spikes slow forsvinner ur snapshot', g.snapshot().players.find((p) => p.i === near.id).is === 0);
+}
+
+{
+  clock = 100000;
+  const edgeX = 580;
+  const layout = {
+    ...MAP,
+    platforms: [{ x: 300, y: MAP.platforms.find((pl) => pl.ground).y, w: edgeX - 300, h: 18 }],
+  };
+  const g = new Game({ clock: () => clock, rng: () => 1, layout });
+  const viking = add(g, 'Edge Ice', 'viking', 400, 1);
+  const onEdge = add(g, 'On edge', 'cleo', 540, -1);
+  const pastEdge = add(g, 'Past edge', 'cleo', 620, -1);
+
+  g.action(viking, 'a5');
+  const fx = g.fx.find((effect) => effect.k === 'ice_spikes');
+  check('ice spikes inkluderar spiken som bara delvis overlappar plattformskanten', fx?.n === 3, `antal ${fx?.n}`);
+  advance(g, 250);
+  check('ice spikes traffar fienden vid den sista understodda spiken', onEdge.hp < PLAYER.maxHp);
+  check(
+    'ice spikes slutar vid plattformskanten och skadar inte bortom den',
+    !hasEvent(g, 'hit', (ev) => ev.abilityId === 'iceSpikes' && ev.target?.playerId === pastEdge.id),
+  );
 }
 
 // ------------------------------------------------------------------- sun fire

@@ -40,7 +40,7 @@ const MOVE_COPY = {
 
 // Melee och formagor delar tangent mellan lagen men heter olika saker, sa raden
 // visar bada: "Cleo Punch - Viking Axe".
-const SLOT_TITLES = { m1: 'Melee 1', m2: 'Melee 2', a1: 'Ability 1', a2: 'Ability 2', a3: 'Ability 3', a4: 'Ability 4' };
+const SLOT_TITLES = { m1: 'Melee 1', m2: 'Melee 2', a1: 'Ability 1', a2: 'Ability 2', a3: 'Ability 3', a4: 'Ability 4', a5: 'Ability 5' };
 
 // Rorelsen sitter pa vanster spak och d-paden. Den ar en riktning och inte en
 // knapp, sa de raderna har ingen ombindbar kontrollruta.

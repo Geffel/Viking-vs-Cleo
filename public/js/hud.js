@@ -20,6 +20,7 @@ const KILL_ICON_IMAGES = {
   lasso: '/assets/viking_harpoon_projectile.png',
   harpoon: '/assets/viking_harpoon_projectile.png',
   mushrooms: '/assets/mushroom.png',
+  iceSpikes: '/assets/viking/ice_spikes/ice_spike_8.png',
 };
 
 const MELEE_KILL_ICON_IMAGES = {
@@ -477,6 +478,8 @@ function iconText(id, icon) {
       return 'HP';
     case 'mushrooms':
       return 'MS';
+    case 'iceSpikes':
+      return 'IS';
     case 'punch':
       return 'P';
     case 'kick':

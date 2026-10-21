@@ -253,6 +253,8 @@ function abilityText(id) {
       )} % harder too. It ends early if you die.`;
     case 'lasso':
       return `Hurls a harpoon ${reach(t.lasso.maxRange)}. It flies slower than the axe, so a sharp enemy can sidestep or jump it - but spear someone and they take ${t.lasso.damageMin}-${t.lasso.damageMax} damage and get reeled all the way back to you. Line them up for your team, or yank them clean off a ledge into the pit below.`;
+    case 'iceSpikes':
+      return `Raises ${t.iceSpikes.count} ice spikes in a growing line ${reach(t.iceSpikes.range)} ahead. Every enemy caught along the ground takes ${t.iceSpikes.damageMin}-${t.iceSpikes.damageMax} damage, is pushed lightly upward and moves ${Math.round((1 - t.iceSpikes.slowMul) * 100)} % slower for ${sec(t.iceSpikes.slowMs)}. The spikes remain for ${sec(t.iceSpikes.holdMs)} before sinking again.`;
     default:
       return '';
   }

@@ -206,6 +206,7 @@ export class Renderer {
     this.powerupSprites = {}; // sort -> bild, laddas asynkront
     this.axe = null; // Vikings kastade yxa
     this.harpoon = null; // Vikings kastade harpun (kroken pa a4)
+    this.iceSpikes = []; // Vikings isspikar (a5), liten till stor
     this.sandBlast = []; // Cleos sandblast-animation
     this.shieldIcon = null; // Cleos Power shield-ikon
     this.sunFireBall = null; // Cleos laddade Sun fire-boll
@@ -234,6 +235,11 @@ export class Renderer {
     loadImage('/assets/viking_harpoon_projectile.png')
       .then((img) => (this.harpoon = img))
       .catch((err) => console.warn('Kunde inte ladda harpun:', err.message));
+    Promise.all(
+      Array.from({ length: ABILITY_TUNING.iceSpikes.count }, (_, i) => loadImage(`/assets/viking/ice_spikes/ice_spike_${i + 1}.png`)),
+    )
+      .then((imgs) => (this.iceSpikes = imgs))
+      .catch((err) => console.warn('Kunde inte ladda isspikar:', err.message));
     Promise.all([1, 2, 3].map((n) => loadImage(`/assets/cleo/sand_blast${n}.png`)))
       .then((imgs) => (this.sandBlast = imgs))
       .catch((err) => console.warn('Kunde inte ladda sandblast:', err.message));
@@ -463,6 +469,24 @@ export class Renderer {
         });
         this.burst(fx.x + fx.f * 24, fx.y + 18, 12, '#f7c66a', 4.2, fx.f * 2, -1);
         break;
+      case 'ice_spikes': {
+        const cfg = ABILITY_TUNING.iceSpikes;
+        const count = fx.n ?? cfg.count;
+        const lastRise = (count - 1) * cfg.stepMs + cfg.riseMs;
+        const life = lastRise + cfg.holdMs + (count - 1) * cfg.retractStepMs + cfg.retractMs;
+        this.effects.push({
+          kind: 'ice_spikes',
+          x: fx.x,
+          y: fx.y,
+          f: fx.f,
+          born: t,
+          life,
+          range: fx.r ?? cfg.range,
+          count,
+        });
+        this.burst(fx.x + fx.f * 38, fx.y - 4, 14, '#8fe8ff', 4.1, fx.f * 1.4, -2.2);
+        break;
+      }
       case 'mushrooms': {
         // Svampen sticker upp och tonar bort medan raseriet slar ut i rott.
         this.effects.push({ kind: 'mushroom', x: fx.x, y: fx.y - 10, born: t, life: 900 });
@@ -1940,6 +1964,19 @@ export class Renderer {
     // fran berserkens tunga roda hinna over hela kroppen.
     if (p.rg > 0) this.drawEnrageAura(ctx, cx, feetY);
 
+    // Ice spikes lämnar en kall ring runt fotterna medan slow-effekten varar.
+    if (p.is > 0) {
+      const pulse = 0.72 + Math.sin(performance.now() / 150) * 0.18;
+      ctx.save();
+      ctx.globalAlpha = pulse;
+      ctx.strokeStyle = '#8fe8ff';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(cx, feetY + 1, PLAYER.w * 0.72, 7, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
     // Flugsvampen: figuren vaxer och far ett rasande sken. Skenet ligger under
     // figuren, sjalva hinnan laggs ovanpa inne i drawSprite/drawFigure.
     const rage = ABILITY_TUNING.mushrooms;
@@ -2498,6 +2535,8 @@ export class Renderer {
         }
       } else if (e.kind === 'sand_blast') {
         this.drawSandBlastEffect(ctx, e, k);
+      } else if (e.kind === 'ice_spikes') {
+        this.drawIceSpikesEffect(ctx, e);
       } else if (e.kind === 'stun') {
         const spin = performance.now() / 140;
         ctx.globalAlpha = 1 - k * 0.35;
@@ -2570,6 +2609,62 @@ export class Renderer {
       ctx.restore();
     }
   }
+
+  drawIceSpikesEffect(ctx, e) {
+    const cfg = ABILITY_TUNING.iceSpikes;
+    const elapsed = performance.now() - e.born;
+    const count = e.count ?? cfg.count;
+    const lastRise = (count - 1) * cfg.stepMs + cfg.riseMs;
+    const retractBase = lastRise + cfg.holdMs;
+
+    for (let i = 0; i < count; i++) {
+      const rise = clamp((elapsed - i * cfg.stepMs) / cfg.riseMs, 0, 1);
+      const retract = clamp((elapsed - retractBase - i * cfg.retractStepMs) / cfg.retractMs, 0, 1);
+      const visible = easeOut(rise) * (1 - retract * retract);
+      if (visible <= 0) continue;
+
+      // Behall originalavstand och storlekskurva nar plattformen kapar raden.
+      const distance = ((i + 1) / cfg.count) * e.range;
+      const sizeK = cfg.count <= 1 ? 1 : i / (cfg.count - 1);
+      const height = lerp(cfg.minHeight, cfg.maxHeight, sizeK);
+      const img = this.iceSpikes[i];
+      const width = img ? height * (img.width / img.height) : height * 0.72;
+      const x = e.x + e.f * distance;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(x - width * 0.65, e.y - height - 8, width * 1.3, height + 12);
+      ctx.clip();
+      ctx.translate(x, e.y + (1 - visible) * height * 0.92);
+      if (e.f < 0) ctx.scale(-1, 1);
+      if (img) ctx.drawImage(img, -width / 2, -height, width, height);
+      else drawFallbackIceSpike(ctx, width, height);
+      ctx.restore();
+    }
+
+    if (this.debug) {
+      ctx.save();
+      ctx.strokeStyle = '#8fe8ff';
+      ctx.lineWidth = 2;
+      const left = e.f > 0 ? e.x : e.x - e.range;
+      ctx.strokeRect(left, e.y - cfg.hitHeight, e.range, cfg.hitHeight + cfg.groundTolerance);
+      ctx.restore();
+    }
+  }
+}
+
+function drawFallbackIceSpike(ctx, width, height) {
+  const gradient = ctx.createLinearGradient(0, -height, 0, 0);
+  gradient.addColorStop(0, '#e8fbff');
+  gradient.addColorStop(0.42, '#63d9ff');
+  gradient.addColorStop(1, '#287cc4');
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.moveTo(0, -height);
+  ctx.lineTo(width / 2, 0);
+  ctx.lineTo(-width / 2, 0);
+  ctx.closePath();
+  ctx.fill();
 }
 
 function strokeLine(ctx, x0, y0, x1, y1) {

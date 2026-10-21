@@ -29,6 +29,7 @@ const FX_ACTIONS = {
     shield_charge: 'a2',
     mushrooms: 'a3',
     lasso_throw: 'a4',
+    ice_spikes: 'a5',
   },
 };
 
