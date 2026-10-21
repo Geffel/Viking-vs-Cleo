@@ -1,5 +1,6 @@
 import { ABILITIES, ABILITY_BINDS, COMBO, MELEE_ATTACKS, MELEE_BINDS, TEAMS } from '/shared/constants.js';
 import { inputCap, keycapFor, onBindingsChange, padCap } from '/js/keybinds.js';
+import { abilityForPosition, moveAbility, onAbilityOrderChange, positionForAbility } from '/js/ability-layout.js';
 
 // Tva melee-rutor foljs av abilities. Har ett lag ingen formaga i en ruta doljs
 // rutan helt.
@@ -10,6 +11,8 @@ const MELEE_SLOT_SET = new Set(MELEE_BINDS.map((bind) => bind.slot));
 // varierar mellan lagen, sa rutorna kanns igen pa formagans id - inte pa key.
 const SHIELD = 'powerShield'; // raknar kvarvarande skoldar i stallet for sekunder
 const BERSERK = 'mushrooms'; // rutan glover sa lange raseriet varar
+const HOLD_TO_EDIT_MS = 2000;
+const HOLD_MOVE_TOLERANCE = 10;
 
 const KILL_ICON_IMAGES = {
   sandBlast: '/assets/cleo/sand_blast1.png',
@@ -41,6 +44,8 @@ export class Hud {
     // samma tak, annars visar den fel fyllnad. 0 = inget tak.
     this.cooldownCap = 0;
     this.team = '';
+    this.editingAbilities = false;
+    this.pointer = null;
     this.root.innerHTML = `
       <div class="shared-hud" hidden></div>
       <div class="personal-hud">
@@ -48,11 +53,17 @@ export class Hud {
           <div class="combo-track" hidden></div>
           <div class="hud-group hud-melee">${MELEE_BINDS.map((bind) => slotMarkup(bind.slot)).join('')}</div>
         </div>
-        <div class="hud-group hud-abilities">${ABILITY_BINDS.map((bind) => slotMarkup(bind.slot)).join('')}</div>
+        <div class="ability-editor">
+          <div class="hud-group hud-abilities">${ABILITY_BINDS.map((bind) => `<div class="ability-socket" data-position="${bind.slot}">${slotMarkup(bind.slot)}</div>`).join('')}</div>
+          <div class="ability-edit-label">Drag abilities to rearrange</div>
+          <button class="ability-edit-done" type="button" hidden>Done</button>
+        </div>
       </div>
     `;
     this.shared = this.root.querySelector('.shared-hud');
     this.personal = this.root.querySelector('.personal-hud');
+    this.abilityBar = this.root.querySelector('.hud-abilities');
+    this.doneButton = this.root.querySelector('.ability-edit-done');
 
     // Combo-sparet visas bara medan en kedja pagar. Markupen byggs om forst nar
     // det ar en ny combo pa gang, resten ar bara klasser som slas av och pa.
@@ -86,6 +97,22 @@ export class Hud {
       el.addEventListener('pointercancel', () => this.hideTooltip());
     }
 
+    this.abilityBar.addEventListener('pointerdown', (e) => this.onAbilityPointerDown(e));
+    window.addEventListener('pointermove', (e) => this.onAbilityPointerMove(e));
+    window.addEventListener('pointerup', (e) => this.onAbilityPointerUp(e));
+    window.addEventListener('pointercancel', (e) => this.onAbilityPointerCancel(e));
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && this.editingAbilities) this.exitAbilityEditMode();
+    });
+    document.addEventListener(
+      'pointerdown',
+      (e) => {
+        if (this.editingAbilities && !this.root.contains(e.target)) this.exitAbilityEditMode();
+      },
+      true,
+    );
+    this.doneButton.addEventListener('click', () => this.exitAbilityEditMode());
+
     this.score = {
       cleo: document.getElementById('score-cleo'),
       viking: document.getElementById('score-viking'),
@@ -96,19 +123,24 @@ export class Hud {
 
     this.showKeycaps();
     onBindingsChange(() => this.showKeycaps());
+    onAbilityOrderChange((team) => {
+      if (team === this.team) this.applyAbilityOrder();
+    });
   }
 
   /** Skriver om tangenten i varje ruta - kors om nar spelaren binder om. */
   showKeycaps() {
     for (const key of SLOT_KEYS) {
       const slot = this.slots[key];
-      if (slot?.key) slot.key.textContent = inputCap(key);
+      const boundPosition = MELEE_SLOT_SET.has(key) ? key : positionForAbility(this.team, key);
+      if (slot?.key) slot.key.textContent = inputCap(boundPosition);
     }
     // Combo-sparet ritas om vid nasta kedja, sa pipsen far de nya tangenterna.
     this.combo.index = -1;
   }
 
   setTeam(team) {
+    this.exitAbilityEditMode();
     this.team = team;
     this.setSharedMode(false);
     const abilities = ABILITIES[team];
@@ -142,6 +174,7 @@ export class Hud {
       slot.el.setAttribute('aria-label', `${info.name} - ${info.desc}`);
     }
     this.combo.el.style.setProperty('--team-color', TEAMS[team].color);
+    this.applyAbilityOrder();
     this.showCombo(-1, 0, 0);
     this.root.hidden = false;
   }
@@ -161,6 +194,7 @@ export class Hud {
   }
 
   setSharedMode(on) {
+    if (on) this.exitAbilityEditMode();
     if (this.shared) this.shared.hidden = !on;
     if (this.personal) this.personal.hidden = !!on;
     this.root.hidden = false;
@@ -171,6 +205,7 @@ export class Hud {
   }
 
   hide() {
+    this.exitAbilityEditMode();
     this.root.hidden = true;
     this.hideTooltip();
     this.respawn.hidden = true;
@@ -309,6 +344,7 @@ export class Hud {
   }
 
   showTooltip(key, e) {
+    if (this.editingAbilities) return;
     const slot = this.slots[key];
     if (!slot?.name || !this.tooltip) return;
     this.tooltip.innerHTML = `<div class="tip-name">${escapeHtml(slot.name)}</div><div class="tip-desc">${escapeHtml(slot.desc)}</div>`;
@@ -334,6 +370,135 @@ export class Hud {
 
   hideTooltip() {
     if (this.tooltip) this.tooltip.hidden = true;
+  }
+
+  applyAbilityOrder() {
+    if (!this.team || !this.abilityBar) return;
+    for (const bind of ABILITY_BINDS) {
+      const socket = this.abilityBar.querySelector(`.ability-socket[data-position="${bind.slot}"]`);
+      const abilitySlot = abilityForPosition(this.team, bind.slot);
+      const ability = this.slots[abilitySlot]?.el;
+      if (!socket || !ability) continue;
+      ability.dataset.position = bind.slot;
+      socket.append(ability);
+    }
+    this.showKeycaps();
+  }
+
+  onAbilityPointerDown(e) {
+    if (e.button !== 0 || !this.team || this.personal?.hidden) return;
+    const ability = e.target.closest('.ability');
+    if (!ability || ability.hidden) return;
+    e.preventDefault();
+    this.hideTooltip();
+
+    this.cancelAbilityPointer();
+    this.pointer = {
+      id: e.pointerId,
+      abilitySlot: ability.dataset.slot,
+      x: e.clientX,
+      y: e.clientY,
+      lastX: e.clientX,
+      lastY: e.clientY,
+      dragging: false,
+      target: ability.dataset.position,
+      proxy: null,
+      timer: 0,
+    };
+
+    if (this.editingAbilities) this.startAbilityDrag(e.clientX, e.clientY);
+    else {
+      ability.classList.add('holding');
+      this.pointer.timer = window.setTimeout(() => {
+        if (!this.pointer || this.pointer.id !== e.pointerId) return;
+        this.enterAbilityEditMode();
+        this.startAbilityDrag(this.pointer.lastX, this.pointer.lastY);
+      }, HOLD_TO_EDIT_MS);
+    }
+  }
+
+  onAbilityPointerMove(e) {
+    const pointer = this.pointer;
+    if (!pointer || pointer.id !== e.pointerId) return;
+    pointer.lastX = e.clientX;
+    pointer.lastY = e.clientY;
+
+    if (!pointer.dragging) {
+      if (Math.hypot(e.clientX - pointer.x, e.clientY - pointer.y) > HOLD_MOVE_TOLERANCE) this.cancelAbilityPointer();
+      return;
+    }
+
+    e.preventDefault();
+    this.positionDragProxy(e.clientX, e.clientY);
+    const socket = document.elementFromPoint(e.clientX, e.clientY)?.closest('.ability-socket');
+    const next = socket && this.abilityBar.contains(socket) ? socket.dataset.position : pointer.target;
+    pointer.target = next;
+    for (const candidate of this.abilityBar.querySelectorAll('.ability-socket')) {
+      candidate.classList.toggle('drop-target', candidate.dataset.position === next);
+    }
+  }
+
+  onAbilityPointerUp(e) {
+    if (!this.pointer || this.pointer.id !== e.pointerId) return;
+    const pointer = this.pointer;
+    if (pointer.dragging && pointer.target) moveAbility(this.team, pointer.abilitySlot, pointer.target);
+    this.cancelAbilityPointer();
+  }
+
+  onAbilityPointerCancel(e) {
+    if (this.pointer?.id === e.pointerId) this.cancelAbilityPointer();
+  }
+
+  enterAbilityEditMode() {
+    this.editingAbilities = true;
+    this.root.classList.add('editing-abilities');
+    this.doneButton.hidden = false;
+    this.hideTooltip();
+  }
+
+  exitAbilityEditMode() {
+    this.cancelAbilityPointer();
+    this.editingAbilities = false;
+    this.root?.classList.remove('editing-abilities');
+    if (this.doneButton) this.doneButton.hidden = true;
+  }
+
+  startAbilityDrag(x, y) {
+    const pointer = this.pointer;
+    const ability = this.slots[pointer?.abilitySlot]?.el;
+    if (!pointer || !ability) return;
+    if (pointer.timer) window.clearTimeout(pointer.timer);
+    pointer.timer = 0;
+    pointer.dragging = true;
+    ability.classList.remove('holding');
+    ability.classList.add('dragging');
+
+    const rect = ability.getBoundingClientRect();
+    const proxy = ability.cloneNode(true);
+    proxy.classList.remove('dragging', 'holding', 'fired');
+    proxy.classList.add('ability-drag-proxy');
+    proxy.style.width = `${rect.width}px`;
+    proxy.style.height = `${rect.height}px`;
+    pointer.proxy = proxy;
+    document.body.append(proxy);
+    this.positionDragProxy(x, y);
+  }
+
+  positionDragProxy(x, y) {
+    const proxy = this.pointer?.proxy;
+    if (!proxy) return;
+    proxy.style.left = `${x}px`;
+    proxy.style.top = `${y}px`;
+  }
+
+  cancelAbilityPointer() {
+    const pointer = this.pointer;
+    if (!pointer) return;
+    if (pointer.timer) window.clearTimeout(pointer.timer);
+    this.slots[pointer.abilitySlot]?.el.classList.remove('holding', 'dragging');
+    pointer.proxy?.remove();
+    for (const socket of this.abilityBar?.querySelectorAll('.ability-socket') ?? []) socket.classList.remove('drop-target');
+    this.pointer = null;
   }
 }
 
@@ -378,11 +543,14 @@ function sharedActionsMarkup(team, player, seat) {
   return `
     <span class="shared-seat-actions" aria-label="${escapeHtml(`${characterName(team)} actions`)}">
       ${MELEE_BINDS.map((bind) => sharedActionMarkup(melee?.[bind.slot], bind.slot, player, seat, 'melee', team)).join('')}
-      ${ABILITY_BINDS.map((bind) => sharedActionMarkup(abilities?.[bind.slot], bind.slot, player, seat, 'ability', team)).join('')}
+      ${ABILITY_BINDS.map((bind) => {
+        const abilitySlot = abilityForPosition(team, bind.slot);
+        return sharedActionMarkup(abilities?.[abilitySlot], abilitySlot, player, seat, 'ability', team, bind.slot);
+      }).join('')}
     </span>`;
 }
 
-function sharedActionMarkup(info, slot, player, seat, kind, team) {
+function sharedActionMarkup(info, slot, player, seat, kind, team, keySlot = slot) {
   if (!info) return '<span class="shared-action empty" aria-hidden="true"></span>';
 
   const left = Math.max(0, Number(player?.cd?.[slot]) || 0);
@@ -392,7 +560,7 @@ function sharedActionMarkup(info, slot, player, seat, kind, team) {
   const active = (info.id === BERSERK && (Number(player?.bz) || 0) > 0) || (info.id === 'sunFire' && (Number(player?.sf) || 0) > 0);
   const cooling = left > 0;
   const ready = !!player && !player.d && !cooling;
-  const key = sharedInputCap(seat, slot);
+  const key = sharedInputCap(seat, keySlot);
   const status = charges > 0 ? String(charges) : cooling && kind !== 'melee' ? formatSeconds(left) : '';
   const img = sharedActionIcon(team, slot, info);
   const title = `${key} - ${info.name}${charges > 0 ? ` (${charges} shield${charges === 1 ? '' : 's'})` : cooling ? ` (${formatSeconds(left)}s)` : ready ? ' (ready)' : ''}`;

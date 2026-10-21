@@ -1,5 +1,6 @@
 import { GAMEPAD_BINDS, LOCAL_SEAT_IDS, MATCH_MODES } from '/shared/constants.js';
 import { codeMap, onBindingsChange, padMap } from '/js/keybinds.js';
+import { abilityForPosition, onAbilityOrderChange } from '/js/ability-layout.js';
 
 // Keyboard and the first gamepad are merged in normal online mode. In shared
 // screen mode keyboard stays P1, and every assigned gamepad drives its own seat.
@@ -26,6 +27,8 @@ export function initInput(net, onAction) {
     codes = codeMap(next);
     pads = padMap(next);
   });
+  // Release the old action before a hotbar position starts pointing elsewhere.
+  onAbilityOrderChange(() => releaseAll());
 
   function stateForSeat(seatId) {
     const id = cleanSeatId(seatId) || HOST_SEAT_ID;
@@ -138,8 +141,17 @@ export function initInput(net, onAction) {
   function syncSlotDown(slot, source, down) {
     const state = isSharedScreenMatch() ? stateForSeat(HOST_SEAT_ID) : legacyState;
     if (MOVE_SLOTS.has(slot)) setDirection(state, source, slot, down);
-    else if (down) pressAction(state, slot, source);
-    else releaseAction(state, slot, source);
+    else {
+      const action = resolvedAction(state, slot);
+      if (down) pressAction(state, action, source);
+      else releaseAction(state, action, source);
+    }
+  }
+
+  function resolvedAction(state, slot) {
+    if (!slot.startsWith('a')) return slot;
+    const team = state.seatId ? net.localPlayerForSeat(state.seatId)?.team : net.self()?.tm ?? net.selfTeam;
+    return abilityForPosition(team, slot);
   }
 
   window.addEventListener('keydown', (e) => {
@@ -256,7 +268,7 @@ export function initInput(net, onAction) {
 
     for (const [index, slot] of Object.entries(pads)) {
       const down = button(gamepad, Number(index)) || (slot === 'drop' && stickDrop);
-      syncAction(state, slot, source, down);
+      syncAction(state, resolvedAction(state, slot), source, down);
       dropHandled ||= slot === 'drop';
     }
 

@@ -14,6 +14,7 @@
 // bytt plats.
 
 import { ABILITIES, KEYBIND_CATEGORIES, MELEE_ATTACKS, TEAMS } from '/shared/constants.js';
+import { abilityForPosition, onAbilityOrderChange } from '/js/ability-layout.js';
 import {
   bindings,
   canBind,
@@ -91,6 +92,7 @@ export class ControlsUi {
     // Ligger i capture-fasen sa att tangenten fangas innan nagon annan hinner
     // reagera pa den medan vi lyssnar efter en ny bindning.
     window.addEventListener('keydown', (e) => this.onKeyDown(e), true);
+    onAbilityOrderChange(() => this.render());
 
     this.render();
   }
@@ -382,7 +384,8 @@ function iconMarkup(slot) {
 }
 
 function infoFor(team, slot) {
-  return MELEE_ATTACKS[team]?.[slot] ?? ABILITIES[team]?.[slot] ?? null;
+  const abilitySlot = slot.startsWith('a') ? abilityForPosition(team, slot) : slot;
+  return MELEE_ATTACKS[team]?.[slot] ?? ABILITIES[team]?.[abilitySlot] ?? null;
 }
 
 function clone(source) {

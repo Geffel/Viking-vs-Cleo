@@ -20,6 +20,7 @@ import {
   TEAMS,
 } from '/shared/constants.js';
 import { inputCap, keycapFor, onBindingsChange, padLabel } from '/js/keybinds.js';
+import { abilityForPosition, onAbilityOrderChange } from '/js/ability-layout.js';
 
 // Sekunder i klartext: "2 seconds", "1.5 seconds". Ingen spelare tanker i ms.
 const sec = (ms) => {
@@ -51,6 +52,7 @@ export function initLobbyInfo() {
   fillPanes();
   // Binder spelaren om en tangent pa kontrollsidan ska texten har folja med.
   onBindingsChange(fillPanes);
+  onAbilityOrderChange(fillPanes);
 
   const tabs = [...root.querySelectorAll('.info-tab')];
   const panes = [...root.querySelectorAll('.info-pane')];
@@ -279,7 +281,7 @@ function abilitiesHtml() {
         });
       }
       for (const bind of ABILITY_BINDS) {
-        const info = ab[bind.slot];
+        const info = ab[abilityForPosition(team, bind.slot)];
         if (!info) continue;
         rows.push({ slot: bind.slot, info, text: abilityText(info.id), name: info.name });
       }

@@ -103,6 +103,7 @@ export class Net {
       else if (msg.t === 'joined') {
         this.selfId = msg.id;
         this.selfTeam = msg.team;
+        this.profileId = msg.profileId ?? this.profileId;
         this.localPlayers.clear();
         this.emit('joined', msg);
       } else if (msg.t === 'welcome') {

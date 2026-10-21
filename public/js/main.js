@@ -30,6 +30,7 @@ import {
   mapThemeFor,
 } from '/shared/constants.js';
 import { keycapFor, onBindingsChange } from '/js/keybinds.js';
+import { abilityForPosition, onAbilityOrderChange, setAbilityOrderOwner } from '/js/ability-layout.js';
 
 const net = new Net();
 const stage = document.getElementById('stage');
@@ -306,6 +307,7 @@ net.on('welcome', (msg) => {
 });
 
 net.on('identified', (msg) => {
+  setAbilityOrderOwner(msg.profileId);
   currentName = msg.name;
   localStorage.setItem('vvc.name', currentName);
   renderMatches(msg.matches ?? []);
@@ -313,6 +315,7 @@ net.on('identified', (msg) => {
 });
 
 net.on('lobby', (msg) => {
+  setAbilityOrderOwner(msg.me?.profileId ?? net.profileId);
   if (msg.me?.name) currentName = msg.me.name;
   if (msg.lb) renderLeaderboard(msg.lb);
   renderMatches(msg.matches ?? []);
@@ -336,7 +339,8 @@ net.on('achievementStats', (stats) => achievementsUi.setAchievementStats(stats))
 net.on('achievementUnlocked', (msg) => achievementsUi.unlock(msg.achievements ?? [], msg.profile ?? null));
 
 // Legacy-vagen finns kvar tills matchlobbyn faktiskt startar spelet.
-net.on('joined', ({ team }) => {
+net.on('joined', ({ team, profileId }) => {
+  setAbilityOrderOwner(profileId ?? net.profileId);
   setView('game');
   hud.setTeam(team);
   leaveBtn.hidden = false;
@@ -345,6 +349,7 @@ net.on('joined', ({ team }) => {
 });
 
 net.on('gameReady', ({ team, match, localPlayers }) => {
+  setAbilityOrderOwner(net.profileId);
   achievementsUi.clearMatch();
   const previousPhase = lastMatchPhase;
   applyMatchUpdate(match, previousPhase, () => {
@@ -524,6 +529,9 @@ function initInstructions() {
   onBindingsChange(() => {
     if (!instructionsOverlay.hidden) renderInstructions();
   });
+  onAbilityOrderChange(() => {
+    if (!instructionsOverlay.hidden) renderInstructions();
+  });
 
   renderInstructions();
 }
@@ -609,7 +617,7 @@ function instructionsBasicRows(team) {
   }
 
   for (const bind of ABILITY_BINDS) {
-    const info = abilities[bind.slot];
+    const info = abilities[abilityForPosition(team, bind.slot)];
     if (!info) continue;
     rows.push({
       tokens: slotTokens([bind.slot]),

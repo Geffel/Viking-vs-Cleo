@@ -6,10 +6,11 @@
   "description": "2D lagbaserad arenafighter for lokalt natverk",
   "scripts": {
     "start": "node server/index.js",
-    "test": "node test/hitreg.mjs && node test/combat.mjs && node test/abilities.mjs && node test/powerup.mjs && node test/platforms.mjs && node test/matches.mjs && node test/smoke.mjs",
+    "test": "node test/hitreg.mjs && node test/combat.mjs && node test/abilities.mjs && node test/powerup.mjs && node test/platforms.mjs && node test/matches.mjs && node test/ability-layout.mjs && node test/smoke.mjs",
     "test:hits": "node test/hitreg.mjs",
     "test:combat": "node test/combat.mjs",
     "test:abilities": "node test/abilities.mjs",
+    "test:layout": "node test/ability-layout.mjs",
     "test:powerup": "node test/powerup.mjs",
     "test:platforms": "node test/platforms.mjs",
     "peek": "node test/peek.mjs",
