@@ -240,6 +240,14 @@ export const ABILITIES = {
       cooldown: 30000,
       desc: 'Channels a ball of sunfire. Hold the hotkey to increase its strength, then release to launch it.',
     },
+    a5: {
+      id: 'chargedUppercut',
+      name: 'Charged uppercut',
+      icon: 'CU',
+      iconImage: '/assets/cleo/punch2.png',
+      cooldown: 50000,
+      desc: 'Channel solar energy into your fists and unleash a devastating uppercut, dealing 20–35 damage and launching the enemy into the air. If the enemy collides with a solid object while airborne, they are stunned for 4 seconds.',
+    },
   },
   viking: {
     a1: {
@@ -396,6 +404,22 @@ export const ABILITY_TUNING = {
     channelForward: 40,
     channelUp: -10,
     rotationSpeed: 0.18,
+  },
+  chargedUppercut: {
+    // Nara range som ett vanligt slag, men en aning bredare for att den stora
+    // uppercut-rorelsen ska kannas rattvis vid kanten av figuren.
+    reach: 54,
+    hitH: 54,
+    damageMin: 20,
+    damageMax: 35,
+    // 150 % av den ursprungliga uppercut-kraften. Med gravitation 0.68 blir
+    // lyftet cirka 165 px, alltsa klart hogre an den ursprungliga 1,5 ganger
+    // figurens 44 px hoga kollisionskropp.
+    launchVelocity: -16,
+    platformStunMs: 4000,
+    // Skyddsnat ifall offret kastas ut fran kartan; normalt slapps laset direkt
+    // nar de landar, sa hela luftfarden ar alltid hjalplos.
+    launchWindowMs: 2500,
   },
   charge: { speed: 14.5, durationMs: 430, damage: 28, knockbackX: 11, knockbackY: -6 },
   shieldCharge: {

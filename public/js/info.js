@@ -239,6 +239,8 @@ function abilityText(id) {
       return `Summons ${t.powerShield.charges} orbiting shields around you. Each one blocks one incoming melee hit or enemy ability, and the set stays up until all ${t.powerShield.charges} are gone.`;
     case 'sunFire':
       return `Hold the key to channel a rotating sunfire ball for up to ${sec(t.sunFire.channelMaxMs)}. Release to launch it: longer channels make the projectile larger, faster and stronger, up to ${t.sunFire.damageMax} damage before bonuses.`;
+    case 'chargedUppercut':
+      return `Channel solar energy into your fists and unleash a devastating uppercut, dealing ${t.chargedUppercut.damageMin}–${t.chargedUppercut.damageMax} damage and launching the enemy into the air. If the enemy collides with a solid object while airborne, they are stunned for ${sec(t.chargedUppercut.platformStunMs)}.`;
     case 'axeThrow':
       return `Sends your axe flying ${reach(t.axeThrow.maxRange)}. The first enemy it hits takes ${t.axeThrow.damageMin}-${t.axeThrow.damageMax} damage and gets knocked back hard - your heaviest hit by far.`;
     case 'shieldCharge':

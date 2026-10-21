@@ -469,6 +469,15 @@ export class Renderer {
         });
         this.burst(fx.x + fx.f * 24, fx.y + 18, 12, '#f7c66a', 4.2, fx.f * 2, -1);
         break;
+      case 'charged_uppercut':
+        // Cleo ateranvander sin knytnavessprite, medan den egna solbagen gor
+        // det tydligt att detta ar den laddade specialattacken.
+        if (fx.id) this.attackAnims.set(fx.id, { started: t, slot: 'm1' });
+        this.effects.push({ kind: 'uppercut_swoosh', x: fx.x, y: fx.y, f: fx.f, born: t, life: 260 });
+        this.effects.push({ kind: 'ring', x: fx.x + fx.f * 22, y: fx.y - 12, born: t, life: 240, r0: 5, r1: 38, color: '#ffd166' });
+        this.burst(fx.x + fx.f * 24, fx.y - 8, 18, '#ffd166', 4.8, fx.f * 1.7, -3.4);
+        if (this.debug && fx.bw) this.effects.push({ kind: 'box', x: fx.bx, y: fx.by, w: fx.bw, h: fx.bh, born: t, life: 400, color: '#ffd166' });
+        break;
       case 'ice_spikes': {
         const cfg = ABILITY_TUNING.iceSpikes;
         const count = fx.n ?? cfg.count;
@@ -2456,6 +2465,21 @@ export class Renderer {
         const a1 = e.f > 0 ? 0.9 : Math.PI - 0.9;
         ctx.beginPath();
         ctx.arc(e.x, e.y, 34 + k * 12, a0, a1, e.f < 0);
+        ctx.stroke();
+      } else if (e.kind === 'uppercut_swoosh') {
+        const lift = easeOut(k);
+        ctx.globalAlpha = (1 - k) * 0.95;
+        ctx.strokeStyle = '#fff2a8';
+        ctx.shadowColor = '#ffb52e';
+        ctx.shadowBlur = 13;
+        ctx.lineWidth = 8 * (1 - k) + 2;
+        ctx.lineCap = 'round';
+        const x = e.x + e.f * 22;
+        const y = e.y + 12 - lift * 32;
+        const start = e.f > 0 ? 0.1 : Math.PI - 0.1;
+        const end = e.f > 0 ? -2.05 : Math.PI + 2.05;
+        ctx.beginPath();
+        ctx.arc(x, y, 22 + lift * 13, start, end, e.f < 0);
         ctx.stroke();
       } else if (e.kind === 'float') {
         // Skadesiffror och liknande: stiger och tonar ut pa slutet.

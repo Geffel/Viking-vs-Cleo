@@ -241,6 +241,36 @@ const hasEvent = (g, kind, pred = () => true) => g.events.some((ev) => ev.k === 
   );
 }
 
+// ----------------------------------------------------------- charged uppercut
+
+{
+  const g = scenario();
+  const cleo = add(g, 'Uppercut Cleo', 'cleo', 400, 1);
+  const target = add(g, 'Uppercut Target', 'viking', 450, -1);
+  const before = target.hp;
+
+  // En lag plattform precis over offrets huvud gor undersidestraffen enkel att
+  // prova utan att bero pa den ordinarie kartans utseende.
+  g.layout.platforms.push({ x: 420, y: 710, w: 100, h: 18 });
+
+  g.action(cleo, 'a5');
+  check('charged uppercut startar 50 sekunders cooldown', cleo.cd.a5 === clock + ABILITIES.cleo.a5.cooldown);
+  check('charged uppercut skickar punch- och swoosh-fx', hasFx(g, 'charged_uppercut'));
+  check(
+    'charged uppercut gor skada i ratt spann',
+    damageIn(before, target.hp, ABILITY_TUNING.chargedUppercut.damageMin, ABILITY_TUNING.chargedUppercut.damageMax),
+    `hp ${before} -> ${target.hp}`,
+  );
+  check('charged uppercut kastar offret rakt upp', target.vx === 0 && target.vy === ABILITY_TUNING.chargedUppercut.launchVelocity);
+  g.action(target, 'a3');
+  check('charged uppercut laser offrets actions i luften', target.berserkUntil === 0 && target.cd.a3 === 0);
+  check('charged uppercut markeras som ability-hit', hasEvent(g, 'hit', (ev) => ev.abilityId === 'chargedUppercut'));
+
+  check('plattformstraffen stunnar offret i 4 sekunder', until(g, () => target.stunnedUntil > clock, 500), `stun till ${target.stunnedUntil}`);
+  check('plattformstraffen anvander vanliga stun-fx', hasFx(g, 'stun'));
+  check('uppercut-offret stoppas vid plattformens undersida', target.y === 728 && target.vy === 0, `y ${target.y}, vy ${target.vy}`);
+}
+
 // ------------------------------------------------------------------- sun fire
 
 {

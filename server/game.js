@@ -129,6 +129,10 @@ export class Game {
       chargeHits: null,
       chargeType: null,
       slamming: false,
+      // Satt endast av Charged uppercut. Medan offret skjuts upp kan det sla i
+      // undersidan av en plattform och bli stunnat.
+      uppercutLaunchUntil: 0,
+      uppercutLaunchedBy: 0,
       stunnedUntil: 0,
       stunnedBy: 0,
       stunnedCause: '',
@@ -258,6 +262,8 @@ export class Game {
     p.dropThroughPlatform = null;
     p.dropThroughUntil = 0;
     p.slamming = false;
+    p.uppercutLaunchUntil = 0;
+    p.uppercutLaunchedBy = 0;
     p.dashUntil = 0;
     p.chargeUntil = 0;
     p.chargeType = null;
@@ -298,7 +304,7 @@ export class Game {
     if (p.dead) return;
     if (kind === 'melee') kind = MELEE_SLOTS[0];
     const t = this.now();
-    if (t < p.stunnedUntil) return;
+    if (t < p.stunnedUntil || t < p.uppercutLaunchUntil) return;
     if (kind === 'jump') {
       if (p.onGround) {
         p.vy = PLAYER.jumpVel;
@@ -370,7 +376,7 @@ export class Game {
     if (!channel || channel.id !== 'sunFire' || channel.slot !== kind) return;
     p.channel = null;
 
-    if (t < p.stunnedUntil) return;
+    if (t < p.stunnedUntil || t < p.uppercutLaunchUntil) return;
     this.releaseSunFire(p, channel, t);
     p.cd[kind] = t + this.abilityCooldown(ability);
   }
@@ -444,6 +450,10 @@ export class Game {
 
       case 'sandBlast':
         this.sandBlast(p, cfg, t);
+        return true;
+
+      case 'chargedUppercut':
+        this.chargedUppercut(p, cfg, t);
         return true;
 
       case 'charge':
@@ -604,6 +614,59 @@ export class Game {
     this.stun(target, cfg.stunMs, t, { source: p, cause: 'sandBlast' });
     this.damage(target, p, dmg, p.facing * cfg.knockbackX, cfg.knockbackY, t, meta);
     this.fx.push({ k: 'stun', id: target.id, x: target.x + PLAYER.w / 2, y: target.y + PLAYER.h * 0.18 });
+  }
+
+  /** Cleos tunga narstridsformaga. Bara den narmaste fienden i slagytan traffas. */
+  chargedUppercut(p, cfg, t) {
+    const box = uppercutBox(p, cfg);
+    const cx = p.x + PLAYER.w / 2;
+    const cy = p.y + PLAYER.h * 0.46;
+    this.fx.push({
+      k: 'charged_uppercut',
+      id: p.id,
+      x: cx,
+      y: cy,
+      f: p.facing,
+      team: p.team,
+      bx: round(box.x),
+      by: round(box.y),
+      bw: round(box.w),
+      bh: round(box.h),
+    });
+
+    let target = null;
+    let bestDist = Infinity;
+    for (const o of this.players.values()) {
+      if (o.id === p.id || o.team === p.team || o.dead) continue;
+      if (!overlaps(box, { x: o.x, y: o.y, w: PLAYER.w, h: PLAYER.h })) continue;
+      const distance = Math.abs(o.x + PLAYER.w / 2 - cx);
+      if (distance < bestDist) {
+        target = o;
+        bestDist = distance;
+      }
+    }
+    if (!target) return;
+
+    const meta = { cause: 'chargedUppercut', abilityId: 'chargedUppercut' };
+    if (this.negateIncomingAttack(target, p, t, meta)) return;
+
+    // rng i tester kan medvetet vara exakt 1; clampen haller det dokumenterade
+    // skadespannet aven da (Math.random() ar annars alltid mindre an 1).
+    const damage = Math.min(cfg.damageMax, this.rollDamage(cfg.damageMin, cfg.damageMax));
+    this.damage(target, p, damage, 0, cfg.launchVelocity, t, meta);
+    if (!target.dead) {
+      target.uppercutLaunchUntil = t + cfg.launchWindowMs;
+      target.uppercutLaunchedBy = p.id;
+      // Offret ar hjalplost under hela flygturen - inga kvarvarande rusningar,
+      // kanaler eller redan startade slag far fortsatta i luften.
+      target.dashUntil = 0;
+      target.chargeUntil = 0;
+      target.chargeHits = null;
+      target.chargeType = null;
+      target.channel = null;
+      target.swing = null;
+      target.swingUntil = 0;
+    }
   }
 
   iceSpikes(p, cfg, t) {
@@ -1087,10 +1150,11 @@ export class Game {
     const dashing = t < p.dashUntil;
     const charging = t < p.chargeUntil;
     const stunned = t < p.stunnedUntil;
+    const uppercutLaunched = t < p.uppercutLaunchUntil;
     // Reprisen satter farten mot fangaren och gar fore allt annat: den som
     // slapas in kan varken springa emot eller bromsas av stun-friktionen.
     const pulled = t < p.pulledUntil && this.applyPull(p, t);
-    const locked = dashing || charging || stunned || pulled;
+    const locked = dashing || charging || stunned || uppercutLaunched || pulled;
 
     if (pulled) {
       // applyPull har redan satt vx och facing mot fangaren - ror dem inte.
@@ -1129,11 +1193,29 @@ export class Game {
       p.vx = 0;
     }
 
-    // Y - alla plattformar ar one-way, man landar bara uppifran
+    // Y - alla plattformar ar one-way, man landar bara uppifran. Det enda
+    // undantaget ar Charged uppercut: ett offer som skjuts upp i en plattform
+    // slar i undersidan, faller ner igen och stunnas.
+    const prevTop = p.y;
     const prevBottom = p.y + PLAYER.h;
     p.y += p.vy;
     const bottom = p.y + PLAYER.h;
     p.onGround = false;
+
+    if (p.uppercutLaunchUntil > t && p.vy < 0) {
+      const platform = this.uppercutPlatformHit(p, prevTop);
+      if (platform) {
+        p.y = platform.y + platform.h;
+        p.vy = 0;
+        p.uppercutLaunchUntil = 0;
+        const source = this.players.get(p.uppercutLaunchedBy);
+        this.stun(p, ABILITY_TUNING.chargedUppercut.platformStunMs, t, { source, cause: 'chargedUppercutPlatform' });
+        this.fx.push({ k: 'stun', id: p.id, x: p.x + PLAYER.w / 2, y: p.y + PLAYER.h * 0.18 });
+      }
+    } else if (p.uppercutLaunchUntil && t >= p.uppercutLaunchUntil) {
+      p.uppercutLaunchUntil = 0;
+      p.uppercutLaunchedBy = 0;
+    }
 
     if (p.vy >= 0) {
       for (const pl of this.layout.platforms) {
@@ -1150,11 +1232,29 @@ export class Game {
       }
     }
 
+    // Utan plattformstraff slapper uppercutens las forst vid markkontakt
+    // (eller vid den defensiva tidsgransen ovan), inte nar offret borjar falla.
+    if (p.uppercutLaunchUntil && p.onGround) {
+      p.uppercutLaunchUntil = 0;
+      p.uppercutLaunchedBy = 0;
+    }
+
     this.clearDropThroughIfDone(p);
 
     if (p.y > WORLD.h + 200) {
       this.kill(p, p.lastHitBy && t - p.lastHitAt < 5000 ? p.lastHitBy : 0);
     }
+  }
+
+  /** Returnerar den forsta plattformsundersidan en uppercut-offer korsar uppat. */
+  uppercutPlatformHit(p, prevTop) {
+    let hit = null;
+    for (const pl of this.layout.platforms) {
+      if (pl.ground || !this.overlapsPlatformX(p, pl)) continue;
+      const underside = pl.y + pl.h;
+      if (prevTop >= underside && p.y <= underside && (!hit || underside > hit.y + hit.h)) hit = pl;
+    }
+    return hit;
   }
 
   landSlam(p, t) {
@@ -1628,6 +1728,8 @@ export class Game {
     victim.stats.deaths++;
     victim.respawnAt = this.now() + PLAYER.respawnMs;
     victim.slamming = false;
+    victim.uppercutLaunchUntil = 0;
+    victim.uppercutLaunchedBy = 0;
     victim.swing = null;
     victim.stunnedUntil = 0;
     victim.iceSlowUntil = 0;
@@ -1772,6 +1874,18 @@ function meleeBox(x, y, facing) {
     y: y + (PLAYER.h - MELEE.height) / 2,
     w: Math.abs(front - back),
     h: MELEE.height,
+  };
+}
+
+function uppercutBox(p, cfg) {
+  const cx = p.x + PLAYER.w / 2;
+  const front = cx + p.facing * cfg.reach;
+  const back = cx - p.facing * (PLAYER.w / 2);
+  return {
+    x: Math.min(front, back),
+    y: p.y + (PLAYER.h - cfg.hitH) / 2,
+    w: Math.abs(front - back),
+    h: cfg.hitH,
   };
 }
 

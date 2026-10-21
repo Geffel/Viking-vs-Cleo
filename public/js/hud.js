@@ -15,6 +15,7 @@ const KILL_ICON_IMAGES = {
   sandBlast: '/assets/cleo/sand_blast1.png',
   powerShield: '/assets/cleo_shield_icon.png',
   sunFire: '/assets/cleo/sun_fire_ball.png',
+  chargedUppercut: '/assets/cleo/punch2.png',
   axeThrow: '/assets/viking/axe_throw.png',
   shieldCharge: '/assets/viking/shield_charge.png',
   lasso: '/assets/viking_harpoon_projectile.png',
@@ -465,6 +466,8 @@ function iconText(id, icon) {
       return 'SB';
     case 'sunFire':
       return 'SF';
+    case 'chargedUppercut':
+      return 'CU';
     case 'blink':
       return 'BL';
     case 'powerShield':
