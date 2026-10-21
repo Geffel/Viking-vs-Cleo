@@ -284,7 +284,7 @@ export const ABILITIES = {
       name: 'Ice spikes',
       icon: 'IS',
       iconImage: '/assets/viking/ice_spikes/ice_spike_8.png',
-      cooldown: 1000, // tillfalligt testvarde; slutbalansen ar 60 sekunder
+      cooldown: 60000,
       desc: 'Raise a tight line of ice spikes: 20-45 damage, an upward push and 25% slow for 7 seconds.',
     },
   },
