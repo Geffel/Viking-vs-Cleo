@@ -86,6 +86,7 @@ loadProfiles();
 wss.on('connection', (ws) => {
   ws.sessionId = nextSessionId++;
   ws.name = '';
+  ws.hasLoggedJoin = false;
   ws.clientId = null;
   ws.profileId = 0;
   ws.matchId = '';
@@ -130,6 +131,10 @@ wss.on('connection', (ws) => {
   });
 
   ws.on('close', () => {
+    if (ws.name) {
+      const match = ws.matchId ? matches.get(ws.matchId) : null;
+      gameLog('PLAYER', `Left: ${playerLabel(ws)}${match ? `, ${matchLabel(match)}` : ''}.`);
+    }
     const hadMatch = !!ws.matchId;
     if (ws.playerId) removePlayerSession(ws);
     if (ws.matchId) leaveLobbyMatch(ws);
@@ -165,6 +170,7 @@ function handleMessage(ws, msg) {
       if (ws.matchId) leaveLobbyMatch(ws);
       const match = matches.create(sessionPlayer(ws), { training: msg.mode === MATCH_MODES.training });
       ws.matchId = match.id;
+      gameLog('MATCH', `Created ${matchLabel(match)} by ${playerLabel(ws)}.`);
       broadcastLobby();
       sendMatch(match);
       break;
@@ -196,6 +202,7 @@ function handleMessage(ws, msg) {
         return;
       }
       ws.matchId = joined.id;
+      gameLog('MATCH', `${playerLabel(ws)} joined ${matchLabel(joined)}.`);
       broadcastLobby();
       sendMatch(joined);
       break;
@@ -359,6 +366,7 @@ function handleMessage(ws, msg) {
         return;
       }
       recordMatchResult(match, matchGame);
+      logMatchFinished(match);
       clearGameSessions(match.id);
       broadcastLobby();
       sendMatch(match);
@@ -438,6 +446,11 @@ function identifySocket(ws, msg) {
   ws.clientId = identity.clientId;
   ws.profileId = identity.profileId;
 
+  if (!ws.hasLoggedJoin) {
+    ws.hasLoggedJoin = true;
+    gameLog('PLAYER', `Joined: ${playerLabel(ws)}, online: ${activeNamedConnections()}.`);
+  }
+
   if (ws.matchId) {
     const match = matches.get(ws.matchId);
     const row = match?.players.get(ws.sessionId);
@@ -503,8 +516,14 @@ function leaveLobbyMatch(ws) {
   if (!oldId) return;
   ws.matchId = '';
 
+  const oldMatch = matches.get(oldId);
   const match = matches.removePlayer(oldId, ws.sessionId);
-  if (!match) clearGameSessions(oldId);
+  if (!match) {
+    clearGameSessions(oldId);
+    if (oldMatch) gameLog('MATCH', `Abandoned ${matchLabel(oldMatch)}; no players remain.`);
+  } else {
+    gameLog('MATCH', `${playerLabel(ws)} left ${matchLabel(match)}.`);
+  }
   if (match) sendMatch(match);
 }
 
@@ -819,6 +838,7 @@ function resolveIdentity(rawClientId, name) {
   if (!profile) {
     profile = createProfile(nextProfileId++, name);
     profiles.set(clientId, profile);
+    gameLog('PROFILE', `Created #${profile.profileId} for ${profile.name}.`);
   }
 
   profile.name = name;
@@ -1132,6 +1152,7 @@ function saveProfiles() {
 function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
+  gameLog('SERVER', 'Shutting down gracefully.');
 
   for (const player of allPlayers()) finalizeProfile(player);
   saveProfiles();
@@ -1683,6 +1704,37 @@ function recordMatchResult(match, matchGame) {
   }
 }
 
+function gameLog(category, message) {
+  console.log(`[${category}] ${message}`);
+}
+
+function playerLabel({ name, profileId }) {
+  const id = Math.max(0, Number(profileId) || 0);
+  return id ? `${name} (#${id})` : name || 'Unknown player';
+}
+
+function matchLabel(match) {
+  const mode = match.mode === MATCH_MODES.training ? 'training' : match.mode === MATCH_MODES.sharedScreen ? 'shared screen' : 'online';
+  return `#${match.id} (${mode})`;
+}
+
+function logMatchStarted(match) {
+  gameLog('MATCH', `Started ${matchLabel(match)}, map: ${match.selectedMap || 'unknown map'}, players: ${match.players.size}.`);
+}
+
+function logMatchFinished(match) {
+  if (!match?.finishedAt || match.loggedFinishedAt === match.finishedAt) return;
+  match.loggedFinishedAt = match.finishedAt;
+
+  const score = match.finalScore ?? { cleo: 0, viking: 0 };
+  const winner = score.cleo === score.viking ? 'draw' : score.cleo > score.viking ? 'Cleo' : 'Viking';
+  const ranking = match.resultCounts === false ? `, unranked: ${match.unrankedReason ?? 'yes'}` : '';
+  gameLog(
+    'MATCH',
+    `Finished ${matchLabel(match)}, map: ${match.selectedMap || 'unknown map'}, score: Viking ${score.viking}–${score.cleo} Cleo, winner: ${winner}${ranking}.`,
+  );
+}
+
 function getProfileById(profileId) {
   for (const profile of profiles.values()) {
     if (profile.profileId === profileId) return profile;
@@ -1790,10 +1842,14 @@ setInterval(() => {
 
   for (const change of changes) {
     if (change.to === MATCH_PHASES.countdown) prepareGameForMatch(change.match);
-    if (change.to === MATCH_PHASES.playing) beginFight(change.match);
+    if (change.to === MATCH_PHASES.playing) {
+      beginFight(change.match);
+      logMatchStarted(change.match);
+    }
     if (change.to === MATCH_PHASES.results) {
       const matchGame = matchGames.get(change.match.id);
       recordMatchResult(change.match, matchGame);
+      logMatchFinished(change.match);
       clearGameSessions(change.match.id);
     }
     sendMatch(change.match);
@@ -1868,6 +1924,7 @@ setInterval(() => {
 }, AUTOSAVE_MS);
 
 server.listen(PORT, '0.0.0.0', () => {
+  gameLog('SERVER', `Started on port ${PORT}.`);
   console.log('\n  Viking vs Cleo kör!\n');
   console.log(`  Här på datorn:  http://localhost:${PORT}`);
   for (const url of lanUrls(PORT)) console.log(`  På nätverket:   ${url}`);

@@ -13,6 +13,7 @@ $script:ServerProcess = $null
 $script:LastNightlyRestart = $null
 $script:CommandBuffer = ""
 $script:ShuttingDown = $false
+$script:LogTailPositions = @{ Server = 0; Error = 0 }
 
 Set-Location $Root
 
@@ -26,6 +27,56 @@ function Write-Log {
 
 function Show-Prompt {
     Write-Host -NoNewline "Command (Status / Restart / Shutdown): $($script:CommandBuffer)"
+}
+
+function Show-LogUpdates {
+    param(
+        [Parameter(Mandatory)][string]$Key,
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$Prefix
+    )
+
+    if (-not (Test-Path -LiteralPath $Path)) { return $false }
+
+    try {
+        $file = Get-Item -LiteralPath $Path
+        $position = [long]$script:LogTailPositions[$Key]
+        if ($file.Length -lt $position) { $position = 0 }
+        if ($file.Length -eq $position) { return $false }
+
+        $stream = [System.IO.File]::Open(
+            $Path,
+            [System.IO.FileMode]::Open,
+            [System.IO.FileAccess]::Read,
+            [System.IO.FileShare]::ReadWrite
+        )
+        try {
+            $stream.Position = $position
+            $reader = [System.IO.StreamReader]::new($stream, [System.Text.UTF8Encoding]::new($false), $true, 4096, $true)
+            try {
+                $output = $reader.ReadToEnd()
+            }
+            finally {
+                $reader.Dispose()
+            }
+            $script:LogTailPositions[$Key] = $stream.Position
+        }
+        finally {
+            $stream.Dispose()
+        }
+
+        $wrote = $false
+        foreach ($line in ($output -split "`r?`n")) {
+            if ([string]::IsNullOrWhiteSpace($line)) { continue }
+            Write-Host "`r[$Prefix] $line"
+            $wrote = $true
+        }
+        return $wrote
+    }
+    catch {
+        # Servern kan precis ha roterat eller stangt en loggfil. Forsok igen i nasta loop.
+        return $false
+    }
 }
 
 function Get-NodeListener {
@@ -89,6 +140,8 @@ function Start-GameServer {
     }
 
     Write-Log "Starting Viking vs Cleo..."
+    $script:LogTailPositions.Server = if (Test-Path -LiteralPath $ServerLog) { (Get-Item -LiteralPath $ServerLog).Length } else { 0 }
+    $script:LogTailPositions.Error = if (Test-Path -LiteralPath $ServerErrorLog) { (Get-Item -LiteralPath $ServerErrorLog).Length } else { 0 }
 
     $script:ServerProcess = Start-Process `
         -FilePath "node" `
@@ -173,6 +226,7 @@ try {
     Write-Host "Automatic restart every night at 02:00"
     Write-Host "Server output: server.log"
     Write-Host "Server errors: server-error.log"
+    Write-Host "Live game events and server errors are shown below"
     Write-Host ""
 
     Start-GameServer
@@ -182,6 +236,10 @@ try {
         Read-ConsoleInput
 
         if ($script:ShuttingDown) { break }
+
+        $serverOutput = Show-LogUpdates -Key "Server" -Path $ServerLog -Prefix "Server"
+        $errorOutput = Show-LogUpdates -Key "Error" -Path $ServerErrorLog -Prefix "Server error"
+        if ($serverOutput -or $errorOutput) { Show-Prompt }
 
         if ($script:ServerProcess -and $script:ServerProcess.HasExited) {
             Write-Host ""
