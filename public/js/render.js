@@ -53,13 +53,91 @@ const COMBO_FX = {
   slamIn: 0.09, // andel av tiden skylten faller in pa
   settle: 0.17, // ... och ar framme och studsar klart
   holdTo: 0.6, // ... star still fram till
-  shake: 13, // skarmskak nar man sjalv slog eller tog emot
-  shakeOther: 4.5, // ... och nar det var tva andra som gjorde upp
+  shake: 13, // skarmskak hos finisherns angripare och offer
   shakeDecay: 0.86, // per bildruta a 16 ms
   liftHold: 12, // hur hogt skylten dras medan den star still
   liftOut: 40, // ... och nar den tonar bort
   edgePad: 190, // skylten halls innanfor kanterna
   topPad: 74,
+};
+
+// Ice spikes ska lasa som en tung ultimate aven mot ljusa bakgrunder. Glodet
+// ritas fran bildernas alfakontur och partiklarna ateranvands under hela
+// attacken, sa effekten haller sig levande utan att skapa nya objekt per ruta.
+const ICE_SPIKE_FX = {
+  outline: '#2abfff',
+  core: '#dffbff',
+  glow: 'rgba(35, 179, 255, 0.9)',
+  ground: 'rgba(40, 196, 255, 0.72)',
+  mistCore: 'rgba(218, 250, 255, 0.9)',
+  mistEdge: 'rgba(50, 185, 255, 0.38)',
+  particlesPerSpike: 4,
+  particleLifeMs: 720,
+  casterGlowMs: 1000,
+  casterBlinkMs: 180,
+};
+
+// Shield Charge far en egen fartprofil bakom vikingen. Effekten foljer
+// spelaren under hela rusningen (sc i ognapsbilden) i stallet for att bara
+// blinka till vid starten.
+const SHIELD_CHARGE_FX = {
+  length: 126,
+  height: 36,
+  glow: '#4dc3ff',
+  core: '#f4fbff',
+};
+
+const AXE_THROW_FX = {
+  swooshMs: 280,
+  trailLength: 104,
+  glow: '#4dc3ff',
+  core: '#f4fbff',
+  impact: '#bcefff',
+};
+
+// Vikings ovriga attacker delar materialkansla med yxkastet: kallt stal,
+// isblatt sken och en varm accent dar skolden eller harpunkroken slar i.
+// Varje attack har anda en egen silhuett sa Q och E gar att skilja pa direkt.
+const VIKING_MELEE_FX = {
+  axe: { life: 250, glow: '#45caff', core: '#f4fbff', impact: '#9fe8ff' },
+  shield: { life: 220, glow: '#58bfff', core: '#ffffff', impact: '#ffd88a' },
+};
+
+const HARPOON_FX = {
+  castMs: 280,
+  glow: '#48c8ff',
+  core: '#eafaff',
+  hook: '#ffd38a',
+};
+
+const MUSHROOM_FX = {
+  core: '#fff0c2',
+  hot: '#ff6a32',
+  rage: '#ff2d1f',
+};
+
+// Cleos effekter bygger pa ett annat formsprak an Vikings kalla stal: rosaguld,
+// solskivor, lotusblad och fin sand. De ljusa karnorna gor attackerna tydliga
+// mot arenorna medan den rosa konturen knyter dem till Cleos lagfarg.
+const CLEO_FX = {
+  rose: '#ff4d9d',
+  deepRose: '#cf2f78',
+  gold: '#ffd166',
+  ivory: '#fff8d6',
+  sand: '#e8b85d',
+  dusk: '#9c3f78',
+};
+
+const CLEO_MELEE_FX = {
+  punch: { life: 230, radius: 43, impact: 260 },
+  kick: { life: 270, radius: 55, impact: 300 },
+};
+
+const SUN_FIRE_FX = {
+  core: '#fffbd1',
+  gold: '#ffd166',
+  hot: '#ff8a1f',
+  rose: '#ff4d9d',
 };
 
 const SUN_FIRE_CHANNEL_META = {
@@ -169,6 +247,7 @@ export class Renderer {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.effects = [];
+    this.behindEffects = []; // korta swooshes som ska ligga bakom spelarspriten
     this.scale = 1;
     this.offsetX = 0;
     this.offsetY = 0;
@@ -195,6 +274,7 @@ export class Renderer {
     };
     this.sprites = {};
     this.attackAnims = new Map(); // spelar-id -> { started, slot } for attackanimationen
+    this.iceSpikeCasts = new Map(); // spelar-id -> starttid for den korta bla kastarglodden
     this.hpTrails = new Map(); // spelar-id -> eftersladdning pa halsomataren
     this.buffs = new Map(); // spelar-id -> starttid for upplocks-effekten (blink + vaxt)
     this.arena = null; // bakgrundsbilden, laddas asynkront
@@ -431,28 +511,101 @@ export class Renderer {
         if (!this.sprites[fx.team]) {
           this.effects.push({ kind: 'swing', x: fx.x, y: fx.y, f: fx.f, born: t, life: 170, color });
         }
+        if (fx.team === 'viking') {
+          const shield = fx.slot === 'm2';
+          const cfg = shield ? VIKING_MELEE_FX.shield : VIKING_MELEE_FX.axe;
+          this.behindEffects.push({
+            kind: shield ? 'viking_shield_bash' : 'viking_axe_swing',
+            x: fx.x,
+            y: fx.y,
+            f: fx.f,
+            born: t,
+            life: cfg.life,
+          });
+          if (shield) {
+            this.effects.push({ kind: 'ring', x: fx.x + fx.f * 30, y: fx.y, born: t, life: 180, r0: 4, r1: 24, color: cfg.impact });
+          } else {
+            this.burst(fx.x + fx.f * 28, fx.y - 5, 7, cfg.glow, 2.8, fx.f * 1.3, -1.4);
+          }
+        }
+        if (fx.team === 'cleo') {
+          const kick = fx.slot === 'm2';
+          const cfg = kick ? CLEO_MELEE_FX.kick : CLEO_MELEE_FX.punch;
+          this.behindEffects.push({
+            kind: kick ? 'cleo_kick_sweep' : 'cleo_punch_sweep',
+            x: fx.x,
+            y: fx.y,
+            f: fx.f,
+            born: t,
+            life: cfg.life,
+          });
+          this.burst(
+            fx.x + fx.f * (kick ? 36 : 27),
+            fx.y + (kick ? 16 : -6),
+            kick ? 9 : 7,
+            kick ? CLEO_FX.rose : CLEO_FX.gold,
+            kick ? 3.4 : 2.9,
+            fx.f * 1.6,
+            kick ? -0.5 : -1.6,
+          );
+        }
         break;
       case 'axe_throw':
         if (fx.id) this.attackAnims.set(fx.id, { started: t, slot: fx.slot ?? 'default' });
-        this.burst(fx.x + fx.f * 14, fx.y, 8, '#d8e2f0', 3.2, fx.f * 2, -1);
+        this.behindEffects.push({
+          kind: 'axe_throw_swoosh',
+          x: fx.x,
+          y: fx.y,
+          f: fx.f,
+          born: t,
+          life: AXE_THROW_FX.swooshMs,
+        });
+        this.effects.push({ kind: 'ring', x: fx.x + fx.f * 22, y: fx.y, born: t, life: 220, r0: 4, r1: 30, color: AXE_THROW_FX.impact });
+        this.burst(fx.x + fx.f * 18, fx.y, 13, '#d8e2f0', 3.8, fx.f * 2.2, -1.2);
+        this.burst(fx.x + fx.f * 14, fx.y, 6, AXE_THROW_FX.glow, 3, fx.f * 1.4, -1.8);
         break;
       case 'axe_hit':
-        this.effects.push({ kind: 'ring', x: fx.x, y: fx.y, born: t, life: 180, r0: 3, r1: 26, color: '#d8e2f0' });
-        this.burst(fx.x, fx.y, 10, '#d8e2f0', 4.4, 0, -1.5);
+        this.effects.push({ kind: 'flash', x: fx.x, y: fx.y, born: t, life: 220, r: 105, color: AXE_THROW_FX.glow });
+        this.effects.push({ kind: 'ring', x: fx.x, y: fx.y, born: t, life: 220, r0: 3, r1: 34, color: AXE_THROW_FX.core });
+        this.effects.push({ kind: 'ring', x: fx.x, y: fx.y, born: t, life: 340, r0: 8, r1: 54, color: AXE_THROW_FX.glow });
+        this.effects.push({
+          kind: 'streaks',
+          x: fx.x,
+          y: fx.y,
+          born: t,
+          life: 280,
+          color: AXE_THROW_FX.impact,
+          lines: Array.from({ length: 7 }, (_, i) => ({
+            a: (i / 7) * Math.PI * 2 + Math.random() * 0.24,
+            r: 4 + Math.random() * 12,
+            len: 14 + Math.random() * 28,
+          })),
+        });
+        this.burst(fx.x, fx.y, 16, '#d8e2f0', 5.2, 0, -1.7);
+        this.burst(fx.x, fx.y, 8, AXE_THROW_FX.glow, 3.8, 0, -2.1);
         break;
       case 'sun_fire_channel':
-        this.effects.push({ kind: 'ring', x: fx.x, y: fx.y, born: t, life: 360, r0: 6, r1: 38, color: '#ffd166' });
-        this.burst(fx.x, fx.y, 12, '#ffd166', 3.2, 0, -1.4);
+        this.effects.push({ kind: 'solar_seal', x: fx.x, y: fx.y, born: t, life: 520 });
+        this.effects.push({ kind: 'flash', x: fx.x, y: fx.y, born: t, life: 260, r: 100, color: SUN_FIRE_FX.gold });
+        this.effects.push({ kind: 'ring', x: fx.x, y: fx.y, born: t, life: 420, r0: 6, r1: 48, color: SUN_FIRE_FX.rose });
+        this.burst(fx.x, fx.y, 16, SUN_FIRE_FX.gold, 3.6, 0, -1.8);
+        this.burst(fx.x, fx.y, 7, SUN_FIRE_FX.core, 2.8, 0, -2.6);
         break;
       case 'sun_fire_release':
-        this.effects.push({ kind: 'ring', x: fx.x, y: fx.y, born: t, life: 300, r0: 8, r1: 52 + (fx.s ?? 0) * 28, color: '#ff9f1c' });
-        this.burst(fx.x + fx.f * 18, fx.y, 18, '#ff9f1c', 4.8, fx.f * 2.4, -1.2);
+        this.behindEffects.push({ kind: 'sun_fire_recoil', x: fx.x, y: fx.y, f: fx.f, born: t, life: 360, s: fx.s ?? 0 });
+        this.effects.push({ kind: 'solar_seal', x: fx.x, y: fx.y, born: t, life: 380, s: fx.s ?? 0 });
+        this.effects.push({ kind: 'ring', x: fx.x, y: fx.y, born: t, life: 340, r0: 8, r1: 58 + (fx.s ?? 0) * 36, color: SUN_FIRE_FX.hot });
+        this.effects.push({ kind: 'ring', x: fx.x, y: fx.y, born: t, life: 460, r0: 14, r1: 82 + (fx.s ?? 0) * 42, color: SUN_FIRE_FX.rose });
+        this.burst(fx.x + fx.f * 18, fx.y, 24, SUN_FIRE_FX.hot, 5.4, fx.f * 2.8, -1.4);
+        this.burst(fx.x + fx.f * 14, fx.y, 10, SUN_FIRE_FX.core, 4, fx.f * 2, -2.3);
         break;
       case 'sun_fire_hit':
-        this.effects.push({ kind: 'flash', x: fx.x, y: fx.y, born: t, life: 260, r: 220 + (fx.s ?? 0) * 160, color: '#ff8a00' });
-        this.effects.push({ kind: 'ring', x: fx.x, y: fx.y, born: t, life: 280, r0: 8, r1: 46 + (fx.s ?? 0) * 42, color: '#ffd166' });
-        this.burst(fx.x, fx.y, 20, '#ff9f1c', 6.2, 0, -1.8);
-        this.burst(fx.x, fx.y, 10, '#fff2a8', 4.2, 0, -2.4);
+        this.effects.push({ kind: 'solar_burst', x: fx.x, y: fx.y, born: t, life: 520, s: fx.s ?? 0 });
+        this.effects.push({ kind: 'flash', x: fx.x, y: fx.y, born: t, life: 300, r: 280 + (fx.s ?? 0) * 220, color: SUN_FIRE_FX.hot });
+        this.effects.push({ kind: 'ring', x: fx.x, y: fx.y, born: t, life: 320, r0: 8, r1: 54 + (fx.s ?? 0) * 52, color: SUN_FIRE_FX.core });
+        this.effects.push({ kind: 'ring', x: fx.x, y: fx.y, born: t, life: 520, r0: 18, r1: 102 + (fx.s ?? 0) * 78, color: SUN_FIRE_FX.rose });
+        this.burst(fx.x, fx.y, 30, SUN_FIRE_FX.hot, 7.2, 0, -2.1);
+        this.burst(fx.x, fx.y, 16, SUN_FIRE_FX.core, 4.8, 0, -3);
         break;
       case 'sand_blast':
         if (fx.id) this.attackAnims.set(fx.id, { started: t, slot: fx.slot ?? 'default' });
@@ -466,16 +619,21 @@ export class Renderer {
           range: fx.r,
           nearHalfHeight: fx.nh,
           farHalfHeight: fx.fh,
+          motes: makeSandMotes(34),
         });
-        this.burst(fx.x + fx.f * 24, fx.y + 18, 12, '#f7c66a', 4.2, fx.f * 2, -1);
+        this.effects.push({ kind: 'sand_crown', x: fx.x + fx.f * 34, y: fx.y, f: fx.f, born: t, life: 360 });
+        this.burst(fx.x + fx.f * 24, fx.y + 18, 18, CLEO_FX.sand, 4.8, fx.f * 2.3, -1.2);
+        this.burst(fx.x + fx.f * 18, fx.y + 4, 8, CLEO_FX.rose, 3.3, fx.f * 1.6, -2);
         break;
       case 'charged_uppercut':
         // Cleo ateranvander sin knytnavessprite, medan den egna solbagen gor
         // det tydligt att detta ar den laddade specialattacken.
         if (fx.id) this.attackAnims.set(fx.id, { started: t, slot: 'm1' });
-        this.effects.push({ kind: 'uppercut_swoosh', x: fx.x, y: fx.y, f: fx.f, born: t, life: 260 });
-        this.effects.push({ kind: 'ring', x: fx.x + fx.f * 22, y: fx.y - 12, born: t, life: 240, r0: 5, r1: 38, color: '#ffd166' });
-        this.burst(fx.x + fx.f * 24, fx.y - 8, 18, '#ffd166', 4.8, fx.f * 1.7, -3.4);
+        this.effects.push({ kind: 'uppercut_swoosh', x: fx.x, y: fx.y, f: fx.f, born: t, life: 340 });
+        this.effects.push({ kind: 'cleo_lotus_impact', x: fx.x + fx.f * 25, y: fx.y - 14, f: fx.f, born: t, life: 380 });
+        this.effects.push({ kind: 'ring', x: fx.x + fx.f * 22, y: fx.y - 12, born: t, life: 300, r0: 5, r1: 48, color: CLEO_FX.gold });
+        this.burst(fx.x + fx.f * 24, fx.y - 8, 24, CLEO_FX.gold, 5.5, fx.f * 1.9, -4.2);
+        this.burst(fx.x + fx.f * 20, fx.y - 5, 10, CLEO_FX.rose, 3.8, fx.f * 1.2, -5.2);
         if (this.debug && fx.bw) this.effects.push({ kind: 'box', x: fx.bx, y: fx.by, w: fx.bw, h: fx.bh, born: t, life: 400, color: '#ffd166' });
         break;
       case 'ice_spikes': {
@@ -483,6 +641,12 @@ export class Renderer {
         const count = fx.n ?? cfg.count;
         const lastRise = (count - 1) * cfg.stepMs + cfg.riseMs;
         const life = lastRise + cfg.holdMs + (count - 1) * cfg.retractStepMs + cfg.retractMs;
+        if (fx.id) {
+          // Ultimate-kastet ateranvander Vikings offhand/skoldattack, men gor
+          // ingen extra melee-traff - det har ar enbart klientanimationen.
+          this.attackAnims.set(fx.id, { started: t, slot: 'm2' });
+          this.iceSpikeCasts.set(fx.id, t);
+        }
         this.effects.push({
           kind: 'ice_spikes',
           x: fx.x,
@@ -492,17 +656,26 @@ export class Renderer {
           life,
           range: fx.r ?? cfg.range,
           count,
+          motes: makeIceSpikeMotes(count),
         });
-        this.burst(fx.x + fx.f * 38, fx.y - 4, 14, '#8fe8ff', 4.1, fx.f * 1.4, -2.2);
+        this.effects.push({ kind: 'flash', x: fx.x + fx.f * 42, y: fx.y - 8, born: t, life: 260, r: 105, color: '#35bdff' });
+        this.effects.push({ kind: 'ring', x: fx.x + fx.f * 36, y: fx.y, born: t, life: 380, r0: 6, r1: 58, color: '#bcefff' });
+        this.burst(fx.x + fx.f * 38, fx.y - 4, 20, '#45caff', 4.8, fx.f * 1.5, -2.7);
+        this.burst(fx.x + fx.f * 38, fx.y - 8, 9, '#e8fcff', 3.3, fx.f, -3.5);
         break;
       }
       case 'mushrooms': {
-        // Svampen sticker upp och tonar bort medan raseriet slar ut i rott.
+        // Svampen sticker upp och tonar bort medan en varm runring och
+        // eldsprickor slar ut under vikingen. Den kvarvarande buffen ritas i
+        // drawRageGlow sa att den fortsatter leva efter sjalva kastogonblicket.
+        this.behindEffects.push({ kind: 'berserk_eruption', x: fx.x, y: fx.y, born: t, life: 720 });
         this.effects.push({ kind: 'mushroom', x: fx.x, y: fx.y - 10, born: t, life: 900 });
+        this.effects.push({ kind: 'berserk_runes', x: fx.x, y: fx.y + PLAYER.h * 0.5, born: t, life: 900 });
+        this.effects.push({ kind: 'flash', x: fx.x, y: fx.y, born: t, life: 300, r: 150, color: MUSHROOM_FX.hot });
         this.effects.push({ kind: 'ring', x: fx.x, y: fx.y, born: t, life: 420, r0: 10, r1: 66, color: '#ff3c28' });
         this.effects.push({ kind: 'ring', x: fx.x, y: fx.y, born: t, life: 620, r0: 14, r1: 96, color: '#ff7a4d' });
-        this.burst(fx.x, fx.y, 20, '#ff3c28', 4.6, 0, -1.6);
-        this.burst(fx.x, fx.y, 10, '#ffd0c2', 3.4, 0, -2.2);
+        this.burst(fx.x, fx.y, 26, MUSHROOM_FX.rage, 5.2, 0, -2.2);
+        this.burst(fx.x, fx.y, 14, MUSHROOM_FX.core, 3.8, 0, -3.2);
         this.effects.push({
           kind: 'float',
           x: fx.x,
@@ -516,12 +689,17 @@ export class Renderer {
         break;
       }
       case 'power_shield':
-        this.effects.push({ kind: 'ring', x: fx.x, y: fx.y, born: t, life: 520, r0: 16, r1: 70, color: '#ffe8a3' });
-        this.burst(fx.x, fx.y, 14, '#ffe8a3', 3.3, 0, -1.5);
+        this.effects.push({ kind: 'power_shield_burst', x: fx.x, y: fx.y, born: t, life: 620, c: fx.c ?? 3 });
+        this.effects.push({ kind: 'flash', x: fx.x, y: fx.y, born: t, life: 280, r: 145, color: CLEO_FX.rose });
+        this.effects.push({ kind: 'ring', x: fx.x, y: fx.y, born: t, life: 560, r0: 12, r1: 82, color: CLEO_FX.gold });
+        this.burst(fx.x, fx.y, 22, CLEO_FX.gold, 4.1, 0, -2);
+        this.burst(fx.x, fx.y, 10, CLEO_FX.rose, 3.1, 0, -3);
         break;
       case 'power_shield_hit':
-        this.effects.push({ kind: 'ring', x: fx.x, y: fx.y, born: t, life: 260, r0: 12, r1: 42, color: '#ffe8a3' });
-        this.burst(fx.x, fx.y, 10, '#fff2bf', 3.8, 0, -0.8);
+        this.effects.push({ kind: 'cleo_shield_impact', x: fx.x, y: fx.y, born: t, life: 360, left: fx.left ?? 0 });
+        this.effects.push({ kind: 'flash', x: fx.x, y: fx.y, born: t, life: 190, r: 95, color: CLEO_FX.gold });
+        this.effects.push({ kind: 'ring', x: fx.x, y: fx.y, born: t, life: 300, r0: 12, r1: 48, color: CLEO_FX.ivory });
+        this.burst(fx.x, fx.y, 16, CLEO_FX.gold, 4.5, 0, -1.1);
         if (typeof fx.left === 'number') {
           this.effects.push({
             kind: 'float',
@@ -545,6 +723,43 @@ export class Renderer {
         // Finishern i en combo skickas precis fore sin traff, sa siffran som
         // hor till den vaxer den ocksa.
         const finisher = this.comboHit.id === fx.id && t < this.comboHit.until;
+        const vikingMelee = fx.team === 'viking' && fx.cause === 'melee';
+        if (vikingMelee) {
+          const shield = fx.meleeSlot === 'm2';
+          const cfg = shield ? VIKING_MELEE_FX.shield : VIKING_MELEE_FX.axe;
+          this.effects.push({ kind: 'flash', x: fx.x, y: fx.y, born: t, life: 180, r: shield ? 92 : 78, color: cfg.glow });
+          this.effects.push({
+            kind: shield ? 'shield_impact' : 'axe_impact',
+            x: fx.x,
+            y: fx.y,
+            f: fx.f,
+            born: t,
+            life: shield ? 260 : 300,
+          });
+          this.burst(fx.x, fx.y, shield ? 12 : 15, cfg.impact, shield ? 4.2 : 5.1, fx.f * 1.2, -1.5);
+          // Kamerastoten ar personlig feedback for den som slog. Offrets och
+          // ovriga klienters kameror ska ligga still; pa shared screen ar
+          // angriparen fortfarande lokal och den gemensamma kameran skakar.
+          if (this.isLocalPlayer(fx.by)) this.punch(shield ? 3.2 : 2.4);
+        }
+        const cleoMelee = fx.team === 'cleo' && fx.cause === 'melee';
+        if (cleoMelee) {
+          const kick = fx.meleeSlot === 'm2';
+          const cfg = kick ? CLEO_MELEE_FX.kick : CLEO_MELEE_FX.punch;
+          this.effects.push({ kind: 'flash', x: fx.x, y: fx.y, born: t, life: 180, r: kick ? 88 : 72, color: CLEO_FX.rose });
+          this.effects.push({
+            kind: 'cleo_melee_impact',
+            x: fx.x,
+            y: fx.y,
+            f: fx.f,
+            born: t,
+            life: cfg.impact,
+            kick,
+          });
+          this.burst(fx.x, fx.y, kick ? 16 : 13, kick ? CLEO_FX.rose : CLEO_FX.gold, kick ? 5.4 : 4.7, fx.f * 1.5, -1.8);
+          this.burst(fx.x, fx.y, 6, CLEO_FX.ivory, 3.4, fx.f, -2.5);
+          if (this.isLocalPlayer(fx.by)) this.punch(kick ? 2.8 : 2.1);
+        }
         this.effects.push({
           kind: 'ring',
           x: fx.x,
@@ -589,8 +804,9 @@ export class Renderer {
         // Sista slaget i en combo landade. Det har ar kvallens hardaste traff -
         // den ska kannas i hela rutan, inte bara synas som en siffra. Var man
         // inte med sjalv racker en darring: annars skakar skarmen hela matchen.
-        const mine = this.isLocalPlayer(fx.id) || this.isLocalPlayer(fx.by);
-        this.punch(mine ? COMBO_FX.shake : COMBO_FX.shakeOther);
+        // Finishern kanns for bada som ar med i duellen: angriparen och offret.
+        // Utomstaende klienter ser traffeffekten men deras kamera ligger still.
+        if (this.isLocalPlayer(fx.by) || this.isLocalPlayer(fx.id)) this.punch(COMBO_FX.shake);
         // Skadesiffran som kommer strax efter far finisher-behandling.
         this.comboHit = { id: fx.id, until: t + 120 };
 
@@ -654,11 +870,12 @@ export class Renderer {
         this.burst(fx.x, fx.y, 16, '#7bf1a8', 2.5, 0, -4);
         break;
       case 'blink':
-        this.effects.push({ kind: 'ring', x: fx.x, y: fx.y, born: t, life: 220, r0: 5, r1: 34, color });
-        this.effects.push({ kind: 'ring', x: fx.tx, y: fx.ty, born: t, life: 260, r0: 6, r1: 42, color });
-        this.effects.push({ kind: 'blink_line', x: fx.x, y: fx.y, tx: fx.tx, ty: fx.ty, born: t, life: 220, color });
-        this.burst(fx.x, fx.y, 12, color, 3.2, -fx.f, -1);
-        this.burst(fx.tx, fx.ty, 16, color, 3.8, fx.f, -1);
+        this.effects.push({ kind: 'cleo_blink', x: fx.x, y: fx.y, tx: fx.tx, ty: fx.ty, f: fx.f, born: t, life: 360 });
+        this.effects.push({ kind: 'ring', x: fx.x, y: fx.y, born: t, life: 260, r0: 5, r1: 42, color: CLEO_FX.gold });
+        this.effects.push({ kind: 'ring', x: fx.tx, y: fx.ty, born: t, life: 340, r0: 6, r1: 54, color: CLEO_FX.rose });
+        this.burst(fx.x, fx.y, 18, CLEO_FX.sand, 4, -fx.f, -1.5);
+        this.burst(fx.tx, fx.ty, 24, CLEO_FX.gold, 4.6, fx.f, -1.8);
+        this.burst(fx.tx, fx.ty, 8, CLEO_FX.rose, 3.2, fx.f, -3);
         break;
       case 'pizza':
         // Startar blink/vaxt-effekten pa spelaren som at pizzan.
@@ -730,19 +947,25 @@ export class Renderer {
         this.effects.push({ kind: 'trail', x: fx.x, y: fx.y, f: fx.f, born: t, life: 280, color });
         break;
       case 'shield_charge':
-        this.effects.push({ kind: 'trail', x: fx.x, y: fx.y, f: fx.f, born: t, life: 360, color });
         this.burst(fx.x - fx.f * 18, fx.y + PLAYER.h * 0.35, 10, '#d8e2f0', 2.8, -fx.f, -0.6);
         break;
       case 'lasso_throw':
         // Samma kastrorelse som yxan spelas nar harpunen slungas ivag. Sjalva
         // harpunen och repet ritas sedan lopande ur ognapsbilden.
         if (fx.id) this.attackAnims.set(fx.id, { started: t, slot: fx.slot ?? 'default' });
-        this.burst(fx.x + fx.f * 14, fx.y, 7, '#e8ddc8', 3.0, fx.f * 2, -1);
+        this.behindEffects.push({ kind: 'harpoon_cast', x: fx.x, y: fx.y, f: fx.f, born: t, life: HARPOON_FX.castMs });
+        this.effects.push({ kind: 'ring', x: fx.x + fx.f * 28, y: fx.y, born: t, life: 220, r0: 4, r1: 30, color: HARPOON_FX.hook });
+        this.burst(fx.x + fx.f * 20, fx.y, 11, HARPOON_FX.core, 3.6, fx.f * 2, -1.4);
         break;
       case 'lasso_hit':
-        // Kroken satt: en liten fangst-stot dar harpunen traffade.
-        this.effects.push({ kind: 'ring', x: fx.x, y: fx.y, born: t, life: 240, r0: 4, r1: 26, color: '#e6c78a' });
-        this.burst(fx.x, fx.y, 10, '#e6c78a', 3.4, 0, -1);
+        // Kroken satt: en dubbel metall/iskall stot och fyra hakar som nyper
+        // ihop runt traffpunkten innan repet borjar dra.
+        this.effects.push({ kind: 'flash', x: fx.x, y: fx.y, born: t, life: 220, r: 105, color: HARPOON_FX.glow });
+        this.effects.push({ kind: 'harpoon_impact', x: fx.x, y: fx.y, born: t, life: 360 });
+        this.effects.push({ kind: 'ring', x: fx.x, y: fx.y, born: t, life: 260, r0: 4, r1: 34, color: HARPOON_FX.hook });
+        this.effects.push({ kind: 'ring', x: fx.x, y: fx.y, born: t, life: 420, r0: 9, r1: 54, color: HARPOON_FX.glow });
+        this.burst(fx.x, fx.y, 16, HARPOON_FX.hook, 4.4, 0, -1.3);
+        this.burst(fx.x, fx.y, 8, HARPOON_FX.core, 3.2, 0, -2.1);
         break;
     }
   }
@@ -833,12 +1056,19 @@ export class Renderer {
         if (t - started > POWERUP.buffMs) this.buffs.delete(id);
       }
     }
+    if (this.iceSpikeCasts.size) {
+      const t = performance.now();
+      for (const [id, started] of this.iceSpikeCasts) {
+        if (t - started > ICE_SPIKE_FX.casterGlowMs) this.iceSpikeCasts.delete(id);
+      }
+    }
 
     this.drawBackground(ctx);
     if (this.debug && this.arena) this.drawPlatforms(ctx, true);
     else if (!this.arena || this.solidPlatforms()) this.drawPlatforms(ctx, false);
     if (this.platformGuides) this.drawPlatformGuides(ctx);
     this.drawPowerups(ctx, powerups);
+    this.drawBehindEffects(ctx);
 
     for (const p of players) {
       if (!p.d) this.drawPlayer(ctx, p, this.isLocalPlayer(p.i));
@@ -1762,16 +1992,7 @@ export class Renderer {
         continue;
       }
 
-      ctx.save();
-      ctx.globalAlpha = 0.72;
-      ctx.strokeStyle = 'rgba(216,226,240,0.5)';
-      ctx.lineWidth = 5;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.moveTo(pr.x - nx * 14, pr.y - ny * 14);
-      ctx.lineTo(pr.x - nx * 62, pr.y - ny * 62);
-      ctx.stroke();
-      ctx.restore();
+      this.drawAxeTrail(ctx, pr, nx, ny, spin, t);
 
       ctx.save();
       ctx.translate(pr.x, pr.y);
@@ -1795,6 +2016,85 @@ export class Renderer {
     }
   }
 
+  drawAxeTrail(ctx, pr, nx, ny, spin, t) {
+    const cfg = AXE_THROW_FX;
+    const px = -ny;
+    const py = nx;
+    const tailX = pr.x - nx * cfg.trailLength;
+    const tailY = pr.y - ny * cfg.trailLength;
+    const wave = Math.sin(t / 55 + (pr.i ?? 0) * 1.7) * 4;
+    const trail = ctx.createLinearGradient(tailX, tailY, pr.x, pr.y);
+    trail.addColorStop(0, 'rgba(77, 195, 255, 0)');
+    trail.addColorStop(0.48, 'rgba(77, 195, 255, 0.24)');
+    trail.addColorStop(0.82, 'rgba(190, 235, 255, 0.62)');
+    trail.addColorStop(1, 'rgba(244, 251, 255, 0.18)');
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.fillStyle = trail;
+    ctx.shadowColor = cfg.glow;
+    ctx.shadowBlur = 12;
+    ctx.beginPath();
+    ctx.moveTo(pr.x - nx * 10 + px * 9, pr.y - ny * 10 + py * 9);
+    ctx.quadraticCurveTo(
+      pr.x - nx * 58 + px * (wave + 6),
+      pr.y - ny * 58 + py * (wave + 6),
+      tailX + px * 1.5,
+      tailY + py * 1.5,
+    );
+    ctx.quadraticCurveTo(
+      pr.x - nx * 58 + px * (wave - 6),
+      pr.y - ny * 58 + py * (wave - 6),
+      pr.x - nx * 10 - px * 9,
+      pr.y - ny * 10 - py * 9,
+    );
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = cfg.core;
+    ctx.lineWidth = 2.4;
+    ctx.globalAlpha = 0.78;
+    ctx.beginPath();
+    ctx.moveTo(pr.x - nx * 18, pr.y - ny * 18);
+    ctx.quadraticCurveTo(
+      pr.x - nx * 60 + px * wave,
+      pr.y - ny * 60 + py * wave,
+      tailX,
+      tailY,
+    );
+    ctx.stroke();
+
+    // Tva tunnare strimmor delar upp sparet och far yxan att se snabbare ut.
+    ctx.strokeStyle = cfg.glow;
+    ctx.shadowBlur = 6;
+    ctx.lineWidth = 1.5;
+    for (const side of [-1, 1]) {
+      ctx.globalAlpha = 0.42;
+      ctx.beginPath();
+      ctx.moveTo(pr.x - nx * 26 + px * side * 12, pr.y - ny * 26 + py * side * 12);
+      ctx.quadraticCurveTo(
+        pr.x - nx * 58 + px * (side * 13 + wave),
+        pr.y - ny * 58 + py * (side * 13 + wave),
+        pr.x - nx * 82 + px * side * 5,
+        pr.y - ny * 82 + py * side * 5,
+      );
+      ctx.stroke();
+    }
+
+    // En roterande ljusbage runt bladet binder sparet till yxans snurr.
+    ctx.translate(pr.x, pr.y);
+    ctx.rotate(spin);
+    ctx.globalAlpha = 0.62;
+    ctx.strokeStyle = cfg.core;
+    ctx.shadowBlur = 10;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(0, 0, 32, -0.82, 0.72);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   drawSunFireProjectile(ctx, pr) {
     const vx = pr.vx ?? pr.f ?? 1;
     const vy = pr.vy ?? 0;
@@ -1806,16 +2106,53 @@ export class Renderer {
     const hitW = pr.w ?? lerp(ABILITY_TUNING.sunFire.wMin, ABILITY_TUNING.sunFire.wMax, strength);
     const hitH = pr.h ?? lerp(ABILITY_TUNING.sunFire.hMin, ABILITY_TUNING.sunFire.hMax, strength);
     const spriteSize = Math.max(hitW * 2.05, hitH * 1.85);
+    const t = performance.now();
+    const px = -ny;
+    const py = nx;
+    const tail = spriteSize * (1.05 + strength * 0.55);
 
     ctx.save();
-    ctx.globalAlpha = 0.72 + strength * 0.18;
-    ctx.strokeStyle = 'rgba(255, 159, 28, 0.62)';
-    ctx.lineWidth = 8 + strength * 7;
+    ctx.globalCompositeOperation = 'screen';
+    const flame = ctx.createLinearGradient(pr.x - nx * tail, pr.y - ny * tail, pr.x, pr.y);
+    flame.addColorStop(0, 'rgba(255, 77, 157, 0)');
+    flame.addColorStop(0.35, 'rgba(255, 77, 157, 0.28)');
+    flame.addColorStop(0.72, 'rgba(255, 138, 31, 0.68)');
+    flame.addColorStop(1, 'rgba(255, 251, 209, 0.92)');
+    ctx.globalAlpha = 0.74 + strength * 0.2;
+    ctx.strokeStyle = flame;
+    ctx.shadowColor = SUN_FIRE_FX.hot;
+    ctx.shadowBlur = 14 + strength * 10;
+    ctx.lineWidth = 12 + strength * 12;
     ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.moveTo(pr.x - nx * spriteSize * 0.25, pr.y - ny * spriteSize * 0.25);
-    ctx.lineTo(pr.x - nx * spriteSize * 0.85, pr.y - ny * spriteSize * 0.85);
+    ctx.moveTo(pr.x - nx * spriteSize * 0.22, pr.y - ny * spriteSize * 0.22);
+    ctx.quadraticCurveTo(
+      pr.x - nx * tail * 0.58 + px * Math.sin(t / 72 + (pr.i ?? 0)) * 7,
+      pr.y - ny * tail * 0.58 + py * Math.sin(t / 72 + (pr.i ?? 0)) * 7,
+      pr.x - nx * tail,
+      pr.y - ny * tail,
+    );
     ctx.stroke();
+
+    // Tva rosa sidoband flatar sig runt solkarnan och skiljer Cleos eld fran
+    // vanliga orange projektiler.
+    ctx.lineWidth = 2.2 + strength * 1.8;
+    ctx.strokeStyle = SUN_FIRE_FX.rose;
+    ctx.shadowColor = SUN_FIRE_FX.rose;
+    ctx.shadowBlur = 9;
+    for (const side of [-1, 1]) {
+      const wave = Math.sin(t / 58 + side * Math.PI * 0.5) * spriteSize * 0.11;
+      ctx.globalAlpha = 0.52 + strength * 0.22;
+      ctx.beginPath();
+      ctx.moveTo(pr.x - nx * 12 + px * side * spriteSize * 0.2, pr.y - ny * 12 + py * side * spriteSize * 0.2);
+      ctx.quadraticCurveTo(
+        pr.x - nx * tail * 0.48 + px * (side * spriteSize * 0.12 + wave),
+        pr.y - ny * tail * 0.48 + py * (side * spriteSize * 0.12 + wave),
+        pr.x - nx * tail * 0.9,
+        pr.y - ny * tail * 0.9,
+      );
+      ctx.stroke();
+    }
     ctx.restore();
 
     ctx.save();
@@ -1828,6 +2165,28 @@ export class Renderer {
     ctx.beginPath();
     ctx.arc(pr.x, pr.y, spriteSize * 0.75, 0, Math.PI * 2);
     ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.translate(pr.x, pr.y);
+    ctx.globalCompositeOperation = 'screen';
+    ctx.strokeStyle = SUN_FIRE_FX.core;
+    ctx.shadowColor = SUN_FIRE_FX.gold;
+    ctx.shadowBlur = 13;
+    ctx.globalAlpha = 0.62 + strength * 0.28;
+    ctx.lineWidth = 2.4 + strength * 1.5;
+    ctx.setLineDash([8 + strength * 5, 7]);
+    ctx.lineDashOffset = -t / 20;
+    ctx.beginPath();
+    ctx.arc(0, 0, spriteSize * (0.38 + Math.sin(t / 90) * 0.025), 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    for (let ray = 0; ray < 8; ray++) {
+      const a = (ray / 8) * Math.PI * 2 + t / 330;
+      const r0 = spriteSize * 0.38;
+      const r1 = spriteSize * (0.48 + strength * 0.08 + (ray % 2) * 0.04);
+      strokeLine(ctx, Math.cos(a) * r0, Math.sin(a) * r0, Math.cos(a) * r1, Math.sin(a) * r1);
+    }
     ctx.restore();
 
     ctx.save();
@@ -1857,6 +2216,38 @@ export class Renderer {
     const dir = pr.f || Math.sign(pr.vx ?? 0) || 1;
     const len = HARPOON_LEN;
     const h = len * (HARPOON_SPRITE.sh / HARPOON_SPRITE.sw);
+    const t = performance.now();
+    const wake = 0.72 + Math.sin(t / 62 + (pr.i ?? 0)) * 0.16;
+
+    // En smal kometsvans gor det langsammare kastet latt att lasa utan att
+    // forvandla hamprepet till ett energivapen.
+    ctx.save();
+    ctx.translate(pr.x, pr.y);
+    ctx.scale(dir, 1);
+    ctx.globalCompositeOperation = 'screen';
+    const trail = ctx.createLinearGradient(-112, 0, -12, 0);
+    trail.addColorStop(0, 'rgba(72, 200, 255, 0)');
+    trail.addColorStop(0.62, 'rgba(72, 200, 255, 0.28)');
+    trail.addColorStop(1, 'rgba(234, 250, 255, 0.78)');
+    ctx.globalAlpha = wake;
+    ctx.strokeStyle = trail;
+    ctx.shadowColor = HARPOON_FX.glow;
+    ctx.shadowBlur = 9;
+    ctx.lineCap = 'round';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(-108, Math.sin(t / 90) * 3);
+    ctx.quadraticCurveTo(-62, -7, -18, 0);
+    ctx.stroke();
+    ctx.lineWidth = 1.5;
+    ctx.globalAlpha *= 0.55;
+    for (const side of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(-82, side * 7);
+      ctx.quadraticCurveTo(-46, side * 4, -10, side * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
 
     ctx.save();
     ctx.translate(pr.x, pr.y);
@@ -1905,6 +2296,7 @@ export class Renderer {
       // Fast i harpunens bakande sa att repet moter skaftet, inte spetsen.
       const rx = pr.x - dir * (HARPOON_LEN * 0.42);
       drawRope(ctx, hx, hy, rx, pr.y, 0.95);
+      this.drawHarpoonPulse(ctx, hx, hy, rx, pr.y, pr.i ?? 0, 0.55);
     }
 
     for (const p of players) {
@@ -1916,7 +2308,52 @@ export class Renderer {
       const tx = p.x + PLAYER.w / 2;
       const ty = p.y + PLAYER.h * 0.45;
       drawRope(ctx, hx, hy, tx, ty, 0.95);
+      this.drawHarpoonPulse(ctx, hx, hy, tx, ty, p.i, 0.88);
+
+      // Den fangade spelaren far en liten roterande lasring. Den sitter vid
+      // kroppen och gor det tydligt vem repet faktiskt har fatt tag i.
+      const spin = performance.now() / 170 + p.i;
+      ctx.save();
+      ctx.translate(tx, ty);
+      ctx.rotate(spin);
+      ctx.globalCompositeOperation = 'screen';
+      ctx.globalAlpha = 0.64;
+      ctx.strokeStyle = HARPOON_FX.hook;
+      ctx.shadowColor = HARPOON_FX.glow;
+      ctx.shadowBlur = 8;
+      ctx.lineWidth = 2.5;
+      ctx.setLineDash([10, 7]);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, PLAYER.w * 0.68, PLAYER.h * 0.36, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
     }
+  }
+
+  drawHarpoonPulse(ctx, x0, y0, x1, y1, seed, alpha) {
+    const dx = x1 - x0;
+    const dy = y1 - y0;
+    const len = Math.hypot(dx, dy);
+    if (len < 8) return;
+    const phase = ((performance.now() * 0.00125 + seed * 0.173) % 1 + 1) % 1;
+    const px = x0 + dx * phase;
+    const py = y0 + dy * phase;
+    const nx = -dy / len;
+    const ny = dx / len;
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.globalAlpha = alpha * Math.sin(phase * Math.PI);
+    ctx.strokeStyle = HARPOON_FX.core;
+    ctx.shadowColor = HARPOON_FX.glow;
+    ctx.shadowBlur = 9;
+    ctx.lineWidth = 2.2;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(px - dx / len * 8 + nx * 1.5, py - dy / len * 8 + ny * 1.5);
+    ctx.lineTo(px + dx / len * 8 - nx * 1.5, py + dy / len * 8 - ny * 1.5);
+    ctx.stroke();
+    ctx.restore();
   }
 
   drawPlayer(ctx, p, isSelf) {
@@ -1966,6 +2403,10 @@ export class Renderer {
     ctx.ellipse(cx, feetY + 3, PLAYER.w * 0.45, 4, 0, 0, Math.PI * 2);
     ctx.fill();
 
+    // Ritas fore figuren sa att vindbagen verkligen ligger bakom Viking och
+    // skold-charge-spriten skar rent framfor den.
+    if (p.sc) this.drawShieldChargeSwoosh(ctx, p, cx, feetY);
+
     if (p.ps > 0) this.drawPowerShield(ctx, p, cx, p.y + PLAYER.h * 0.54);
 
     // Combo-ursinnet: en pulserande eldaura bakom figuren sa att man ser vem
@@ -1997,9 +2438,14 @@ export class Renderer {
       ctx.translate(-cx, -feetY);
     }
 
+    const iceCastAlpha = this.iceSpikeCasterAlpha(p.i);
+    if (iceCastAlpha > 0) this.drawIceSpikeCasterAura(ctx, cx, feetY, iceCastAlpha);
+
     // Returnerar var namnskylten ska borja, som skiljer sig mellan sprite och
     // ritad figur.
-    let plateTop = sprite ? this.drawSprite(ctx, p, sprite, cx, feetY) : this.drawFigure(ctx, p, team, cx);
+    let plateTop = sprite
+      ? this.drawSprite(ctx, p, sprite, cx, feetY, iceCastAlpha)
+      : this.drawFigure(ctx, p, team, cx, iceCastAlpha);
     if (p.sf > 0) this.drawSunFireChannel(ctx, p, cx);
     // Skylten ritas utanfor transformen, sa den maste folja med uppforstoringen.
     if (berserk) plateTop = feetY + (plateTop - feetY) * rage.scale;
@@ -2008,6 +2454,97 @@ export class Renderer {
 
     if (p.st) this.drawStunMarker(ctx, p, cx, plateTop + PLATE.height + PLATE.gap);
     this.drawNameplate(ctx, p, team, cx, plateTop, isSelf);
+  }
+
+  drawShieldChargeSwoosh(ctx, p, cx, feetY) {
+    const cfg = SHIELD_CHARGE_FX;
+    const t = performance.now();
+    const pulse = 0.88 + Math.sin(t / 58 + p.i) * 0.12;
+    const flutter = Math.sin(t / 82 + p.i * 1.7) * 3;
+
+    ctx.save();
+    ctx.translate(cx, feetY - PLAYER.h * 0.48);
+    ctx.scale(p.f || 1, 1);
+    ctx.globalCompositeOperation = 'screen';
+
+    // Bred, avsmalnande vindbaga. Den transparenta svansen gor att effekten
+    // laser som fart och inte som en fast skiva bakom spelaren.
+    const ribbon = ctx.createLinearGradient(-cfg.length, 0, 20, 0);
+    ribbon.addColorStop(0, 'rgba(77, 195, 255, 0)');
+    ribbon.addColorStop(0.38, 'rgba(77, 195, 255, 0.16)');
+    ribbon.addColorStop(0.78, 'rgba(190, 235, 255, 0.42)');
+    ribbon.addColorStop(1, 'rgba(244, 251, 255, 0.12)');
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = ribbon;
+    ctx.beginPath();
+    ctx.moveTo(20, -cfg.height * 0.52);
+    ctx.bezierCurveTo(-24, -cfg.height, -86, -cfg.height * 0.72 + flutter, -cfg.length, -6);
+    ctx.bezierCurveTo(-83, -12 + flutter * 0.35, -36, 2, 14, cfg.height * 0.35);
+    ctx.quadraticCurveTo(2, 0, 20, -cfg.height * 0.52);
+    ctx.closePath();
+    ctx.fill();
+
+    // En ljus egg langs huvudbogen ger en tydlig swoosh-silhuett aven mot
+    // kartornas ljusa partier.
+    ctx.globalAlpha = 0.72 * pulse;
+    ctx.strokeStyle = cfg.core;
+    ctx.shadowColor = cfg.glow;
+    ctx.shadowBlur = 12;
+    ctx.lineCap = 'round';
+    ctx.lineWidth = 4.5;
+    ctx.beginPath();
+    ctx.moveTo(18, -cfg.height * 0.48);
+    ctx.bezierCurveTo(-27, -cfg.height * 0.93, -88, -cfg.height * 0.7 + flutter, -cfg.length + 5, -7);
+    ctx.stroke();
+
+    // Tunnare fartstrak ror sig genom svansen och gor rusningen levande utan
+    // att skymma motspelaren eller hitboxen framfor skolden.
+    ctx.shadowBlur = 7;
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = cfg.glow;
+    for (let i = 0; i < 3; i++) {
+      const phase = ((t * (0.28 + i * 0.035) + p.i * 31 + i * 43) % 100) / 100;
+      const tail = -cfg.length + phase * 70 - i * 8;
+      const y = -15 + i * 15 + Math.sin(t / 95 + i * 2.1) * 3;
+      const len = 34 + i * 8;
+      ctx.globalAlpha = (0.24 + phase * 0.35) * pulse;
+      ctx.beginPath();
+      ctx.moveTo(tail, y);
+      ctx.quadraticCurveTo(tail + len * 0.55, y - 5 - i, tail + len, y + 1);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  iceSpikeCasterAlpha(playerId) {
+    const started = this.iceSpikeCasts.get(playerId);
+    if (started === undefined) return 0;
+    const elapsed = performance.now() - started;
+    if (elapsed >= ICE_SPIKE_FX.casterGlowMs) {
+      this.iceSpikeCasts.delete(playerId);
+      return 0;
+    }
+
+    const pulse = (Math.sin((elapsed / ICE_SPIKE_FX.casterBlinkMs) * Math.PI * 2) + 1) / 2;
+    const fade = elapsed < 820 ? 1 : (ICE_SPIKE_FX.casterGlowMs - elapsed) / 180;
+    return (0.08 + pulse * 0.72) * clamp(fade, 0, 1);
+  }
+
+  drawIceSpikeCasterAura(ctx, cx, feetY, alpha) {
+    const cy = feetY - PLAYER.h * 0.52;
+    const radius = PLAYER.h * 0.92;
+    const glow = ctx.createRadialGradient(cx, cy, radius * 0.14, cx, cy, radius);
+    glow.addColorStop(0, `rgba(174, 241, 255, ${alpha * 0.34})`);
+    glow.addColorStop(0.48, `rgba(37, 167, 255, ${alpha * 0.2})`);
+    glow.addColorStop(1, 'rgba(20, 111, 255, 0)');
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
   }
 
   drawSunFireChannel(ctx, p, cx) {
@@ -2032,6 +2569,41 @@ export class Renderer {
     ctx.fill();
     ctx.restore();
 
+    // Solkrona och tva omloppsgnistor gor laddningsnivan lasbar aven om
+    // bollspriten ar delvis dold av figuren.
+    ctx.save();
+    ctx.translate(bx, by);
+    ctx.globalCompositeOperation = 'screen';
+    ctx.strokeStyle = strength > 0.72 ? SUN_FIRE_FX.rose : SUN_FIRE_FX.gold;
+    ctx.shadowColor = SUN_FIRE_FX.hot;
+    ctx.shadowBlur = 10 + strength * 8;
+    ctx.globalAlpha = 0.48 + strength * 0.42;
+    ctx.lineWidth = 1.8 + strength * 1.6;
+    ctx.setLineDash([5 + strength * 6, 6]);
+    ctx.lineDashOffset = -t / 24;
+    ctx.beginPath();
+    ctx.arc(0, 0, size * (0.48 + strength * 0.09), 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    for (let ray = 0; ray < 10; ray++) {
+      const a = (ray / 10) * Math.PI * 2 + t / 620;
+      const r0 = size * 0.48;
+      const r1 = size * (0.55 + strength * 0.11 + (ray % 2) * 0.04);
+      ctx.globalAlpha = (0.28 + strength * 0.55) * (ray % 2 ? 0.72 : 1);
+      strokeLine(ctx, Math.cos(a) * r0, Math.sin(a) * r0, Math.cos(a) * r1, Math.sin(a) * r1);
+    }
+    for (const side of [-1, 1]) {
+      const a = side * t / (360 - strength * 80) + side * 0.9;
+      const ox = Math.cos(a) * size * 0.62;
+      const oy = Math.sin(a) * size * 0.29;
+      ctx.globalAlpha = 0.62 + strength * 0.25;
+      ctx.fillStyle = side > 0 ? CLEO_FX.rose : CLEO_FX.ivory;
+      ctx.beginPath();
+      ctx.arc(ox, oy, 1.8 + strength * 2.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+
     ctx.save();
     ctx.translate(bx, by);
     ctx.rotate((t / 260) * (p.f || 1));
@@ -2046,7 +2618,8 @@ export class Renderer {
   /** Pulserande rott sken runt en berserk figur. */
   drawRageGlow(ctx, p, cx, feetY, cfg) {
     const cy = feetY - PLAYER.h * 0.55;
-    const pulse = 0.72 + Math.sin((performance.now() / cfg.pulseMs) * Math.PI * 2) * 0.28;
+    const t = performance.now();
+    const pulse = 0.72 + Math.sin((t / cfg.pulseMs) * Math.PI * 2) * 0.28;
     const r = PLAYER.h * 1.05;
 
     const g = ctx.createRadialGradient(cx, cy, r * 0.2, cx, cy, r);
@@ -2059,6 +2632,38 @@ export class Renderer {
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.fill();
+
+    // En runring vid fotterna och sma uppatstigande glodflagor ger buffen en
+    // permanent, men latt, rorelse under hela dess tolv sekunder.
+    ctx.globalCompositeOperation = 'screen';
+    ctx.globalAlpha = 0.28 + pulse * 0.3;
+    ctx.strokeStyle = MUSHROOM_FX.hot;
+    ctx.shadowColor = MUSHROOM_FX.rage;
+    ctx.shadowBlur = 8;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8, 7]);
+    ctx.lineDashOffset = -(t / 55 + p.i * 9);
+    ctx.beginPath();
+    ctx.ellipse(cx, feetY + 1, PLAYER.w * 0.78, 8, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.setLineDash([]);
+    for (let i = 0; i < 7; i++) {
+      const phase = ((t / (720 + i * 47) + i * 0.137 + p.i * 0.071) % 1 + 1) % 1;
+      const side = Math.sin(i * 4.31 + p.i) * (PLAYER.w * 0.58);
+      const ex = cx + side + Math.sin(t / 120 + i) * 3;
+      const ey = feetY - 4 - phase * (PLAYER.h * 1.15);
+      const size = 1.3 + (i % 3) * 0.65;
+      ctx.globalAlpha = (1 - phase) * (0.38 + pulse * 0.26);
+      ctx.fillStyle = i % 3 === 0 ? MUSHROOM_FX.core : MUSHROOM_FX.hot;
+      ctx.shadowBlur = 6;
+      ctx.beginPath();
+      ctx.moveTo(ex, ey - size * 2.2);
+      ctx.lineTo(ex + size, ey + size);
+      ctx.lineTo(ex - size, ey + size * 0.6);
+      ctx.closePath();
+      ctx.fill();
+    }
     ctx.restore();
   }
 
@@ -2142,27 +2747,78 @@ export class Renderer {
     const cfg = ABILITY_TUNING.powerShield;
     const t = performance.now();
     const spin = t / 900;
-    const pulse = 0.72 + Math.sin(t / 260) * 0.08;
+    const pulse = 0.78 + Math.sin(t / 210) * 0.12;
     const radius = cfg.orbitRadius;
 
     ctx.save();
-    ctx.strokeStyle = `rgba(255, 232, 163, ${0.28 * pulse})`;
-    ctx.lineWidth = 2;
+    ctx.globalCompositeOperation = 'screen';
+    const aura = ctx.createRadialGradient(cx, cy, radius * 0.15, cx, cy, radius * 1.7);
+    aura.addColorStop(0, `rgba(255, 209, 102, ${0.13 * pulse})`);
+    aura.addColorStop(0.55, `rgba(255, 77, 157, ${0.09 * pulse})`);
+    aura.addColorStop(1, 'rgba(255, 77, 157, 0)');
+    ctx.fillStyle = aura;
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius * 1.7, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = `rgba(255, 209, 102, ${0.52 * pulse})`;
+    ctx.shadowColor = CLEO_FX.rose;
+    ctx.shadowBlur = 8;
+    ctx.lineWidth = 2.4;
+    ctx.setLineDash([10, 7]);
+    ctx.lineDashOffset = -t / 55;
     ctx.beginPath();
     ctx.arc(cx, cy, radius + 7, 0, Math.PI * 2);
     ctx.stroke();
 
-    ctx.strokeStyle = `rgba(255, 255, 255, ${0.12 * pulse})`;
-    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 10]);
+    ctx.lineDashOffset = t / 70;
+    ctx.strokeStyle = `rgba(255, 248, 214, ${0.38 * pulse})`;
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.arc(cx, cy, radius + 15, 0, Math.PI * 2);
     ctx.stroke();
+    ctx.setLineDash([]);
+
+    // En liten krona/lotus i centrum ger skolden Cleos kungliga signatur.
+    ctx.translate(cx, cy);
+    ctx.rotate(-spin * 0.32);
+    ctx.globalAlpha = 0.24 + pulse * 0.22;
+    ctx.strokeStyle = CLEO_FX.gold;
+    ctx.lineWidth = 2;
+    for (let petal = 0; petal < 6; petal++) {
+      ctx.save();
+      ctx.rotate((petal / 6) * Math.PI * 2);
+      ctx.beginPath();
+      ctx.moveTo(0, -8);
+      ctx.quadraticCurveTo(9, -19, 0, -30);
+      ctx.quadraticCurveTo(-9, -19, 0, -8);
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.rotate(spin * 0.32);
+    ctx.translate(-cx, -cy);
 
     for (let i = 0; i < p.ps; i++) {
       const a = spin + (i / p.ps) * Math.PI * 2;
       const x = cx + Math.cos(a) * radius;
       const y = cy + Math.sin(a) * (radius * 0.62);
-      this.drawShieldIcon(ctx, x, y, 20 + Math.sin(t / 180 + i) * 1.4);
+      const size = 22 + Math.sin(t / 150 + i) * 1.8;
+      ctx.save();
+      ctx.globalAlpha = 0.3 + pulse * 0.34;
+      ctx.fillStyle = i % 2 ? CLEO_FX.rose : CLEO_FX.gold;
+      ctx.shadowColor = CLEO_FX.gold;
+      ctx.shadowBlur = 12;
+      ctx.beginPath();
+      ctx.arc(x, y, size * 0.76, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      ctx.save();
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.shadowColor = CLEO_FX.gold;
+      ctx.shadowBlur = 6;
+      this.drawShieldIcon(ctx, x, y, size);
+      ctx.restore();
     }
     ctx.restore();
   }
@@ -2193,7 +2849,7 @@ export class Renderer {
   }
 
   /** Ritar en bildruta ur spritesetet, fotterna forankrade i spelarens underkant. */
-  drawSprite(ctx, p, sprite, cx, feetY) {
+  drawSprite(ctx, p, sprite, cx, feetY, iceCastAlpha = 0) {
     const m = sprite.manifest;
     let img = sprite.idle;
     let frameMeta = m;
@@ -2251,13 +2907,23 @@ export class Renderer {
       ctx.restore();
     }
 
+    if (iceCastAlpha > 0) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      ctx.globalAlpha *= iceCastAlpha;
+      ctx.shadowColor = ICE_SPIKE_FX.outline;
+      ctx.shadowBlur = 9;
+      ctx.drawImage(this.silhouette(img, ICE_SPIKE_FX.outline), cx - anchorX * dw, top, dw, dh);
+      ctx.restore();
+    }
+
     if (flip) ctx.restore();
 
     return top - PLATE.height - PLATE.gap;
   }
 
   /** Inbyggd figur for lag som annu saknar grafik. */
-  drawFigure(ctx, p, team, cx) {
+  drawFigure(ctx, p, team, cx, iceCastAlpha = 0) {
     const x = p.x;
     const y = p.y;
 
@@ -2300,6 +2966,21 @@ export class Renderer {
       ctx.save();
       ctx.globalAlpha *= this.rageTintAlpha(p, cfg);
       ctx.fillStyle = cfg.tint;
+      roundRect(ctx, x, y + 14, PLAYER.w, PLAYER.h - 14, 6);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(cx, y + 10, 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    if (iceCastAlpha > 0) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      ctx.globalAlpha *= iceCastAlpha;
+      ctx.fillStyle = ICE_SPIKE_FX.outline;
+      ctx.shadowColor = ICE_SPIKE_FX.outline;
+      ctx.shadowBlur = 9;
       roundRect(ctx, x, y + 14, PLAYER.w, PLAYER.h - 14, 6);
       ctx.fill();
       ctx.beginPath();
@@ -2412,6 +3093,234 @@ export class Renderer {
     return g.shown;
   }
 
+  drawBehindEffects(ctx) {
+    const t = performance.now();
+
+    for (let i = this.behindEffects.length - 1; i >= 0; i--) {
+      const e = this.behindEffects[i];
+      const k = (t - e.born) / e.life;
+      if (k >= 1) {
+        this.behindEffects.splice(i, 1);
+        continue;
+      }
+      if (e.kind === 'cleo_punch_sweep' || e.kind === 'cleo_kick_sweep') {
+        const kick = e.kind === 'cleo_kick_sweep';
+        const sweep = easeOut(k);
+        const fade = (1 - k) * (1 - k);
+        ctx.save();
+        ctx.translate(e.x, e.y + (kick ? 14 : -4));
+        ctx.scale(e.f || 1, 1);
+        ctx.globalCompositeOperation = 'screen';
+        ctx.lineCap = 'round';
+        ctx.shadowColor = kick ? CLEO_FX.rose : CLEO_FX.gold;
+        ctx.shadowBlur = 13;
+        ctx.globalAlpha = fade * 0.88;
+        ctx.strokeStyle = CLEO_FX.ivory;
+        ctx.lineWidth = (kick ? 10 : 7) * (1 - k) + 2;
+        ctx.beginPath();
+        if (kick) ctx.arc(2, 0, 49 + sweep * 12, -0.82, 1.08);
+        else ctx.arc(1, -2, 38 + sweep * 9, -1.18, 0.78);
+        ctx.stroke();
+
+        ctx.globalAlpha = fade * 0.5;
+        ctx.strokeStyle = kick ? CLEO_FX.rose : CLEO_FX.gold;
+        ctx.lineWidth = kick ? 18 - k * 11 : 13 - k * 8;
+        ctx.beginPath();
+        if (kick) ctx.arc(-3, 1, 45 + sweep * 16, -0.92, 1.18);
+        else ctx.arc(-2, -1, 35 + sweep * 13, -1.3, 0.9);
+        ctx.stroke();
+
+        // Tre tunna lotusblad foljer huvudbogen och ger Cleos slag en latt,
+        // smyckad silhuett i stallet for Vikings tunga stalspar.
+        ctx.shadowBlur = 6;
+        ctx.lineWidth = 1.7;
+        for (let petal = 0; petal < 3; petal++) {
+          const radius = (kick ? 61 : 48) + petal * 7 + sweep * 5;
+          ctx.globalAlpha = fade * (0.42 - petal * 0.08);
+          ctx.strokeStyle = petal === 1 ? CLEO_FX.rose : CLEO_FX.gold;
+          ctx.beginPath();
+          ctx.arc(0, 0, radius, (kick ? -0.7 : -1.08) + petal * 0.07, (kick ? 0.72 : 0.56) + petal * 0.1);
+          ctx.stroke();
+        }
+        ctx.restore();
+        continue;
+      }
+      if (e.kind === 'sun_fire_recoil') {
+        const strength = clamp(e.s ?? 0, 0, 1);
+        const spread = easeOut(k);
+        const fade = (1 - k) * (1 - k);
+        ctx.save();
+        ctx.translate(e.x, e.y);
+        ctx.scale(e.f || 1, 1);
+        ctx.globalCompositeOperation = 'screen';
+        ctx.lineCap = 'round';
+        ctx.shadowColor = SUN_FIRE_FX.hot;
+        ctx.shadowBlur = 16;
+        for (let ray = 0; ray < 7; ray++) {
+          const a = Math.PI + (ray - 3) * (0.13 + strength * 0.025);
+          const inner = 12 + ray % 2 * 5;
+          const outer = 42 + spread * (42 + strength * 34) + ray % 3 * 7;
+          ctx.globalAlpha = fade * (0.72 - Math.abs(ray - 3) * 0.065);
+          ctx.strokeStyle = ray % 2 ? SUN_FIRE_FX.rose : SUN_FIRE_FX.gold;
+          ctx.lineWidth = 7 - k * 4 - Math.abs(ray - 3) * 0.45;
+          strokeLine(ctx, Math.cos(a) * inner, Math.sin(a) * inner, Math.cos(a) * outer, Math.sin(a) * outer);
+        }
+        ctx.restore();
+        continue;
+      }
+      if (e.kind === 'viking_axe_swing') {
+        const cfg = VIKING_MELEE_FX.axe;
+        const sweep = easeOut(k);
+        const fade = (1 - k) * (1 - k);
+        ctx.save();
+        ctx.translate(e.x, e.y);
+        ctx.scale(e.f || 1, 1);
+        ctx.globalCompositeOperation = 'screen';
+        ctx.lineCap = 'round';
+        ctx.shadowColor = cfg.glow;
+        ctx.shadowBlur = 13;
+        // En bred halvmane foljer yxeggen uppifran och ned genom malet.
+        ctx.globalAlpha = fade * 0.9;
+        ctx.strokeStyle = cfg.core;
+        ctx.lineWidth = 8 - k * 5;
+        ctx.beginPath();
+        ctx.arc(8, 1, 47 + sweep * 9, -1.38, 0.93);
+        ctx.stroke();
+        ctx.globalAlpha = fade * 0.48;
+        ctx.strokeStyle = cfg.glow;
+        ctx.lineWidth = 15 - k * 9;
+        ctx.beginPath();
+        ctx.arc(5, 2, 42 + sweep * 12, -1.48, 1.03);
+        ctx.stroke();
+        for (let streak = 0; streak < 3; streak++) {
+          ctx.globalAlpha = fade * (0.42 - streak * 0.08);
+          ctx.lineWidth = 1.8;
+          ctx.beginPath();
+          ctx.arc(4, 3, 58 + streak * 8 + sweep * 5, -1.24 + streak * 0.08, 0.66 + streak * 0.11);
+          ctx.stroke();
+        }
+        ctx.restore();
+        continue;
+      }
+      if (e.kind === 'viking_shield_bash') {
+        const cfg = VIKING_MELEE_FX.shield;
+        const drive = easeOut(k);
+        const fade = (1 - k) * (1 - k);
+        ctx.save();
+        ctx.translate(e.x, e.y);
+        ctx.scale(e.f || 1, 1);
+        ctx.globalCompositeOperation = 'screen';
+        ctx.lineCap = 'round';
+        ctx.shadowColor = cfg.glow;
+        ctx.shadowBlur = 11;
+        // Komprimerade bagar ror sig framat som en fysisk tryckvag fran skolden.
+        for (let wave = 0; wave < 3; wave++) {
+          const x = 13 + drive * (28 + wave * 11);
+          ctx.globalAlpha = fade * (0.75 - wave * 0.16);
+          ctx.strokeStyle = wave === 0 ? cfg.core : cfg.glow;
+          ctx.lineWidth = 6 - wave * 1.6;
+          ctx.beginPath();
+          ctx.ellipse(x, 1, 13 + wave * 6, 29 + wave * 7, 0, -1.05, 1.05);
+          ctx.stroke();
+        }
+        ctx.restore();
+        continue;
+      }
+      if (e.kind === 'harpoon_cast') {
+        const cast = easeOut(k);
+        const fade = (1 - k) * (1 - k);
+        ctx.save();
+        ctx.translate(e.x, e.y);
+        ctx.scale(e.f || 1, 1);
+        ctx.globalCompositeOperation = 'screen';
+        ctx.lineCap = 'round';
+        ctx.shadowColor = HARPOON_FX.glow;
+        ctx.shadowBlur = 12;
+        ctx.globalAlpha = fade * 0.88;
+        ctx.strokeStyle = HARPOON_FX.core;
+        ctx.lineWidth = 6 - k * 3;
+        ctx.beginPath();
+        ctx.moveTo(-46, 25);
+        ctx.quadraticCurveTo(-17, -34, 46 + cast * 20, -2);
+        ctx.stroke();
+        ctx.globalAlpha = fade * 0.42;
+        ctx.strokeStyle = HARPOON_FX.glow;
+        ctx.lineWidth = 12 - k * 6;
+        ctx.beginPath();
+        ctx.moveTo(-50, 29);
+        ctx.quadraticCurveTo(-18, -40, 53 + cast * 21, 0);
+        ctx.stroke();
+        ctx.restore();
+        continue;
+      }
+      if (e.kind === 'berserk_eruption') {
+        const rise = easeOut(k);
+        const fade = (1 - k) * (1 - k);
+        ctx.save();
+        ctx.translate(e.x, e.y + PLAYER.h * 0.5);
+        ctx.globalCompositeOperation = 'screen';
+        ctx.lineCap = 'round';
+        ctx.shadowColor = MUSHROOM_FX.rage;
+        ctx.shadowBlur = 16;
+        for (let flame = 0; flame < 9; flame++) {
+          const a = (flame / 9) * Math.PI * 2;
+          const radius = 12 + rise * (30 + (flame % 3) * 8);
+          const x = Math.cos(a) * radius;
+          const y = Math.sin(a) * radius * 0.32;
+          ctx.globalAlpha = fade * (0.5 + (flame % 2) * 0.2);
+          ctx.strokeStyle = flame % 3 === 0 ? MUSHROOM_FX.core : MUSHROOM_FX.hot;
+          ctx.lineWidth = 5 - k * 3;
+          ctx.beginPath();
+          ctx.moveTo(Math.cos(a) * 8, Math.sin(a) * 3);
+          ctx.quadraticCurveTo(x * 0.72, y - 18 * rise, x, y - 7 * rise);
+          ctx.stroke();
+        }
+        ctx.restore();
+        continue;
+      }
+      if (e.kind !== 'axe_throw_swoosh') continue;
+
+      const sweep = easeOut(k);
+      const fade = (1 - k) * (1 - k);
+      ctx.save();
+      ctx.translate(e.x, e.y);
+      ctx.scale(e.f || 1, 1);
+      ctx.globalCompositeOperation = 'screen';
+      ctx.lineCap = 'round';
+      ctx.shadowColor = AXE_THROW_FX.glow;
+      ctx.shadowBlur = 14;
+
+      // Huvudbogen foljer kastarmen fran bakom axeln och fram till slappet.
+      ctx.globalAlpha = fade * 0.92;
+      ctx.strokeStyle = AXE_THROW_FX.core;
+      ctx.lineWidth = 8 * (1 - k) + 2;
+      ctx.beginPath();
+      ctx.moveTo(-58, 18);
+      ctx.bezierCurveTo(-44, -38 - sweep * 6, 7, -48 - sweep * 4, 39 + sweep * 12, -8);
+      ctx.stroke();
+
+      // En bredare bla skuggbage ger volym men halls bakom figuren.
+      ctx.globalAlpha = fade * 0.5;
+      ctx.strokeStyle = AXE_THROW_FX.glow;
+      ctx.lineWidth = 14 * (1 - k) + 4;
+      ctx.beginPath();
+      ctx.moveTo(-64, 24);
+      ctx.bezierCurveTo(-48, -29, 3, -55, 45 + sweep * 10, -3);
+      ctx.stroke();
+
+      ctx.shadowBlur = 6;
+      ctx.lineWidth = 2;
+      for (let streak = 0; streak < 3; streak++) {
+        ctx.globalAlpha = fade * (0.48 - streak * 0.09);
+        ctx.beginPath();
+        ctx.moveTo(-72 - streak * 8, 13 + streak * 7);
+        ctx.quadraticCurveTo(-28, -22 - streak * 8, 19 + sweep * (18 + streak * 4), -22 + streak * 4);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+
   drawEffects(ctx, dt) {
     const t = performance.now();
     const step = Math.min(dt, 50) / 16.67;
@@ -2468,19 +3377,217 @@ export class Renderer {
         ctx.stroke();
       } else if (e.kind === 'uppercut_swoosh') {
         const lift = easeOut(k);
-        ctx.globalAlpha = (1 - k) * 0.95;
-        ctx.strokeStyle = '#fff2a8';
-        ctx.shadowColor = '#ffb52e';
-        ctx.shadowBlur = 13;
-        ctx.lineWidth = 8 * (1 - k) + 2;
+        ctx.globalCompositeOperation = 'screen';
+        ctx.globalAlpha = (1 - k) * 0.96;
+        ctx.strokeStyle = CLEO_FX.ivory;
+        ctx.shadowColor = CLEO_FX.gold;
+        ctx.shadowBlur = 16;
+        ctx.lineWidth = 10 * (1 - k) + 2;
         ctx.lineCap = 'round';
         const x = e.x + e.f * 22;
         const y = e.y + 12 - lift * 32;
         const start = e.f > 0 ? 0.1 : Math.PI - 0.1;
         const end = e.f > 0 ? -2.05 : Math.PI + 2.05;
         ctx.beginPath();
-        ctx.arc(x, y, 22 + lift * 13, start, end, e.f < 0);
+        ctx.arc(x, y, 23 + lift * 18, start, end, e.f < 0);
         ctx.stroke();
+        ctx.globalAlpha *= 0.58;
+        ctx.strokeStyle = CLEO_FX.rose;
+        ctx.lineWidth = 17 * (1 - k) + 3;
+        ctx.beginPath();
+        ctx.arc(x, y + 3, 20 + lift * 22, start + e.f * 0.12, end + e.f * 0.15, e.f < 0);
+        ctx.stroke();
+      } else if (e.kind === 'cleo_melee_impact') {
+        const burst = easeOut(k);
+        const kick = !!e.kick;
+        ctx.translate(e.x, e.y);
+        ctx.scale(e.f || 1, 1);
+        ctx.globalCompositeOperation = 'screen';
+        ctx.lineCap = 'round';
+        ctx.shadowColor = kick ? CLEO_FX.rose : CLEO_FX.gold;
+        ctx.shadowBlur = 12;
+        for (let ray = 0; ray < (kick ? 7 : 5); ray++) {
+          const a = (ray - (kick ? 3 : 2)) * (kick ? 0.25 : 0.32);
+          const r0 = 5 + burst * 7;
+          const r1 = 22 + burst * (kick ? 42 : 31) + (ray % 2) * 7;
+          ctx.globalAlpha = (1 - k) * (0.9 - Math.abs(a) * 0.35);
+          ctx.strokeStyle = ray % 2 ? CLEO_FX.rose : CLEO_FX.ivory;
+          ctx.lineWidth = (kick ? 6 : 5) * (1 - k) + 1;
+          strokeLine(ctx, Math.cos(a) * r0, Math.sin(a) * r0, Math.cos(a) * r1, Math.sin(a) * r1);
+        }
+        ctx.globalAlpha = (1 - k) * 0.7;
+        ctx.strokeStyle = CLEO_FX.gold;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.ellipse(8 + burst * 18, 0, 10 + burst * 14, 22 + burst * 12, 0, -1.08, 1.08);
+        ctx.stroke();
+      } else if (e.kind === 'cleo_lotus_impact') {
+        const open = easeOut(k);
+        ctx.translate(e.x, e.y);
+        ctx.scale(e.f || 1, 1);
+        ctx.globalCompositeOperation = 'screen';
+        ctx.shadowColor = CLEO_FX.rose;
+        ctx.shadowBlur = 12;
+        ctx.strokeStyle = CLEO_FX.gold;
+        ctx.lineWidth = 3.5 * (1 - k) + 1;
+        for (let petal = 0; petal < 7; petal++) {
+          const a = -Math.PI / 2 + (petal - 3) * 0.22;
+          const len = 16 + open * (25 + (3 - Math.abs(petal - 3)) * 5);
+          ctx.save();
+          ctx.rotate(a);
+          ctx.globalAlpha = (1 - k) * (0.82 - Math.abs(petal - 3) * 0.07);
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.quadraticCurveTo(8, -len * 0.55, 0, -len);
+          ctx.quadraticCurveTo(-8, -len * 0.55, 0, 0);
+          ctx.stroke();
+          ctx.restore();
+        }
+      } else if (e.kind === 'solar_seal') {
+        const open = easeOut(k);
+        const strength = clamp(e.s ?? 0.35, 0, 1);
+        ctx.translate(e.x, e.y);
+        ctx.rotate(-k * 0.9);
+        ctx.globalCompositeOperation = 'screen';
+        ctx.globalAlpha = (1 - k) * (0.68 + strength * 0.22);
+        ctx.strokeStyle = CLEO_FX.gold;
+        ctx.shadowColor = CLEO_FX.rose;
+        ctx.shadowBlur = 12;
+        ctx.lineWidth = 2.2;
+        const radius = 12 + open * (34 + strength * 14);
+        ctx.setLineDash([7, 5]);
+        ctx.lineDashOffset = k * 30;
+        ctx.beginPath();
+        ctx.arc(0, 0, radius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        for (let ray = 0; ray < 8; ray++) {
+          const a = (ray / 8) * Math.PI * 2;
+          const r0 = radius * 0.64;
+          const r1 = radius * (ray % 2 ? 1.08 : 1.28);
+          strokeLine(ctx, Math.cos(a) * r0, Math.sin(a) * r0, Math.cos(a) * r1, Math.sin(a) * r1);
+        }
+      } else if (e.kind === 'solar_burst') {
+        const open = easeOut(k);
+        const strength = clamp(e.s ?? 0, 0, 1);
+        ctx.translate(e.x, e.y);
+        ctx.rotate(k * 0.35);
+        ctx.globalCompositeOperation = 'screen';
+        ctx.lineCap = 'round';
+        ctx.shadowColor = SUN_FIRE_FX.hot;
+        ctx.shadowBlur = 16;
+        for (let ray = 0; ray < 14; ray++) {
+          const a = (ray / 14) * Math.PI * 2;
+          const inner = 10 + open * 14;
+          const outer = 28 + open * (58 + strength * 55) + (ray % 3) * 9;
+          ctx.globalAlpha = (1 - k) * (ray % 2 ? 0.62 : 0.9);
+          ctx.strokeStyle = ray % 3 === 0 ? CLEO_FX.rose : ray % 2 ? SUN_FIRE_FX.gold : SUN_FIRE_FX.core;
+          ctx.lineWidth = (ray % 2 ? 4.5 : 7) * (1 - k) + 0.8;
+          strokeLine(ctx, Math.cos(a) * inner, Math.sin(a) * inner, Math.cos(a) * outer, Math.sin(a) * outer);
+        }
+      } else if (e.kind === 'sand_crown') {
+        const open = easeOut(k);
+        ctx.translate(e.x, e.y);
+        ctx.scale(e.f || 1, 1);
+        ctx.globalCompositeOperation = 'screen';
+        ctx.globalAlpha = (1 - k) * 0.78;
+        ctx.strokeStyle = CLEO_FX.gold;
+        ctx.shadowColor = CLEO_FX.rose;
+        ctx.shadowBlur = 9;
+        ctx.lineWidth = 2.4;
+        for (let arc = 0; arc < 3; arc++) {
+          ctx.beginPath();
+          ctx.ellipse(12 + open * (18 + arc * 11), 0, 10 + arc * 7, 22 + arc * 10, 0, -1.05, 1.05);
+          ctx.stroke();
+        }
+      } else if (e.kind === 'power_shield_burst') {
+        const open = easeOut(k);
+        ctx.translate(e.x, e.y);
+        ctx.rotate(k * 0.65);
+        ctx.globalCompositeOperation = 'screen';
+        ctx.shadowColor = CLEO_FX.rose;
+        ctx.shadowBlur = 14;
+        const count = Math.max(1, e.c ?? 3);
+        for (let shield = 0; shield < count; shield++) {
+          const a = (shield / count) * Math.PI * 2;
+          const radius = 12 + open * 58;
+          ctx.save();
+          ctx.rotate(a);
+          ctx.translate(radius, 0);
+          ctx.rotate(Math.PI / 2);
+          ctx.globalAlpha = (1 - k) * 0.82;
+          ctx.strokeStyle = shield % 2 ? CLEO_FX.rose : CLEO_FX.gold;
+          ctx.lineWidth = 4 - k * 2;
+          ctx.beginPath();
+          ctx.moveTo(0, -12);
+          ctx.lineTo(10, -5);
+          ctx.lineTo(8, 6);
+          ctx.quadraticCurveTo(0, 16, -8, 6);
+          ctx.lineTo(-10, -5);
+          ctx.closePath();
+          ctx.stroke();
+          ctx.restore();
+        }
+      } else if (e.kind === 'cleo_shield_impact') {
+        const crack = easeOut(k);
+        ctx.translate(e.x, e.y);
+        ctx.rotate(k * 0.5);
+        ctx.globalCompositeOperation = 'screen';
+        ctx.shadowColor = CLEO_FX.gold;
+        ctx.shadowBlur = 11;
+        ctx.lineCap = 'round';
+        for (let shard = 0; shard < 8; shard++) {
+          const a = (shard / 8) * Math.PI * 2;
+          const r0 = 10 + crack * 12;
+          const r1 = 18 + crack * (25 + (shard % 3) * 7);
+          ctx.globalAlpha = (1 - k) * (0.86 - shard * 0.035);
+          ctx.strokeStyle = shard % 2 ? CLEO_FX.rose : CLEO_FX.ivory;
+          ctx.lineWidth = 3.5 - k * 2;
+          strokeLine(ctx, Math.cos(a) * r0, Math.sin(a) * r0, Math.cos(a) * r1, Math.sin(a) * r1);
+        }
+      } else if (e.kind === 'cleo_blink') {
+        const fade = (1 - k) * (1 - k);
+        const dx = e.tx - e.x;
+        const dy = e.ty - e.y;
+        const len = Math.hypot(dx, dy) || 1;
+        const nx = dx / len;
+        const ny = dy / len;
+        const px = -ny;
+        const py = nx;
+        ctx.globalCompositeOperation = 'screen';
+        ctx.lineCap = 'round';
+        ctx.shadowColor = CLEO_FX.rose;
+        ctx.shadowBlur = 12;
+        for (const side of [-1, 1]) {
+          ctx.globalAlpha = fade * 0.72;
+          ctx.strokeStyle = side > 0 ? CLEO_FX.gold : CLEO_FX.rose;
+          ctx.lineWidth = 5 - k * 3;
+          ctx.beginPath();
+          ctx.moveTo(e.x + px * side * 8, e.y + py * side * 8);
+          ctx.bezierCurveTo(
+            e.x + dx * 0.32 + px * side * 25,
+            e.y + dy * 0.32 + py * side * 25,
+            e.x + dx * 0.68 - px * side * 25,
+            e.y + dy * 0.68 - py * side * 25,
+            e.tx + px * side * 8,
+            e.ty + py * side * 8,
+          );
+          ctx.stroke();
+        }
+        for (const [gx, gy, direction] of [[e.x, e.y, -1], [e.tx, e.ty, 1]]) {
+          ctx.save();
+          ctx.translate(gx, gy);
+          ctx.rotate(direction * k * 0.8);
+          ctx.globalAlpha = fade * 0.82;
+          ctx.strokeStyle = direction > 0 ? CLEO_FX.gold : CLEO_FX.rose;
+          ctx.lineWidth = 2.4;
+          ctx.setLineDash([6, 5]);
+          ctx.lineDashOffset = direction * k * 24;
+          ctx.beginPath();
+          ctx.ellipse(0, 0, 20 + k * 25, 33 + k * 12, 0, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        }
       } else if (e.kind === 'float') {
         // Skadesiffror och liknande: stiger och tonar ut pa slutet.
         ctx.globalAlpha = k < 0.6 ? 1 : 1 - (k - 0.6) / 0.4;
@@ -2528,6 +3635,96 @@ export class Renderer {
           const r1 = r0 + l.len * (1 - k);
           ctx.lineWidth = 4 * (1 - k) + 0.5;
           strokeLine(ctx, e.x + Math.cos(l.a) * r0, e.y + Math.sin(l.a) * r0, e.x + Math.cos(l.a) * r1, e.y + Math.sin(l.a) * r1);
+        }
+      } else if (e.kind === 'axe_impact') {
+        const cut = easeOut(k);
+        ctx.translate(e.x, e.y);
+        ctx.scale(e.f || 1, 1);
+        ctx.globalCompositeOperation = 'screen';
+        ctx.globalAlpha = (1 - k) * 0.92;
+        ctx.strokeStyle = VIKING_MELEE_FX.axe.core;
+        ctx.shadowColor = VIKING_MELEE_FX.axe.glow;
+        ctx.shadowBlur = 12;
+        ctx.lineCap = 'round';
+        ctx.lineWidth = 7 * (1 - k) + 1;
+        ctx.beginPath();
+        ctx.moveTo(-20 + cut * 8, -37 - cut * 8);
+        ctx.quadraticCurveTo(3, -8, 31 + cut * 18, 27 + cut * 8);
+        ctx.stroke();
+        ctx.globalAlpha *= 0.55;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(-31, -28);
+        ctx.lineTo(38 + cut * 24, 35);
+        ctx.stroke();
+      } else if (e.kind === 'shield_impact') {
+        const slam = easeOut(k);
+        ctx.translate(e.x, e.y);
+        ctx.scale(e.f || 1, 1);
+        ctx.globalCompositeOperation = 'screen';
+        ctx.lineCap = 'round';
+        ctx.shadowColor = VIKING_MELEE_FX.shield.glow;
+        ctx.shadowBlur = 11;
+        for (let wave = 0; wave < 3; wave++) {
+          ctx.globalAlpha = (1 - k) * (0.86 - wave * 0.2);
+          ctx.strokeStyle = wave === 0 ? VIKING_MELEE_FX.shield.impact : VIKING_MELEE_FX.shield.glow;
+          ctx.lineWidth = 5 - wave;
+          ctx.beginPath();
+          ctx.ellipse(8 + slam * (20 + wave * 8), 0, 10 + slam * (10 + wave * 5), 28 + wave * 8, 0, -1.15, 1.15);
+          ctx.stroke();
+        }
+      } else if (e.kind === 'harpoon_impact') {
+        const snap = easeOut(k);
+        ctx.translate(e.x, e.y);
+        ctx.rotate(k * Math.PI * 0.35);
+        ctx.globalCompositeOperation = 'screen';
+        ctx.strokeStyle = HARPOON_FX.core;
+        ctx.shadowColor = HARPOON_FX.glow;
+        ctx.shadowBlur = 10;
+        ctx.lineCap = 'round';
+        for (let hook = 0; hook < 4; hook++) {
+          ctx.save();
+          ctx.rotate((hook * Math.PI) / 2);
+          ctx.globalAlpha = (1 - k) * (0.9 - hook * 0.08);
+          ctx.lineWidth = 4 - k * 2;
+          ctx.beginPath();
+          ctx.moveTo(7 + snap * 4, 0);
+          ctx.quadraticCurveTo(18 + snap * 13, -10, 27 + snap * 19, 2);
+          ctx.lineTo(21 + snap * 15, 8);
+          ctx.stroke();
+          ctx.restore();
+        }
+      } else if (e.kind === 'berserk_runes') {
+        const spread = easeOut(k);
+        ctx.translate(e.x, e.y);
+        ctx.rotate(k * 0.7);
+        ctx.globalCompositeOperation = 'screen';
+        ctx.globalAlpha = (1 - k) * 0.78;
+        ctx.strokeStyle = MUSHROOM_FX.hot;
+        ctx.shadowColor = MUSHROOM_FX.rage;
+        ctx.shadowBlur = 13;
+        ctx.lineWidth = 2.5;
+        const radius = 18 + spread * 54;
+        ctx.setLineDash([9, 8]);
+        ctx.lineDashOffset = -k * 54;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, radius, radius * 0.3, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        for (let rune = 0; rune < 6; rune++) {
+          const a = (rune / 6) * Math.PI * 2;
+          const x = Math.cos(a) * radius;
+          const y = Math.sin(a) * radius * 0.3;
+          ctx.save();
+          ctx.translate(x, y);
+          ctx.rotate(a);
+          ctx.strokeStyle = rune % 2 ? MUSHROOM_FX.core : MUSHROOM_FX.hot;
+          ctx.beginPath();
+          ctx.moveTo(-4, -5);
+          ctx.lineTo(4, 0);
+          ctx.lineTo(-4, 5);
+          ctx.stroke();
+          ctx.restore();
         }
       } else if (e.kind === 'box') {
         ctx.globalAlpha = (1 - k) * 0.9;
@@ -2592,6 +3789,32 @@ export class Renderer {
     const img = this.sandBlast[frame];
     const width = (e.range || ABILITY_TUNING.sandBlast.range) + 58;
     const alpha = k < 0.72 ? 0.92 : 0.92 * (1 - (k - 0.72) / 0.28);
+    const nearH = e.nearHalfHeight || ABILITY_TUNING.sandBlast.nearHalfHeight;
+    const farH = e.farHalfHeight || ABILITY_TUNING.sandBlast.farHalfHeight;
+
+    // En genomlyst sandkil ligger bakom bildrutorna. Den ar avsiktligt latt:
+    // spritesen behaller all textur medan konens riktning blir omedelbart klar.
+    ctx.save();
+    ctx.translate(e.x, e.y);
+    ctx.scale(e.f || 1, 1);
+    ctx.globalCompositeOperation = 'screen';
+    const cone = ctx.createLinearGradient(0, 0, width, 0);
+    cone.addColorStop(0, 'rgba(255, 248, 214, 0.06)');
+    cone.addColorStop(0.28, 'rgba(255, 209, 102, 0.25)');
+    cone.addColorStop(0.78, 'rgba(232, 184, 93, 0.16)');
+    cone.addColorStop(1, 'rgba(255, 77, 157, 0)');
+    ctx.globalAlpha = alpha * 0.9;
+    ctx.fillStyle = cone;
+    ctx.shadowColor = CLEO_FX.gold;
+    ctx.shadowBlur = 10;
+    ctx.beginPath();
+    ctx.moveTo(5, -nearH * 0.72);
+    ctx.quadraticCurveTo(width * 0.5, -farH * 1.18, width, -farH * 0.56);
+    ctx.lineTo(width, farH * 0.56);
+    ctx.quadraticCurveTo(width * 0.5, farH * 1.18, 5, nearH * 0.72);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
 
     if (img) {
       const height = width * (img.height / img.width);
@@ -2615,10 +3838,30 @@ export class Renderer {
       ctx.fill();
     }
 
+    // Sandkorn accelererar genom konen och bar Cleos rosa accent i vart sjatte
+    // korn. De skapas en gang nar attacken startar, inte varje renderingsruta.
+    ctx.save();
+    ctx.translate(e.x, e.y);
+    ctx.scale(e.f || 1, 1);
+    ctx.globalCompositeOperation = 'screen';
+    for (const mote of e.motes ?? []) {
+      const travel = clamp(k * mote.speed + mote.phase, 0, 1.18);
+      if (travel > 1) continue;
+      const x = 8 + travel * width * 0.94;
+      const spread = lerp(nearH * 0.55, farH * 0.88, travel);
+      const y = mote.side * spread + Math.sin(k * 18 + mote.phase * 11) * mote.wobble;
+      ctx.globalAlpha = alpha * (1 - travel * 0.48) * mote.alpha;
+      ctx.fillStyle = mote.rose ? CLEO_FX.rose : mote.light ? CLEO_FX.ivory : CLEO_FX.gold;
+      ctx.shadowColor = mote.rose ? CLEO_FX.rose : CLEO_FX.sand;
+      ctx.shadowBlur = mote.rose ? 7 : 4;
+      ctx.beginPath();
+      ctx.ellipse(x, y, mote.size * (1.5 + travel), mote.size * 0.62, mote.tilt, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+
     if (this.debug) {
       const range = e.range || ABILITY_TUNING.sandBlast.range;
-      const nearH = e.nearHalfHeight || ABILITY_TUNING.sandBlast.nearHalfHeight;
-      const farH = e.farHalfHeight || ABILITY_TUNING.sandBlast.farHalfHeight;
       ctx.save();
       ctx.globalAlpha = 0.8;
       ctx.strokeStyle = '#f7c66a';
@@ -2640,6 +3883,8 @@ export class Renderer {
     const count = e.count ?? cfg.count;
     const lastRise = (count - 1) * cfg.stepMs + cfg.riseMs;
     const retractBase = lastRise + cfg.holdMs;
+    const pulse = 0.82 + Math.sin(elapsed / 105) * 0.18;
+    const spikes = [];
 
     for (let i = 0; i < count; i++) {
       const rise = clamp((elapsed - i * cfg.stepMs) / cfg.riseMs, 0, 1);
@@ -2655,16 +3900,138 @@ export class Renderer {
       const width = img ? height * (img.width / img.height) : height * 0.72;
       const x = e.x + e.f * distance;
 
+      spikes.push({ i, visible, height, width, x, img });
+    }
+
+    // En lag, pulserande frostspricka binder ihop raden och ger spikarna en
+    // tydligare impactpunkt mot marken.
+    if (spikes.length) {
+      const farthest = spikes.at(-1).x;
+      const strength = Math.max(...spikes.map((spike) => spike.visible));
+      const gradient = ctx.createLinearGradient(e.x, e.y, farthest, e.y);
+      gradient.addColorStop(0, 'rgba(211, 249, 255, 0.08)');
+      gradient.addColorStop(0.2, ICE_SPIKE_FX.ground);
+      gradient.addColorStop(1, 'rgba(38, 174, 255, 0.16)');
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = strength * (0.72 + pulse * 0.2);
+      ctx.strokeStyle = gradient;
+      ctx.shadowColor = ICE_SPIKE_FX.outline;
+      ctx.shadowBlur = 14 + pulse * 6;
+      ctx.lineCap = 'round';
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(e.x + e.f * 12, e.y + 1);
+      ctx.lineTo(farthest + e.f * 10, e.y + 1);
+      ctx.stroke();
+      ctx.globalAlpha *= 0.7;
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = ICE_SPIKE_FX.core;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Mjuka dimbankar fyller bara mellan intilliggande, synliga spikar. Varje
+    // lager driver med egen fas sa att dimman ror sig utan att flytta fran
+    // attackens faktiska yta.
+    for (let i = 0; i < spikes.length - 1; i++) {
+      const left = spikes[i];
+      const right = spikes[i + 1];
+      if (right.i !== left.i + 1) continue;
+
+      const strength = Math.min(left.visible, right.visible);
+      const gap = Math.abs(right.x - left.x);
+      const mistHeight = Math.min(left.height * left.visible, right.height * right.visible);
+      for (let layer = 0; layer < 3; layer++) {
+        const phase = elapsed * (0.0015 + layer * 0.00035) + i * 1.73 + layer * 2.11;
+        const centerK = (layer + 0.5) / 3;
+        const x = lerp(left.x, right.x, centerK) + Math.sin(phase) * gap * 0.13;
+        const y = e.y - 10 - mistHeight * (0.1 + layer * 0.075) + Math.cos(phase * 1.3) * 4;
+        const radiusX = gap * (0.46 + Math.sin(phase * 0.8) * 0.07);
+        const radiusY = 10 + mistHeight * (0.16 + layer * 0.025);
+
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.scale(radiusX, radiusY);
+        ctx.globalCompositeOperation = 'screen';
+        ctx.globalAlpha = strength * (0.34 + pulse * 0.16) * (1 - layer * 0.15);
+        const mist = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
+        mist.addColorStop(0, ICE_SPIKE_FX.mistCore);
+        mist.addColorStop(0.48, ICE_SPIKE_FX.mistEdge);
+        mist.addColorStop(1, 'rgba(20, 132, 210, 0)');
+        ctx.fillStyle = mist;
+        ctx.beginPath();
+        ctx.arc(0, 0, 1, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    for (const spike of spikes) {
+      const { visible, height, width, x, img } = spike;
+
       ctx.save();
       ctx.beginPath();
-      ctx.rect(x - width * 0.65, e.y - height - 8, width * 1.3, height + 12);
+      ctx.rect(x - width * 0.95 - 8, e.y - height - 26, width * 1.9 + 16, height + 36);
       ctx.clip();
       ctx.translate(x, e.y + (1 - visible) * height * 0.92);
       if (e.f < 0) ctx.scale(-1, 1);
+
+      // En fargad alfakopia bakom originalet skapar bade en skarp bla kant
+      // och ett mjukare sken utan att farga om sjalva spikgrafiken.
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      ctx.globalAlpha = visible * (0.54 + pulse * 0.22);
+      ctx.shadowColor = ICE_SPIKE_FX.glow;
+      ctx.shadowBlur = 11 + pulse * 8;
+      if (img) {
+        const outline = this.silhouette(img, ICE_SPIKE_FX.outline);
+        const edge = 1.5;
+        for (const [ox, oy] of [[-edge, 0], [edge, 0], [0, -edge], [0, edge]]) {
+          ctx.drawImage(outline, -width / 2 + ox, -height + oy, width, height);
+        }
+      } else {
+        drawFallbackIceSpike(ctx, width, height, ICE_SPIKE_FX.outline);
+      }
+      ctx.restore();
+
+      ctx.globalAlpha = Math.min(1, visible * 1.35);
       if (img) ctx.drawImage(img, -width / 2, -height, width, height);
       else drawFallbackIceSpike(ctx, width, height);
       ctx.restore();
     }
+
+    // Sma kristaller stiger, driver i sidled och nybildas sa lange respektive
+    // spik ar synlig. De delar attackens livstid och forsvinner med spikarna.
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (const mote of e.motes ?? []) {
+      const spike = spikes.find((candidate) => candidate.i === mote.spike);
+      if (!spike || spike.visible < 0.08) continue;
+      const age = (elapsed + mote.phase * ICE_SPIKE_FX.particleLifeMs) % ICE_SPIKE_FX.particleLifeMs;
+      const k = age / ICE_SPIKE_FX.particleLifeMs;
+      const alpha = Math.sin(k * Math.PI) * Math.min(1, spike.visible * 2.2);
+      const drift = Math.sin(elapsed * mote.wobble + mote.phase * Math.PI * 2) * spike.width * 0.18;
+      const x = spike.x + e.f * mote.side * spike.width * 0.28 + drift;
+      const y = e.y - spike.visible * spike.height * mote.height - k * mote.rise;
+
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(k * mote.spin + mote.phase * Math.PI);
+      ctx.globalAlpha = alpha * (0.55 + pulse * 0.35);
+      ctx.fillStyle = mote.color;
+      ctx.shadowColor = ICE_SPIKE_FX.outline;
+      ctx.shadowBlur = 7 + mote.size * 2;
+      ctx.beginPath();
+      ctx.moveTo(0, -mote.size * 1.7);
+      ctx.lineTo(mote.size * 0.72, 0);
+      ctx.lineTo(0, mote.size * 1.7);
+      ctx.lineTo(-mote.size * 0.72, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.restore();
 
     if (this.debug) {
       ctx.save();
@@ -2677,18 +4044,49 @@ export class Renderer {
   }
 }
 
-function drawFallbackIceSpike(ctx, width, height) {
+function drawFallbackIceSpike(ctx, width, height, color = '') {
   const gradient = ctx.createLinearGradient(0, -height, 0, 0);
-  gradient.addColorStop(0, '#e8fbff');
-  gradient.addColorStop(0.42, '#63d9ff');
-  gradient.addColorStop(1, '#287cc4');
-  ctx.fillStyle = gradient;
+  if (color) ctx.fillStyle = color;
+  else {
+    gradient.addColorStop(0, '#e8fbff');
+    gradient.addColorStop(0.42, '#63d9ff');
+    gradient.addColorStop(1, '#287cc4');
+    ctx.fillStyle = gradient;
+  }
   ctx.beginPath();
   ctx.moveTo(0, -height);
   ctx.lineTo(width / 2, 0);
   ctx.lineTo(-width / 2, 0);
   ctx.closePath();
   ctx.fill();
+}
+
+function makeIceSpikeMotes(count) {
+  return Array.from({ length: count * ICE_SPIKE_FX.particlesPerSpike }, (_, index) => ({
+    spike: index % count,
+    phase: Math.random(),
+    side: Math.random() * 2 - 1,
+    height: 0.18 + Math.random() * 0.7,
+    rise: 12 + Math.random() * 24,
+    size: 1.2 + Math.random() * 1.7,
+    spin: (Math.random() * 2 - 1) * Math.PI * 1.4,
+    wobble: 0.0035 + Math.random() * 0.004,
+    color: Math.random() < 0.32 ? ICE_SPIKE_FX.core : ICE_SPIKE_FX.outline,
+  }));
+}
+
+function makeSandMotes(count) {
+  return Array.from({ length: count }, (_, index) => ({
+    phase: Math.random() * 0.34,
+    speed: 0.82 + Math.random() * 0.68,
+    side: Math.random() * 2 - 1,
+    wobble: 2 + Math.random() * 6,
+    size: 0.9 + Math.random() * 2.1,
+    alpha: 0.42 + Math.random() * 0.5,
+    tilt: (Math.random() * 2 - 1) * 0.65,
+    rose: index % 6 === 0,
+    light: index % 5 === 0,
+  }));
 }
 
 function strokeLine(ctx, x0, y0, x1, y1) {

@@ -416,7 +416,7 @@ export const ABILITY_TUNING = {
     // lyftet cirka 165 px, alltsa klart hogre an den ursprungliga 1,5 ganger
     // figurens 44 px hoga kollisionskropp.
     launchVelocity: -16,
-    platformStunMs: 4000,
+    platformStunMs: 3200,
     // Skyddsnat ifall offret kastas ut fran kartan; normalt slapps laset direkt
     // nar de landar, sa hela luftfarden ar alltid hjalplos.
     launchWindowMs: 2500,
@@ -428,7 +428,7 @@ export const ABILITY_TUNING = {
     range: 300,
     damageMin: 25,
     damageMax: 35,
-    stunMs: 2000,
+    stunMs: 2500,
     hitW: 58,
     hitH: 52,
     knockbackX: 6.5,
@@ -484,16 +484,16 @@ export const ABILITY_TUNING = {
   iceSpikes: {
     range: 450,
     // En spik far skjutas upp om den har ens lite stod inom den har bredden.
-    groundProbeHalfWidth: 18,
+    groundProbeHalfWidth: 10,
     groundLevelTolerance: 2,
     hitHeight: 110,
     groundTolerance: 18,
     damageMin: 20,
     damageMax: 45,
     knockbackX: 0,
-    knockbackY: -6.875,
-    slowMul: 0.75,
-    slowMs: 7000,
+    knockbackY: -13.0,
+    slowMul: 0.35,
+    slowMs: 5000,
     count: 8,
     stepMs: 70,
     riseMs: 140,
