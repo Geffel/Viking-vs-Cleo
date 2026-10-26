@@ -74,6 +74,9 @@ export const INTERP_MS = 50;
 export const LAGCOMP = {
   historyMs: 700,
   maxRewindMs: 250,
+  // Allow snapshot spacing (down to 10 Hz) and render/network jitter, within
+  // maxRewindMs. The rest of the view budget comes from server-measured RTT.
+  viewJitterMs: 100,
 };
 
 // Alla narstridsattacker delar samma tuning och cooldowngrupp. Q och E ar alltsa

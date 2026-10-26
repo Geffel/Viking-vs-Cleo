@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import net from 'node:net';
+import { startTestServer } from './test-server.mjs';
 
 const node = process.execPath;
 const logicTests = [
@@ -11,6 +11,9 @@ const logicTests = [
   ['platforms', 'test/platforms.mjs'],
   ['maps', 'test/maps.mjs'],
   ['matches', 'test/matches.mjs'],
+  ['ability-layout', 'test/ability-layout.mjs'],
+  ['netcode', 'test/netcode.mjs'],
+  ['server-protocol', 'test/server-protocol.mjs'],
 ];
 
 const smokeScale = Number(process.env.SMOKE_TIME_SCALE || 10);
@@ -22,6 +25,7 @@ function runNode(name, script, env = {}) {
       cwd: process.cwd(),
       env: { ...process.env, ...env },
       stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
     });
     let stdout = '';
     let stderr = '';
@@ -43,66 +47,24 @@ function printResult(result) {
   process.stderr.write(result.stderr);
 }
 
-function waitForPort(port, child, timeoutMs = 5000) {
-  const started = Date.now();
-  return new Promise((resolve, reject) => {
-    const tryConnect = () => {
-      if (child.exitCode !== null) {
-        reject(new Error(`testservern stangdes innan den hann starta (kod ${child.exitCode})`));
-        return;
-      }
-      const socket = net.connect({ host: '127.0.0.1', port });
-      socket.once('connect', () => {
-        socket.destroy();
-        resolve();
-      });
-      socket.once('error', () => {
-        socket.destroy();
-        if (Date.now() - started > timeoutMs) reject(new Error(`testservern svarade inte pa port ${port}`));
-        else setTimeout(tryConnect, 50);
-      });
-    };
-    tryConnect();
-  });
-}
-
 async function runSmoke() {
-  const port = Number(process.env.TEST_PORT || 3100 + Math.floor(Math.random() * 1000));
-  const server = spawn(node, ['server/index.js'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      NODE_ENV: 'test',
-      PORT: String(port),
-      GAME_TIME_SCALE: String(smokeScale),
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  let serverOut = '';
-  let serverErr = '';
-  server.stdout.on('data', (chunk) => {
-    serverOut += chunk;
-  });
-  server.stderr.on('data', (chunk) => {
-    serverErr += chunk;
-  });
-
+  let server;
   try {
-    await waitForPort(port, server);
+    server = await startTestServer({ timeScale: smokeScale });
     return await runNode('smoke', 'test/smoke.mjs', {
-      URL: `ws://127.0.0.1:${port}`,
+      URL: server.url,
       SMOKE_TIME_SCALE: String(smokeScale),
     });
   } catch (error) {
     return {
       name: 'smoke',
       code: 1,
-      stdout: serverOut,
-      stderr: `${serverErr}${error.stack || error.message}\n`,
+      stdout: server?.output() ?? '',
+      stderr: `${error.stack || error.message}\n`,
       ms: 0,
     };
   } finally {
-    if (server.exitCode === null) server.kill();
+    await server?.stop();
   }
 }
 

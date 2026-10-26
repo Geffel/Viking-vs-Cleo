@@ -7,6 +7,7 @@ import express from 'express';
 import { WebSocketServer } from 'ws';
 import { Game } from './game.js';
 import { MatchRegistry } from './matches.js';
+import { MAX_MESSAGE_BYTES, parseClientMessage } from './protocol.js';
 import { ACHIEVEMENTS, achievementUnlockStats, evaluateAchievements, publicAchievements } from '../shared/achievements.js';
 import {
   TICK_MS,
@@ -24,8 +25,9 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
-const PORT = Number(process.env.PORT) || 3000;
-const DATA_DIR = path.join(ROOT, 'data');
+const PORT = Number(process.env.PORT ?? 3000);
+// Tests use a temporary data directory; normal launches keep the existing path.
+const DATA_DIR = path.resolve(process.env.VVC_DATA_DIR || path.join(ROOT, 'data'));
 const PROFILES_FILE = path.join(DATA_DIR, 'profiles.json');
 const GAME_TIME_SCALE = Math.max(0.01, Number(process.env.GAME_TIME_SCALE) || 1);
 const GAME_CLOCK_STARTED_REAL = Date.now();
@@ -59,7 +61,7 @@ app.use(
 app.use('/shared', express.static(path.join(ROOT, 'shared')));
 
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server });
+const wss = new WebSocketServer({ server, maxPayload: MAX_MESSAGE_BYTES });
 
 // Legacy-spelet finns kvar for direktjoin-vagen, men lobby-matcher far egna
 // Game-instanser nar deras countdown startar.
@@ -120,13 +122,12 @@ wss.on('connection', (ws) => {
     leaderboardSummary: leaderboardSummary(lb),
   });
 
-  ws.on('message', (raw) => {
-    let msg;
-    try {
-      msg = JSON.parse(raw);
-    } catch {
-      return;
-    }
+  // ws emits an error when rejecting oversized/invalid frames. The offending
+  // connection is closed by ws; it must not take the server down with it.
+  ws.on('error', () => {});
+  ws.on('message', (raw, isBinary) => {
+    const msg = parseClientMessage(raw, isBinary);
+    if (!msg) return;
     handleMessage(ws, msg);
   });
 
@@ -424,7 +425,12 @@ function handleMessage(ws, msg) {
     }
     case 'act': {
       const control = controlledPlayerForMessage(ws, msg);
-      if (control?.player) control.game.action(control.player, msg.a);
+      if (control?.player) {
+        control.player.halfRtt = ws.halfRtt;
+        const shared = matches.get(ws.matchId)?.mode === MATCH_MODES.sharedScreen;
+        control.game.action(control.player, msg.a, msg.view,
+          shared ? [...control.game.players.keys()] : [control.player.id]);
+      }
       break;
     }
     case 'actup': {
@@ -1924,10 +1930,11 @@ setInterval(() => {
 }, AUTOSAVE_MS);
 
 server.listen(PORT, '0.0.0.0', () => {
-  gameLog('SERVER', `Started on port ${PORT}.`);
+  const port = server.address().port;
+  gameLog('SERVER', `Started on port ${port}.`);
   console.log('\n  Viking vs Cleo kör!\n');
-  console.log(`  Här på datorn:  http://localhost:${PORT}`);
-  for (const url of lanUrls(PORT)) console.log(`  På nätverket:   ${url}`);
+  console.log(`  Här på datorn:  http://localhost:${port}`);
+  for (const url of lanUrls(port)) console.log(`  På nätverket:   ${url}`);
   console.log('');
 });
 

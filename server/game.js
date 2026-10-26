@@ -24,8 +24,10 @@ import {
   COMBO_MAX_LEN,
   TRAINING,
 } from '../shared/constants.js';
+import { extrapolatePlayer, samplePlayer, validView } from '../shared/netcode.js';
 
 let nextId = 1;
+let nextGameId = 1;
 const baseCooldowns = () => Object.fromEntries(ACTION_SLOTS.map((slot) => [slot, 0]));
 const LOW_HP_FRAC = 0.25;
 const QUICK_DAMAGE_MS = 5000;
@@ -54,6 +56,9 @@ export class Game {
   // kritiska traffar kan tvingas fram eller stangas av.
   constructor({ clock = () => Date.now(), rng = Math.random, layout = mapLayoutFor(), mapId = null, abilityCooldownCap = 0 } = {}) {
     this.now = clock;
+    this.gameId = nextGameId++;
+    this.snapshotSeq = 0;
+    this.viewHistory = new Map();
     this.rng = rng;
     this.layout = layout;
     this.mapId = mapId;
@@ -77,6 +82,9 @@ export class Game {
   }
 
   reset() {
+    this.gameId = nextGameId++;
+    this.snapshotSeq = 0;
+    this.viewHistory.clear();
     this.players.clear();
     this.tick = 0;
     this.score = { cleo: 0, viking: 0 };
@@ -258,6 +266,7 @@ export class Game {
   }
 
   resetPlayerAt(p, pt) {
+    p.life = (p.life ?? 0) + 1;
     p.x = pt.x;
     p.y = pt.y;
     p.vx = 0;
@@ -310,7 +319,7 @@ export class Game {
     p.input.right = !!right;
   }
 
-  action(p, kind) {
+  action(p, kind, view = null, localPlayerIds = [p.id]) {
     if (p.dead) return;
     if (kind === 'melee') kind = MELEE_SLOTS[0];
     const t = this.now();
@@ -329,16 +338,21 @@ export class Game {
     }
     if (MELEE_SLOTS.includes(kind)) {
       if (t < p.cd[kind]) return;
+      const rendered = view ? this.attackView(p, view, localPlayerIds, t) : null;
+      // Invalid/stale views cannot fall back to a different, more favourable hit.
+      if (view && !rendered) return;
       for (const slot of MELEE_SLOTS) p.cd[slot] = t + MELEE.cooldown;
       p.swingUntil = t + MELEE.windupMs;
 
-      // Siktet last redan nu, mot exakt den bild angriparen hade pa skarmen nar
-      // han tryckte: sig sjalv utan fordrojning, motstandarna INTERP_MS bakat.
-      // Halva pingen dras av bada for att kompensera resan hit.
-      const rewind = Math.min(INTERP_MS + p.halfRtt, LAGCOMP.maxRewindMs);
-      const from = this.positionAt(p, t - p.halfRtt);
-      const box = meleeBox(from.x, from.y, p.facing);
-      p.swing = { resolveAt: t + MELEE.windupMs, viewTime: t - rewind, box, slot: kind };
+      // Modern clients identify the actual rendered snapshots. Coordinates are
+      // reconstructed here, never accepted from the client. The bounded RTT
+      // estimate remains only for older clients without view metadata.
+      const rewind = Math.min(INTERP_MS + 2 * p.halfRtt, LAGCOMP.maxRewindMs);
+      const from = rendered?.self ?? this.positionAt(p, t - Math.min(2 * p.halfRtt, LAGCOMP.maxRewindMs));
+      const facing = rendered?.self.f ?? p.facing;
+      const box = meleeBox(from.x, from.y, facing);
+      p.swing = { resolveAt: t + MELEE.windupMs, viewTime: rendered?.time ?? t - rewind,
+        viewPlayers: rendered?.players, facing, box, slot: kind };
       const swingAudio = this.meleeSwingAudioMeta(p, kind, t);
 
       this.fx.push({
@@ -346,7 +360,7 @@ export class Game {
         id: p.id,
         x: from.x + PLAYER.w / 2,
         y: from.y + PLAYER.h / 2,
-        f: p.facing,
+        f: facing,
         team: p.team,
         slot: kind,
         comboStep: swingAudio.comboStep,
@@ -1210,6 +1224,31 @@ export class Game {
     while (h.length > 1 && t - h[0].t > LAGCOMP.historyMs) h.shift();
   }
 
+  // The client selects a view, not positions. All samples must belong to this
+  // game and fit the server's rewind budget. A frame may bracket the requested
+  // time, but the interpolated view itself may never exceed maxRewindMs.
+  attackView(p, view, localPlayerIds, now) {
+    if (!validView(view) || view.game !== this.gameId) return null;
+    const a = this.viewHistory.get(view.a);
+    const b = this.viewHistory.get(view.b);
+    const latest = this.viewHistory.get(view.self);
+    if (!a || !b || !latest || (view.b !== view.a && view.b !== view.a + 1)) return null;
+    const time = a.time + (b.time - a.time) * view.alpha;
+    const budget = Math.min(LAGCOMP.maxRewindMs, INTERP_MS + 2 * p.halfRtt + LAGCOMP.viewJitterMs);
+    if (time > now || now - time > budget || latest.time + view.extrapMs > now + 0.001 || now - latest.time > budget) return null;
+    const self = extrapolatePlayer(latest.players.get(p.id), view.extrapMs);
+    if (!self || self.d || self.life !== p.life) return null;
+    const local = new Set(localPlayerIds);
+    const players = new Map();
+    for (const current of this.players.values()) {
+      const sampled = local.has(current.id)
+        ? extrapolatePlayer(latest.players.get(current.id), view.extrapMs)
+        : a.players.has(current.id) ? samplePlayer(a.players.get(current.id), b.players.get(current.id), view.alpha) : null;
+      if (sampled && !sampled.d && sampled.life === current.life) players.set(current.id, sampled);
+    }
+    return { self, players, time };
+  }
+
   /** Var spelaren stod vid en given tidpunkt. Grunden i traffkontrollen. */
   positionAt(p, when) {
     const h = p.history;
@@ -1377,7 +1416,8 @@ export class Game {
 
     for (const o of this.players.values()) {
       if (o.id === p.id || o.team === p.team || o.dead) continue;
-      const at = this.positionAt(o, s.viewTime);
+      const at = s.viewPlayers ? s.viewPlayers.get(o.id) : this.positionAt(o, s.viewTime);
+      if (!at || (at.life !== undefined && at.life !== o.life)) continue;
       if (!overlaps(s.box, { x: at.x, y: at.y, w: PLAYER.w, h: PLAYER.h })) continue;
 
       // Nyss respawnad motstandare gar inte att skada. Visa det i stallet for
@@ -1398,13 +1438,13 @@ export class Game {
       // sin bonus innan resten av multiplikatorerna laggs pa i damage().
       const combo = this.advanceCombo(p, s.slot, t);
       let amount = this.rollDamage(MELEE.damageMin, MELEE.damageMax);
-      let kx = p.facing * MELEE.knockbackX;
+      let kx = s.facing * MELEE.knockbackX;
       let ky = MELEE.knockbackY;
 
       if (combo) {
         amount = Math.round(amount * combo.finisherMul);
         if (combo.knockback) {
-          kx = p.facing * combo.knockback.x;
+          kx = s.facing * combo.knockback.x;
           ky = combo.knockback.y;
         }
         this.finisherEffects(p, target, combo, t);
@@ -1896,6 +1936,7 @@ export class Game {
       const combo = p.dead ? null : this.comboProgress(p, t);
       players.push({
         i: p.id,
+        life: p.life,
         n: p.name,
         tm: p.team,
         x: round(p.x),
@@ -1948,7 +1989,15 @@ export class Game {
       h: p.h ? round(p.h) : undefined,
       s: p.strength ? round(p.strength) : undefined,
     }));
-    const snap = { t: 'state', tick: this.tick, players, score: this.score, fx: this.fx, feed: this.feed, events: this.events, pu, pr };
+    const seq = ++this.snapshotSeq;
+    this.viewHistory.set(seq, { time: t, players: new Map(players.map((p) => [p.i, {
+      i: p.i, life: p.life, x: p.x, y: p.y, vx: p.vx, vy: p.vy, f: p.f, d: p.d,
+    }])) });
+    for (const [id, frame] of this.viewHistory) {
+      if (t - frame.time <= LAGCOMP.historyMs) break;
+      this.viewHistory.delete(id);
+    }
+    const snap = { t: 'state', gameId: this.gameId, seq, simTime: t, tick: this.tick, players, score: this.score, fx: this.fx, feed: this.feed, events: this.events, pu, pr };
     this.fx = [];
     this.feed = [];
     this.events = [];

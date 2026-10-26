@@ -3,14 +3,12 @@
 // rorelsen mjuk aven om ett paket kommer sent. Egen spelare ritas alltid
 // pa senaste bilden sa att inputen kanns direkt.
 
-// Bor i shared/constants.js eftersom servern spolar tillbaka exakt lika langt
-// nar den avgor om ett slag traffade.
+// Playback and authoritative melee reconstruction share the same sampling rules.
 import { INTERP_MS, TICK_MS } from '/shared/constants.js';
+import { SNAP_DIST, LOCAL_EXTRAP_MS, samplePlayer, extrapolatePlayer } from '/shared/netcode.js';
 export { INTERP_MS };
 
 const BUFFER_MS = 1000;
-const SNAP_DIST = 220; // storre hopp an sa = respawn/teleport, interpolera inte
-const LOCAL_EXTRAP_MS = 50;
 const METRIC_WINDOW_MS = 5000;
 const METRIC_PING_MS = 1000;
 const METRIC_PING_TIMEOUT_MS = 4000;
@@ -41,6 +39,10 @@ export class Net {
     this.localPlayers = new Map();
     this.buffer = [];
     this.latest = null;
+    this.lastView = null;
+    this.playbackOffset = null;
+    this.lastRenderTime = -Infinity;
+    this.pendingFx = [];
     this.leaderboard = [];
     this.leaderboardSig = '';
     this.powerups = []; // pizzor pa kartan just nu, senaste ognapsbilden
@@ -157,6 +159,7 @@ export class Net {
         this.match = msg.match ?? this.match;
         this.buffer = [];
         this.latest = null;
+        this.resetTimeline();
         this.powerups = [];
         this.projectiles = [];
         this.score = { cleo: 0, viking: 0 };
@@ -173,6 +176,9 @@ export class Net {
 
   send(obj) {
     if (this.ws?.readyState !== WebSocket.OPEN) return;
+    if (obj.t === 'act' && ['m1', 'm2', 'melee'].includes(obj.a) && this.lastView) {
+      obj = { ...obj, view: { ...this.lastView } };
+    }
     const str = JSON.stringify(obj);
     this.noteOutbound(obj?.t, byteLength(str));
     this.ws.send(str);
@@ -258,12 +264,21 @@ export class Net {
 
   onState(msg, bytes = 0) {
     const time = performance.now();
+    if (this.latest && msg.gameId !== this.latest.gameId) {
+      this.buffer = [];
+      this.resetTimeline();
+    }
+    if (this.latest && this.latest.gameId === msg.gameId && msg.seq <= this.latest.seq) return;
     this.noteState(msg, bytes, time);
     const players = new Map();
     for (const p of msg.players) players.set(p.i, p);
     const projectiles = msg.pr ?? [];
 
-    this.latest = { time, players, projectiles };
+    // Arrival time estimates playback delay only. Interpolation uses the
+    // server's timestamps, so packet jitter cannot stretch movement segments.
+    const simTime = msg.simTime ?? time;
+    this.playbackOffset = Math.min(this.playbackOffset ?? Infinity, time - simTime);
+    this.latest = { time, simTime, seq: msg.seq, gameId: msg.gameId, players, projectiles };
     this.setLeaderboard(msg.lb ?? this.leaderboard);
     this.powerups = msg.pu ?? [];
     this.projectiles = projectiles;
@@ -281,12 +296,9 @@ export class Net {
       else delayed.push(fx);
     }
 
-    if (delayed.length || msg.feed.length) {
-      setTimeout(() => {
-        for (const fx of delayed) this.emit('fx', fx);
-        for (const kill of msg.feed) this.emit('kill', kill);
-      }, INTERP_MS);
-    }
+    if (delayed.length || msg.feed.length) this.pendingFx.push({ time: simTime, fx: delayed, feed: msg.feed });
+    // Hidden tabs do not render; keep the event queue bounded as well.
+    this.pendingFx = this.pendingFx.filter((batch) => simTime - batch.time <= BUFFER_MS);
   }
 
   /** Lamnar matchen men behaller anslutningen - man kan joina igen direkt. */
@@ -301,9 +313,31 @@ export class Net {
     this.localPlayers.clear();
     this.buffer = [];
     this.latest = null;
+    this.resetTimeline();
     this.powerups = [];
     this.projectiles = [];
     this.score = { cleo: 0, viking: 0 };
+  }
+
+  resetTimeline() {
+    this.lastView = null;
+    this.playbackOffset = null;
+    this.lastRenderTime = -Infinity;
+    this.pendingFx = [];
+  }
+
+  renderFrame(now = performance.now()) {
+    const buf = this.buffer;
+    if (!buf.length) return null;
+    const wanted = now - this.playbackOffset - INTERP_MS;
+    const time = Math.min(this.latest.simTime, Math.max(buf[0].simTime, this.lastRenderTime, wanted));
+    this.lastRenderTime = time;
+    let i = buf.length - 1;
+    while (i > 0 && buf[i].simTime > time) i--;
+    const a = buf[i];
+    const b = buf[i + 1] ?? a;
+    const span = b.simTime - a.simTime;
+    return { a, b, time, alpha: span > 0 ? clamp01((time - a.simTime) / span) : 0 };
   }
 
   self() {
@@ -332,44 +366,39 @@ export class Net {
 
   /** Spelarlista att rita just nu. */
   sample() {
-    const buf = this.buffer;
-    if (!buf.length) return [];
-
-    const renderTime = performance.now() - INTERP_MS;
-    let i = buf.length - 1;
-    while (i > 0 && buf[i].time > renderTime) i--;
-
-    const a = buf[i];
-    const b = buf[i + 1];
+    const now = performance.now();
+    const frame = this.renderFrame(now);
+    if (!frame) return [];
+    const { a, b, alpha, time } = frame;
     const out = [];
 
     const localIds = new Set(this.localPlayerIds());
 
     for (const p of a.players.values()) {
       if (localIds.has(p.i)) continue; // egna spelare ritas fran latest
-      out.push(b ? lerpPlayer(p, b.players.get(p.i), clamp01((renderTime - a.time) / (b.time - a.time))) : p);
+      out.push(samplePlayer(p, b.players.get(p.i), alpha));
     }
 
-    const latestAgeMs = this.latest ? performance.now() - this.latest.time : 0;
+    const latestAgeMs = Math.max(0, Math.min(LOCAL_EXTRAP_MS, now - this.latest.time));
     for (const id of localIds) {
       const p = this.latest?.players.get(id);
       if (p) out.push(extrapolatePlayer(p, latestAgeMs));
+    }
+    this.lastView = this.latest.seq ? { game: this.latest.gameId, a: a.seq, b: b.seq,
+      alpha, self: this.latest.seq, extrapMs: latestAgeMs } : null;
+    while (this.pendingFx.length && this.pendingFx[0].time <= time) {
+      const batch = this.pendingFx.shift();
+      for (const fx of batch.fx) this.emit('fx', fx);
+      for (const kill of batch.feed) this.emit('kill', kill);
     }
     return out;
   }
 
   /** Projektiler att rita just nu, med samma fordrojning som spelarna. */
   sampleProjectiles() {
-    const buf = this.buffer;
-    if (!buf.length) return [];
-
-    const renderTime = performance.now() - INTERP_MS;
-    let i = buf.length - 1;
-    while (i > 0 && buf[i].time > renderTime) i--;
-
-    const a = buf[i];
-    const b = buf[i + 1];
-    const alpha = b ? clamp01((renderTime - a.time) / (b.time - a.time)) : 0;
+    const frame = this.renderFrame();
+    if (!frame) return [];
+    const { a, b, alpha } = frame;
     const out = [];
 
     const localIds = new Set(this.localPlayerIds());
@@ -687,12 +716,6 @@ function actionForFx(fx) {
   return FX_ACTIONS[fx?.team]?.[fx?.k] ?? null;
 }
 
-function lerpPlayer(a, b, alpha) {
-  if (!b) return a;
-  if (Math.hypot(b.x - a.x, b.y - a.y) > SNAP_DIST) return b;
-  return { ...a, x: a.x + (b.x - a.x) * alpha, y: a.y + (b.y - a.y) * alpha };
-}
-
 function lerpProjectile(a, b, alpha) {
   if (!b) return a;
   if (Math.hypot(b.x - a.x, b.y - a.y) > SNAP_DIST) return b;
@@ -702,13 +725,6 @@ function lerpProjectile(a, b, alpha) {
     y: a.y + (b.y - a.y) * alpha,
     a: a.a + (b.a - a.a) * alpha,
   };
-}
-
-function extrapolatePlayer(p, ageMs) {
-  if (!p || p.d) return p;
-  const ticks = extrapolatedTicks(ageMs);
-  if (ticks <= 0 || (!(p.vx || p.vy))) return p;
-  return { ...p, x: p.x + p.vx * ticks, y: p.y + p.vy * ticks };
 }
 
 function extrapolateProjectile(pr, ageMs) {

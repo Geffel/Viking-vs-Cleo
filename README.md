@@ -96,21 +96,24 @@ sträcker sig `MELEE.reach` (48) framåt från kroppens mitt — ungefär så l�
 yxan syns nå — och bakåt till egen bakkant, så att någon som står mitt ovanpå en
 alltid räknas. Höjden är hela kroppen: träffar man kroppen så träffar man.
 
-**Det du ser på din skärm är det som gäller.** Andra spelare ritas `INTERP_MS`
-(50 ms) bakåt i tiden för att röra sig mjukt även när ett paket kommer sent. Utan
-motåtgärd betyder det att servern prövar slaget mot en nyare bild än den du siktade
-på — vid full fart blir det 15 px fel, en halv spelarbredd. Därför:
+**Närstrid prövas mot den bild du såg.** Snapshots har serverns simulationstid,
+sekvensnummer och en identitet för spelomgången. Klienten interpolerar andra
+spelare på denna tidslinje med `INTERP_MS` (50 ms) buffert. Egna spelare använder
+senaste snapshot med högst 50 ms hastighetsbaserad extrapolering.
 
-- servern sparar varje spelares position `LAGCOMP.historyMs` bakåt
-- när du trycker mellanslag låses siktet **direkt**, mot exakt din bild av spelet:
-  dig själv utan fördröjning, motståndarna 50 ms bakåt plus halva din ping
-- skadan delas ut först `MELEE.windupMs` senare, när yxan är nere i animationen —
-  men mot den redan låsta bilden, så väntetiden kan aldrig göra att ett slag som
-  såg ut att träffa missar
+- Vid ett närstridstryck skickas referenser till snapshots från senast ritade
+  bildrutan, interpolationsandel och extrapoleringstid. Inga positioner skickas.
+- Servern återskapar bilden från sin egen snapshot-historik med samma
+  beräkningar som klienten. Även lokala motståndare på delad skärm hanteras.
+- Referenser måste tillhöra rätt spelomgång och ligga inom serverns
+  RTT-baserade tidsbudget, alltid högst `LAGCOMP.maxRewindMs` (250 ms).
+  För gamla eller ogiltiga bilder avvisas; tidigare liv får inte träffa efter respawn.
+- Slaget låser positioner och riktning vid mottagandet. Skadan kommer efter
+  `MELEE.windupMs`; död och aktuella skydd kontrolleras fortfarande av servern.
 
-Pingen mäts med WebSocket-protokollets egen ping/pong varje sekund. Den kan alltså
-inte förfalskas av sidans kod för att köpa sig en större bakåtspolning, och den är
-takad till `LAGCOMP.maxRewindMs`.
+Detta är träffkompensation för närstrid. Lokal förutsägelse av nya rörelseinputs
+är inte implementerad. Äldre klienter utan bildreferenser använder en begränsad
+RTT-baserad uppskattning och kan inte få samma exakta bildmatchning.
 
 Ett slag träffar **en** motståndare — den närmaste i träffytan.
 
@@ -388,15 +391,18 @@ rutor på samma fotlinje.
 ## Så hänger det ihop
 
 Servern är auktoritativ: den äger alla positioner, HP och cooldowns, kör 60 tick/s
-och skickar en ögonblicksbild per tick. Klienten skickar bara tangenttryck och ritar
-det den får tillbaka. Ingen spelare kan alltså fuska genom att ändra i webbläsaren.
+och skickar normalt 30 ögonblicksbilder per sekund (`NET_SNAPSHOT_HZ` kan ändra
+frekvensen). Klienten skickar input och bildreferenser; servern avgör resultatet.
+Inkommande meddelanden typkontrolleras och begränsas till 4 KiB.
 
 ```
 start-game.bat        Startar servern och öppnar webbläsaren
 turn-off-game.bat     Stänger av servern
 shared/constants.js   Kartor, fysik, lag, förmågor — delas av server och klient
+shared/netcode.js     Gemensam interpolation och extrapolering för träffkontroll
 server/game.js        Spelvärlden: fysik, kollision, skada, respawn, poäng
 server/index.js       HTTP + WebSocket, spelloopen, LAN-adresser
+server/protocol.js    Validering av inkommande WebSocket-meddelanden
 public/js/net.js      WebSocket + interpolering av andra spelare
 public/js/input.js    Tangentbord och handkontroll -> meddelanden
 public/js/keybinds.js Spelarens bindningar: standard ur konstantfilen, egna i localStorage
@@ -419,7 +425,15 @@ droppa ned en nivå med `Pil ned`.
 npm test
 ```
 
-Kör flera sviter. De första behöver ingen server:
+Kör samtliga sviter och startar egna testservrar på lediga portar för
+integrationstesterna. De använder tillfälliga profilkataloger och ändrar inte
+`data/profiles.json`. `VVC_DATA_DIR` kan ange en annan datakatalog vid serverstart.
+
+`npm run test:net` kör tester för nätverkstidslinjen (0–150 ms RTT och jitter),
+träff/miss, delad skärm, respawn och ogiltiga bildreferenser samt testar felaktiga
+och för stora meddelanden mot en isolerad server.
+
+De fristående logiktesterna behöver ingen server:
 
 - [`test/hitreg.mjs`](test/hitreg.mjs) — kör spelvärlden direkt med en klocka som
   stegas manuellt, så spelarna kan ställas på exakta positioner. Kontrollerar
