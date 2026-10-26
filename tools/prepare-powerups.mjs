@@ -17,6 +17,8 @@ const SIZE = 256; // rikligt for spelstorleken (~46 varldspixlar), men litet pa 
 const ITEMS = [
   { src: 'source-images/Pizza_powerup.png', out: 'pizza.png' },
   { src: 'source-images/Kebab_powerup.png', out: 'kebab.png' },
+  { src: 'source-images/Cola_powerup.png', out: 'cola.png' },
+  { src: 'source-images/Chili_powerup.png', out: 'chili.png' },
 ];
 
 await fs.mkdir(OUT_DIR, { recursive: true });

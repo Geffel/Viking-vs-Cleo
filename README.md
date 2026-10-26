@@ -79,7 +79,7 @@ Nivåerna sparas i `localStorage` under `vvc.audio.*`.
 
 | Lag | Förmåga 1 | Förmåga 2 | Förmåga 3 |
 | --- | --- | --- | --- |
-| **Cleo** | Sand blast — kort sandkon som skadar och stunnar (6,5 s) | Blink — teleporterar framåt genom väggar och spelare (7 s) | Power shield — sköldar som blockar 3 träffar (60 s) |
+| **Cleo** | Sand blast — kort sandkon som skadar och stunnar (6,5 s) | Blink — teleporterar framåt genom väggar och spelare (7 s) | Power shield — sköldar som blockar 3 träffar i högst 20 s (60 s) |
 | **Viking** | Axe throw — kastar en roterande yxa (3,5 s) | Shield charge — rusar med skölden, skadar och stunnar (8 s) | Mushrooms — äter flugsvamp och blir berserk i 12 s: +30 % utdelad skada, +30 % mottagen (60 s) |
 
 Rutorna är per lag: saknar ett lag en förmåga döljs rutan i HUD:en och tangenten
@@ -194,6 +194,9 @@ samma språk som kebaben. Siffrorna sitter i `ENRAGE` i
 
 Var 20:e sekund läggs en powerup ut på en av de handplockade platserna i
 `POWERUP_SPAWNS`, men aldrig fler än tre samtidigt. Sorten lottas:
+
+Varje powerup ligger kvar i högst 40 sekunder. När tiden går ut försvinner den
+och ersätts direkt på en annan ledig powerup-plats.
 
 | Sort | Effekt | Plockas upp av |
 | --- | --- | --- |

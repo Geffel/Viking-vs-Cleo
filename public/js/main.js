@@ -6,7 +6,7 @@ import { AchievementsUi } from '/js/achievements.js';
 import { SettingsUi } from '/js/settings.js';
 import { initInput } from '/js/input.js';
 import { initGamepadCursor } from '/js/gamepad-cursor.js';
-import { initLobbyInfo } from '/js/info.js';
+import { abilityText, initLobbyInfo } from '/js/info.js';
 import {
   ACTION_SLOTS,
   ABILITIES,
@@ -102,8 +102,13 @@ const trainingSwitch = document.getElementById('training-switch');
 const instructionsOverlay = document.getElementById('instructions-overlay');
 const instructionsCloseBtn = document.getElementById('instructions-close');
 const instructionsTabs = [...document.querySelectorAll('[data-help-team]')];
+const instructionsSectionTabs = [...document.querySelectorAll('[data-help-section]')];
+const instructionsPanels = [...document.querySelectorAll('.instructions-panel')];
 const instructionsBasics = document.getElementById('instructions-basics');
+const instructionsAbilities = document.getElementById('instructions-abilities');
+const instructionsComboGuide = document.getElementById('instructions-combo-guide');
 const instructionsCombos = document.getElementById('instructions-combos');
+const instructionsVideo = document.querySelector('.instructions-video');
 
 const TRANSITION_MS = 620;
 const DEBUG_PARAMS = new URLSearchParams(location.search);
@@ -163,6 +168,7 @@ let settingsReturnView = 'lobby';
 let screenPromptTimer = 0;
 let screenPromptKey = '';
 let instructionsTeam = 'cleo';
+let instructionsSection = 'abilities';
 let instructionsFocusReturn = null;
 const sharedSeatInput = {
   frame: 0,
@@ -387,9 +393,36 @@ net.connect();
 // ------------------------------------------------------------- renderloop
 
 let lastFrame = performance.now();
+let lastMenuUpdate = 0;
 
 function frame(now) {
-  const dt = now - lastFrame;
+  // Menyerna tacker arenan helt. Att rita den dar belastar datorn utan att
+  // spelaren ser en enda pixel, och kan stora videouppspelning i andra fonster.
+  if (document.hidden) {
+    requestAnimationFrame(frame);
+    return;
+  }
+  if (currentView !== 'game') {
+    if (now - lastMenuUpdate >= 100) {
+      lastMenuUpdate = now;
+      const arena = currentArena();
+      renderer.setArena(arena.asset, arena.theme); // ladda kartan fore matchstart
+      renderer.setMapLayout(arena.layout);
+      audio.sync([]);
+      updatePhaseTimers();
+      netDebug.update(now);
+    }
+    requestAnimationFrame(frame);
+    return;
+  }
+
+  // Ett ofokuserat spelfonster far fortsatt visa matchen, men behover inte
+  // konkurrera med t.ex. en video i det aktiva fonstret om 60 bildrutor/s.
+  if (!document.hasFocus() && now - lastFrame < 50) {
+    requestAnimationFrame(frame);
+    return;
+  }
+  const dt = Math.min(now - lastFrame, 100);
   lastFrame = now;
 
   const players = net.sample();
@@ -412,7 +445,6 @@ function frame(now) {
   hud.update(dt);
   updatePhaseTimers();
   netDebug.update(now);
-
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
@@ -516,10 +548,32 @@ function initInstructions() {
   gameInstructionsBtn?.addEventListener('click', openInstructions);
   instructionsCloseBtn?.addEventListener('click', () => closeInstructions());
   instructionsOverlay.addEventListener('click', (e) => {
+    const sectionTab = e.target.closest('[data-help-section]');
+    if (sectionTab) {
+      instructionsSection = sectionTab.dataset.helpSection;
+      renderInstructions();
+      document.getElementById(`instructions-panel-${instructionsSection}`)?.scrollTo(0, 0);
+      return;
+    }
     const tab = e.target.closest('[data-help-team]');
     if (!tab) return;
     instructionsTeam = tab.dataset.helpTeam === 'viking' ? 'viking' : 'cleo';
     renderInstructions();
+    document.getElementById(`instructions-panel-${instructionsSection}`)?.scrollTo(0, 0);
+  });
+  instructionsOverlay.querySelector('.instructions-nav')?.addEventListener('keydown', (e) => {
+    const currentIndex = instructionsSectionTabs.indexOf(document.activeElement);
+    if (currentIndex < 0) return;
+    let nextIndex = currentIndex;
+    if (e.key === 'ArrowRight') nextIndex = (currentIndex + 1) % instructionsSectionTabs.length;
+    else if (e.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + instructionsSectionTabs.length) % instructionsSectionTabs.length;
+    else if (e.key === 'Home') nextIndex = 0;
+    else if (e.key === 'End') nextIndex = instructionsSectionTabs.length - 1;
+    else return;
+    e.preventDefault();
+    instructionsSection = instructionsSectionTabs[nextIndex].dataset.helpSection;
+    renderInstructions();
+    instructionsSectionTabs[nextIndex].focus();
   });
   window.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape' || instructionsOverlay.hidden) return;
@@ -553,17 +607,29 @@ function closeInstructions({ restoreFocus = true } = {}) {
   if (!instructionsOverlay || instructionsOverlay.hidden) return;
   instructionsOverlay.hidden = true;
   instructionsOverlay.classList.remove('in-game');
+  instructionsVideo?.pause();
   if (restoreFocus) instructionsFocusReturn?.focus?.();
   instructionsFocusReturn = null;
   syncGameAccess();
 }
 
 function renderInstructions() {
-  if (!instructionsOverlay || !instructionsBasics || !instructionsCombos) return;
+  if (!instructionsOverlay || !instructionsBasics || !instructionsAbilities || !instructionsCombos) return;
 
   const team = instructionsTeam === 'viking' ? 'viking' : 'cleo';
   const accent = TEAMS[team]?.color ?? '#ff4d9d';
   instructionsOverlay.style.setProperty('--instructions-accent', accent);
+
+  for (const tab of instructionsSectionTabs) {
+    const on = tab.dataset.helpSection === instructionsSection;
+    tab.classList.toggle('on', on);
+    tab.setAttribute('aria-selected', on ? 'true' : 'false');
+    tab.tabIndex = on ? 0 : -1;
+  }
+  for (const panel of instructionsPanels) {
+    panel.hidden = panel.id !== `instructions-panel-${instructionsSection}`;
+  }
+  if (instructionsSection !== 'rearrange') instructionsVideo?.pause();
 
   for (const tab of instructionsTabs) {
     const on = tab.dataset.helpTeam === team;
@@ -571,19 +637,37 @@ function renderInstructions() {
     tab.setAttribute('aria-pressed', on ? 'true' : 'false');
   }
 
-  instructionsBasics.innerHTML = instructionsBasicRows(team)
+  instructionsBasics.innerHTML = [
+    { slots: ['left', 'right'], name: 'Move' },
+    { slots: ['jump'], name: 'Jump' },
+    { slots: ['drop'], name: 'Drop' },
+  ]
     .map(
-      (row) => `
-        <div class="instructions-row">
-          <span class="instructions-keychain">${keyChainMarkup(row.tokens)}</span>
-          <span class="instructions-row-copy">
-            <b>${escapeHtml(row.name)}</b>
-            <span>${escapeHtml(row.desc)}</span>
-          </span>
-        </div>`,
+      ({ slots, name }) => `<div class="instructions-movement-item"><b>${name}</b><span class="instructions-keychain">${keyChainMarkup(slotTokens(slots, '/'))}</span></div>`,
     )
     .join('');
 
+  const moves = [
+    ...MELEE_BINDS.map(({ slot }) => ({ slot, info: MELEE_ATTACKS[team][slot], kind: 'Melee' })),
+    ...ABILITY_BINDS.map(({ slot }) => ({ slot, info: ABILITIES[team][abilityForPosition(team, slot)], kind: 'Ability' })),
+  ];
+  instructionsAbilities.innerHTML = moves.map(({ slot, info, kind }) => {
+    const description = kind === 'Melee'
+      ? `${info.desc} Deals ${MELEE.damageMin}-${MELEE.damageMax} damage. Your two melee attacks share the same cooldown.`
+      : abilityText(info.id) || info.desc;
+    const image = instructionMoveArt(team, info.id) || info.iconImage;
+    return `<article class="instructions-ability-card">
+      <div class="instructions-ability-art">${image ? `<img src="${image}" alt="" />` : `<span>${info.icon}</span>`}</div>
+      <div class="instructions-ability-copy">
+        <div class="instructions-ability-topline"><span>${kind}</span><span>${secondsText(info.cooldown)} cooldown</span></div>
+        <h3>${escapeHtml(info.name)}</h3>
+        <p>${escapeHtml(description)}</p>
+      </div>
+      <kbd class="instructions-ability-key">${escapeHtml(keycapFor(slot))}</kbd>
+    </article>`;
+  }).join('');
+
+  instructionsComboGuide.innerHTML = `<div class="instructions-guide-number">01</div><div><h3>How to land a combo</h3><p>Both fighters use the same combos. Hit an opponent with your two melee attacks in the exact order shown below. Every strike must connect within ${secondsText(COMBO.windowMs)} of the previous hit. A miss or a blocked hit resets the chain. The HUD shows your progress and the next button.</p></div>`;
   instructionsCombos.innerHTML = COMBO.list.map((combo, index) => {
     const bonus = comboBonus(combo);
     return `
@@ -593,40 +677,28 @@ function renderInstructions() {
           <span class="instructions-combo-bonus">${escapeHtml(bonus)}<small>finisher</small></span>
         </div>
         <div class="instructions-keychain combo">${keyChainFromSlots(combo.seq)}</div>
-        <p>${escapeHtml(comboTip(combo, team))}</p>
+        <div class="instructions-combo-moves">${combo.seq.map((slot) => slot === 'm1' ? 'Melee 1' : 'Melee 2').join(' &rarr; ')}</div>
+        <p>${escapeHtml(comboTip(combo))}</p>
       </article>`;
   }).join('');
 }
 
-function instructionsBasicRows(team) {
-  const melee = MELEE_ATTACKS[team] ?? {};
-  const abilities = ABILITIES[team] ?? {};
-  const rows = [
-    { tokens: slotTokens(['left', 'right'], '/'), name: 'Move', desc: 'Walk left or right' },
-    { tokens: slotTokens(['jump']), name: 'Jump', desc: 'Leap onto platforms' },
-    { tokens: slotTokens(['drop']), name: 'Drop', desc: 'Fall through one-way platforms' },
-  ];
-
-  for (const bind of MELEE_BINDS) {
-    const info = melee[bind.slot];
-    rows.push({
-      tokens: slotTokens([bind.slot]),
-      name: info?.name ?? bind.slot,
-      desc: `${MELEE.damageMin}-${MELEE.damageMax} damage right in front of you`,
-    });
-  }
-
-  for (const bind of ABILITY_BINDS) {
-    const info = abilities[abilityForPosition(team, bind.slot)];
-    if (!info) continue;
-    rows.push({
-      tokens: slotTokens([bind.slot]),
-      name: info.name,
-      desc: info.desc,
-    });
-  }
-
-  return rows;
+function instructionMoveArt(team, id) {
+  const art = {
+    cleo: {
+      punch: '/assets/cleo/punch2.png', kick: '/assets/cleo/kick2.png',
+      sandBlast: '/assets/cleo/sand_blast3.png', blink: '/assets/cleo/idle.png',
+      powerShield: '/assets/cleo_shield_icon.png', sunFire: '/assets/cleo/sun_fire_ball.png',
+      chargedUppercut: '/assets/cleo/punch2.png',
+    },
+    viking: {
+      axe: '/assets/viking/attack2.png', shield: '/assets/viking/shield1.png',
+      axeThrow: '/assets/viking/axe_throw.png', shieldCharge: '/assets/viking/shield_charge.png',
+      mushrooms: '/assets/mushroom.png', lasso: '/assets/viking_harpoon_projectile.png',
+      iceSpikes: '/assets/viking/ice_spikes/ice_spike_8.png',
+    },
+  };
+  return art[team]?.[id];
 }
 
 function slotTokens(slots, joiner = null) {
@@ -658,19 +730,14 @@ function comboBonus(combo) {
   return `+${Math.round((combo.finisherMul - 1) * 100)}%`;
 }
 
-function comboTip(combo, team) {
-  const chain = combo.seq.map((slot) => moveName(team, slot)).join(' -> ');
-  const parts = [`Land ${chain}`];
-  if (combo.finisherMul && combo.finisherMul !== 1) parts.push(`finisher deals ${comboBonus(combo)} damage`);
+function comboTip(combo) {
+  const parts = [];
+  if (combo.finisherMul && combo.finisherMul !== 1) parts.push(`Final hit deals ${comboBonus(combo)} damage`);
   if (combo.refundCooldown) parts.push('melee cooldown refreshes instantly');
   if (combo.knockback && combo.knockback.y < MELEE.knockbackY) parts.push('launches the target upward');
   if (combo.stunMs) parts.push(`stuns for ${secondsText(combo.stunMs)}`);
   if (combo.healSelf) parts.push(`heals you ${combo.healSelf} HP`);
   return `${parts.join('. ')}.`;
-}
-
-function moveName(team, slot) {
-  return MELEE_ATTACKS[team]?.[slot]?.name ?? slot;
 }
 
 function secondsText(ms) {

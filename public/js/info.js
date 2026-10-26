@@ -219,7 +219,8 @@ function powerupsHtml() {
     <div class="pu-list">${cards}</div>
     <p class="info-note">
       A fresh one drops every ${sec(POWERUP.spawnIntervalMs)}, never more than ${POWERUP.maxActive}
-      out at once, at ${POWERUP_SPAWNS.length} fixed spots around the arena.
+      out at once, at ${POWERUP_SPAWNS.length} fixed spots around the arena. Each one expires after
+      ${sec(POWERUP.lifetimeMs)} and respawns at a different spot.
     </p>`;
 }
 
@@ -228,7 +229,7 @@ function powerupsHtml() {
 // Langre beskrivningar med siffrorna hamtade ur ABILITY_TUNING. desc-falten i
 // konstantfilen ar kortare och anvands av HUD-tooltipen - har har vi plats for
 // hela bilden.
-function abilityText(id) {
+export function abilityText(id) {
   const t = ABILITY_TUNING;
   switch (id) {
     case 'sandBlast':

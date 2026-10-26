@@ -15,6 +15,8 @@ import {
   POWERUP_KIND_IDS,
   mapLayoutFor,
   DAMAGE_BUFF,
+  COLA_BUFF,
+  CHILI_BUFF,
   ENRAGE,
   BACKSTAB,
   CRIT,
@@ -65,7 +67,7 @@ export class Game {
     this.fx = []; // visuella effekter, toms vid varje broadcast
     this.feed = []; // kill-handelser, toms vid varje broadcast
     this.events = []; // rena statistikhandelser, toms vid varje broadcast
-    this.powerups = []; // powerups pa kartan just nu: { id, kind, spawn, x, y }
+    this.powerups = []; // powerups pa kartan just nu: { id, kind, spawn, x, y, expiresAt }
     this.projectiles = []; // kastade vapen: { id, ownerId, team, x, y, vx, vy, born }
     this.iceSpikeWaves = []; // aktiva Ice spikes-vagor; varje spik traffar nar den skjuter upp
     this.nextPowerupId = 1;
@@ -143,8 +145,12 @@ export class Game {
       invulnUntil: 0,
       shieldCharges: 0,
       shieldSetBlocks: 0,
+      shieldUntil: 0,
       channel: null, // pagaende hold-to-release-formaga, t.ex. Cleos Sun fire
       dmgBuffUntil: 0, // kebab-buffen: skadan multipliceras sa lange den varar
+      colaUntil: 0, // Cola: +40 % rorelsefart under en kort stund
+      chiliArmed: false, // Chili: nasta traffande attack tander motstandaren
+      burn: null, // { until, nextTick, tick, totalDamage, source }
       berserkUntil: 0, // flugsvampen: mer utdelad OCH mer mottagen skada
       rageUntil: 0, // combo-ursinnet: en combo-dodsstot ger mer utdelad skada
       iceSlowUntil: 0, // Ice spikes: 25 % lagre rorelsefart sa lange tiden ar kvar
@@ -277,6 +283,7 @@ export class Game {
     p.lastHarpoonedAt = 0;
     p.shieldCharges = 0;
     p.shieldSetBlocks = 0;
+    p.shieldUntil = 0;
     p.channel = null;
     p.swingUntil = 0;
     p.swing = null;
@@ -284,6 +291,9 @@ export class Game {
     // Kebaben overlever inte doden - buffen far erovras pa nytt. Detsamma
     // galler berserken och combo-ursinnet: man vaknar nykter och lugn.
     p.dmgBuffUntil = 0;
+    p.colaUntil = 0;
+    p.chiliArmed = false;
+    p.burn = null;
     p.berserkUntil = 0;
     p.rageUntil = 0;
     p.iceSlowUntil = 0;
@@ -445,6 +455,7 @@ export class Game {
       case 'powerShield':
         p.shieldCharges = cfg.charges;
         p.shieldSetBlocks = 0;
+        p.shieldUntil = t + cfg.durationMs;
         this.fx.push({ k: 'power_shield', id: p.id, x: p.x + PLAYER.w / 2, y: p.y + PLAYER.h / 2, team: p.team, c: p.shieldCharges });
         return { charges: p.shieldCharges };
 
@@ -512,6 +523,7 @@ export class Game {
         if (t >= p.respawnAt) this.spawn(p);
         continue;
       }
+      this.expirePowerShield(p, t);
       if (p.bot) this.driveBot(p, t);
       this.movePlayer(p, t);
     }
@@ -529,6 +541,7 @@ export class Game {
     this.updateProjectiles(t);
     this.updateIceSpikes(t);
     this.updatePowerups(t);
+    this.updateBurns(t);
   }
 
   // -------------------------------------------------------------- formagor
@@ -1050,8 +1063,16 @@ export class Game {
 
   /** Spawnar nya powerups i takt och delar ut effekten till den som springer in. */
   updatePowerups(t) {
+    // En utgangen powerup ersatts direkt, men aldrig pa samma spawnpunkt.
+    for (let i = this.powerups.length - 1; i >= 0; i--) {
+      const pu = this.powerups[i];
+      if (t < pu.expiresAt) continue;
+      this.powerups.splice(i, 1);
+      this.spawnPowerup(pu.spawn, t);
+    }
+
     while (t >= this.nextPowerupAt) {
-      if (this.powerups.length < POWERUP.maxActive) this.spawnPowerup();
+      if (this.powerups.length < POWERUP.maxActive) this.spawnPowerup(null, t);
       this.nextPowerupAt += POWERUP.spawnIntervalMs;
     }
 
@@ -1068,10 +1089,9 @@ export class Game {
     }
   }
 
-  /** Pizzan sparas at nagon skadad; kebaben plockas alltid (och laddar om tiden). */
+  /** Pizzan sparas at nagon skadad; ovriga powerups plockas alltid. */
   wantsPowerup(p, pu) {
-    if (pu.kind === 'kebab') return true;
-    return p.hp < PLAYER.maxHp;
+    return pu.kind !== 'pizza' || p.hp < PLAYER.maxHp;
   }
 
   applyPowerup(p, pu, t) {
@@ -1094,6 +1114,28 @@ export class Game {
       });
       return;
     }
+    if (pu.kind === 'cola') {
+      p.colaUntil = t + COLA_BUFF.durationMs;
+      this.fx.push({ k: 'cola', id: p.id, x: pu.x, y: pu.y });
+      p.stats.powerups++;
+      this.stat('powerup', {
+        player: this.playerRef(p), kind: pu.kind, spawn: pu.spawn, x: pu.x, y: pu.y,
+        hpBefore: Math.round(hpBefore), hpAfter: Math.round(p.hp),
+        lowHp: hpBefore <= PLAYER.maxHp * LOW_HP_FRAC, center: isCenterPowerup(pu), durationMs: COLA_BUFF.durationMs,
+      });
+      return;
+    }
+    if (pu.kind === 'chili') {
+      p.chiliArmed = true;
+      this.fx.push({ k: 'chili', id: p.id, x: pu.x, y: pu.y });
+      p.stats.powerups++;
+      this.stat('powerup', {
+        player: this.playerRef(p), kind: pu.kind, spawn: pu.spawn, x: pu.x, y: pu.y,
+        hpBefore: Math.round(hpBefore), hpAfter: Math.round(p.hp),
+        lowHp: hpBefore <= PLAYER.maxHp * LOW_HP_FRAC, center: isCenterPowerup(pu), armed: true,
+      });
+      return;
+    }
     p.hp = Math.min(PLAYER.maxHp, p.hp + POWERUP.heal);
     this.fx.push({ k: 'pizza', id: p.id, x: pu.x, y: pu.y });
     p.stats.powerups++;
@@ -1112,14 +1154,54 @@ export class Game {
   }
 
   /** Valjer en ledig spawnpunkt sa att tva powerups aldrig hamnar pa samma stalle. */
-  spawnPowerup() {
+  spawnPowerup(excludeSpawn = null, t = this.now()) {
     const taken = new Set(this.powerups.map((p) => p.spawn));
-    const free = this.powerupSpawns.map((_, i) => i).filter((i) => !taken.has(i));
+    const free = this.powerupSpawns
+      .map((_, i) => i)
+      .filter((i) => !taken.has(i) && i !== excludeSpawn);
     if (!free.length) return;
     const idx = free[Math.floor(Math.random() * free.length)];
     const pt = this.powerupSpawns[idx];
     const kind = POWERUP_KIND_IDS[Math.floor(Math.random() * POWERUP_KIND_IDS.length)];
-    this.powerups.push({ id: this.nextPowerupId++, kind, spawn: idx, x: pt.x, y: pt.y });
+    this.powerups.push({ id: this.nextPowerupId++, kind, spawn: idx, x: pt.x, y: pt.y, expiresAt: t + POWERUP.lifetimeMs });
+  }
+
+  /** Chiliens skada lases nar den traffande attacken tander offret. */
+  chiliDamage(source, t) {
+    let total = CHILI_BUFF.totalDamage;
+    if (t < source.dmgBuffUntil) total = Math.round(total * DAMAGE_BUFF.mul);
+    if (t < source.rageUntil) total = Math.round(total * ENRAGE.mul);
+    if (t < source.berserkUntil) total = Math.round(total * ABILITY_TUNING.mushrooms.dealtMul);
+    return total;
+  }
+
+  ignite(target, source, t) {
+    const totalDamage = this.chiliDamage(source, t);
+    target.burn = {
+      until: t + CHILI_BUFF.durationMs,
+      nextTick: t + CHILI_BUFF.tickMs,
+      tick: 0,
+      totalDamage,
+      source,
+    };
+    this.fx.push({ k: 'burn', id: target.id, by: source.id, x: target.x + PLAYER.w / 2, y: target.y + PLAYER.h / 2 });
+  }
+
+  /** Sex sekundtickar, med heltalsfor delning som alltid summerar till exakt totalskada. */
+  updateBurns(t) {
+    for (const target of this.players.values()) {
+      const burn = target.burn;
+      if (!burn || target.dead) continue;
+      while (target.burn === burn && t >= burn.nextTick && burn.tick < CHILI_BUFF.tickCount && !target.dead) {
+        const base = Math.floor(burn.totalDamage / CHILI_BUFF.tickCount);
+        const extra = burn.totalDamage % CHILI_BUFF.tickCount;
+        const damage = base + (burn.tick < extra ? 1 : 0);
+        burn.tick++;
+        burn.nextTick += CHILI_BUFF.tickMs;
+        this.damage(target, burn.source, damage, 0, 0, t, { cause: 'burn', isBurnTick: true, noDamageModifiers: true, noKnockback: true });
+      }
+      if (target.burn === burn && (burn.tick >= CHILI_BUFF.tickCount || t >= burn.until)) target.burn = null;
+    }
   }
 
   recordHistory(p, t) {
@@ -1162,7 +1244,8 @@ export class Game {
       const dir = (p.input.right ? 1 : 0) - (p.input.left ? 1 : 0);
       const channelMul = p.channel?.id === 'sunFire' ? ABILITY_TUNING.sunFire.moveSpeedMul : 1;
       const iceSlowMul = t < p.iceSlowUntil ? ABILITY_TUNING.iceSpikes.slowMul : 1;
-      const speedMul = channelMul * iceSlowMul * (p.speedMul ?? 1);
+      const colaMul = t < p.colaUntil ? COLA_BUFF.mul : 1;
+      const speedMul = channelMul * iceSlowMul * colaMul * (p.speedMul ?? 1);
       const maxSpeed = PLAYER.maxSpeed * speedMul;
       if (dir !== 0) {
         p.vx += dir * PLAYER.accel * speedMul;
@@ -1299,7 +1382,7 @@ export class Game {
 
       // Nyss respawnad motstandare gar inte att skada. Visa det i stallet for
       // att sluka slaget tyst - annars ser det ut som en missad traff.
-      if (t < o.invulnUntil || o.shieldCharges > 0) {
+      if (t < o.invulnUntil || this.hasPowerShield(o, t)) {
         shielded = o;
         continue;
       }
@@ -1558,7 +1641,7 @@ export class Game {
       });
       return true;
     }
-    if (!source || source.team === target.team || target.shieldCharges <= 0) return false;
+    if (!source || source.team === target.team || !this.hasPowerShield(target, t)) return false;
 
     target.shieldCharges--;
     target.shieldSetBlocks++;
@@ -1582,6 +1665,19 @@ export class Game {
     return true;
   }
 
+  /** Power shield kan inte leva vidare mellan tickar eller pa en sen traff. */
+  hasPowerShield(p, t) {
+    this.expirePowerShield(p, t);
+    return p.shieldCharges > 0;
+  }
+
+  expirePowerShield(p, t) {
+    if (p.shieldCharges <= 0 || t < p.shieldUntil) return;
+    p.shieldCharges = 0;
+    p.shieldSetBlocks = 0;
+    p.shieldUntil = 0;
+  }
+
   // Slumpad skada i [min, max] via den seedbara rng:n, sa att tester kan pinna
   // utfallet. Rullas bara nar ett slag faktiskt landar - blockerade och bommade
   // slag konsumerar ingen slump.
@@ -1594,11 +1690,12 @@ export class Game {
     if (this.negateIncomingAttack(target, source, t, meta)) return;
 
     const hpBefore = target.hp;
+    const noDamageModifiers = !!meta.noDamageModifiers;
     const targetWasStunned = t < target.stunnedUntil;
-    const sourceHadKebab = t < source.dmgBuffUntil;
-    const sourceHadEnrage = t < source.rageUntil;
-    const sourceHadBerserk = t < source.berserkUntil;
-    const targetHadBerserk = t < target.berserkUntil;
+    const sourceHadKebab = !noDamageModifiers && t < source.dmgBuffUntil;
+    const sourceHadEnrage = !noDamageModifiers && t < source.rageUntil;
+    const sourceHadBerserk = !noDamageModifiers && t < source.berserkUntil;
+    const targetHadBerserk = !noDamageModifiers && t < target.berserkUntil;
     const retaliation = source.lastHitBy === target.id && t - source.lastHitAt <= RECENT_HIT_MS;
 
     // Kebab-buffen: allt angriparen delar ut gor 15% mer skada sa lange den varar.
@@ -1614,11 +1711,11 @@ export class Game {
     if (targetHadBerserk) amount = Math.round(amount * berserk.takenMul);
 
     // Traff i ryggen (angriparen ar pa targetens baksida) gor extra skada.
-    const fromBehind = (source.x - target.x) * target.facing < 0;
+    const fromBehind = !noDamageModifiers && (source.x - target.x) * target.facing < 0;
     if (fromBehind) amount = Math.round(amount * BACKSTAB.mul);
 
     // Kritisk traff sist av allt, sa att den forstarker allt annat.
-    const crit = this.rng() < CRIT.chance;
+    const crit = !noDamageModifiers && this.rng() < CRIT.chance;
     if (crit) amount = Math.round(amount * CRIT.mul);
 
     target.hp -= amount;
@@ -1637,12 +1734,21 @@ export class Game {
     if (quickDamage) source.stats.quickDamageHits++;
     target.stats.damageTaken += actualDamage;
 
-    target.vx = kx;
-    target.vy = ky;
-    target.onGround = false;
-    target.slamming = false;
+    if (!meta.noKnockback) {
+      target.vx = kx;
+      target.vy = ky;
+      target.onGround = false;
+      target.slamming = false;
+    }
     target.lastHitBy = source.id;
     target.lastHitAt = t;
+
+    // Chili forbrukas bara av en verklig, oblockerad traff. DOT-tickar kan
+    // aldrig tanda om offret, och en dod motstandare behover inte en burn.
+    if (source.chiliArmed && !meta.isBurnTick) {
+      source.chiliArmed = false;
+      if (!killed) this.ignite(target, source, t);
+    }
 
     this.fx.push({
       k: 'hit',
@@ -1733,6 +1839,7 @@ export class Game {
     victim.swing = null;
     victim.stunnedUntil = 0;
     victim.iceSlowUntil = 0;
+    victim.burn = null;
     victim.channel = null;
 
     const killer = killerId ? this.players.get(killerId) : null;
@@ -1804,10 +1911,13 @@ export class Game {
         sl: p.slamming ? 1 : 0,
         st: p.stunnedUntil > t ? 1 : 0,
         gb: p.pulledUntil > t ? p.pulledBy : 0, // slapas in av harpun: id pa den som drar
-        ps: p.shieldCharges,
+        ps: this.hasPowerShield(p, t) ? p.shieldCharges : 0,
         sc: p.chargeType === 'shield' && p.chargeUntil > t ? 1 : 0,
         ds: p.dashUntil > t || p.chargeUntil > t ? 1 : 0,
         db: Math.max(0, Math.round(p.dmgBuffUntil - t)), // ms kvar pa kebab-buffen, 0 = ingen
+        cl: Math.max(0, Math.round(p.colaUntil - t)), // ms kvar pa cola-farten
+        ch: p.chiliArmed ? 1 : 0, // nasta traff tander fienden
+        br: p.burn ? Math.max(0, Math.round(p.burn.until - t)) : 0, // ms kvar pa branden
         bz: Math.max(0, Math.round(p.berserkUntil - t)), // ms kvar pa flugsvampen, 0 = nykter
         rg: Math.max(0, Math.round(p.rageUntil - t)), // ms kvar pa combo-ursinnet, 0 = lugn
         is: Math.max(0, Math.round(p.iceSlowUntil - t)), // ms kvar pa Ice spikes-slow, 0 = normal fart

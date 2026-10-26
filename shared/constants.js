@@ -230,7 +230,7 @@ export const ABILITIES = {
       name: 'Power shield',
       icon: '🛡️',
       cooldown: 60000,
-      desc: 'Summons shields that block the next 3 incoming attacks made against you.',
+      desc: 'Summons shields that block the next 3 incoming attacks made against you, for up to 20 seconds.',
     },
     a4: {
       id: 'sunFire',
@@ -370,6 +370,7 @@ export const ABILITY_TUNING = {
   blink: { distance: 260 },
   powerShield: {
     charges: 3,
+    durationMs: 20000,
     orbitRadius: 38,
   },
   sandBlast: {
@@ -589,6 +590,7 @@ export const MAPS = [
 export const POWERUP = {
   heal: 45,
   spawnIntervalMs: 20000,
+  lifetimeMs: 40000,
   maxActive: 3,
   firstSpawnMs: 5000,
   w: 46,
@@ -603,9 +605,25 @@ export const POWERUP = {
 export const POWERUP_KINDS = {
   pizza: { id: 'pizza', sprite: '/assets/pizza.png', ring: '#ffd166' },
   kebab: { id: 'kebab', sprite: '/assets/kebab.png', ring: '#ff9f43' },
+  cola: { id: 'cola', sprite: '/assets/cola.png', ring: '#ff4d4d' },
+  chili: { id: 'chili', sprite: '/assets/chili.png', ring: '#ff5b26' },
 };
 
-export const POWERUP_KIND_IDS = ['pizza', 'kebab'];
+export const POWERUP_KIND_IDS = ['pizza', 'kebab', 'cola', 'chili'];
+
+export const COLA_BUFF = {
+  mul: 1.4,
+  durationMs: 10000,
+  blinkMs: 260,
+};
+
+export const CHILI_BUFF = {
+  totalDamage: 55,
+  durationMs: 6000,
+  tickMs: 1000,
+  tickCount: 6,
+  blinkMs: 150,
+};
 
 export const DAMAGE_BUFF = {
   mul: 1.15,

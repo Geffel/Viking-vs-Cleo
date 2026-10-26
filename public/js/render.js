@@ -7,6 +7,8 @@ import {
   POWERUP,
   POWERUP_KINDS,
   DAMAGE_BUFF,
+  COLA_BUFF,
+  CHILI_BUFF,
   ENRAGE,
   ABILITY_TUNING,
 } from '/shared/constants.js';
@@ -477,9 +479,12 @@ export class Renderer {
   }
 
   resize() {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const cssW = Math.max(1, this.canvas.clientWidth || WORLD.w);
     const cssH = Math.max(1, this.canvas.clientHeight || WORLD.h);
+    // Varlden ar 1600x900. Fler an 1920x1080 interna pixlar gor de stora
+    // canvaslagren dyrbara utan att tillfora mycket detalj i den har 2D-grafiken.
+    const maxPixels = 1920 * 1080;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2, Math.sqrt(maxPixels / (cssW * cssH)));
     const w = Math.round(cssW * dpr);
     const h = Math.round(cssH * dpr);
     if (this.canvas.width !== w) this.canvas.width = w;
@@ -911,6 +916,26 @@ export class Renderer {
           size: 20,
           color: '#ff9f43',
         });
+        break;
+      case 'cola':
+        if (fx.id) this.buffs.set(fx.id, t);
+        this.effects.push({ kind: 'ring', x: fx.x, y: fx.y, born: t, life: 420, r0: 8, r1: 54, color: '#ff4d4d' });
+        this.burst(fx.x, fx.y, 20, '#ff4d4d', 4.4, 0, -2.2);
+        this.burst(fx.x, fx.y, 9, '#ffffff', 3.1, 0, -3);
+        this.effects.push({ kind: 'float', x: fx.x, y: fx.y - 10, born: t, life: 900, text: `+${Math.round((COLA_BUFF.mul - 1) * 100)}% FART`, size: 20, color: '#ff6b6b' });
+        break;
+      case 'chili':
+        if (fx.id) this.buffs.set(fx.id, t);
+        this.effects.push({ kind: 'ring', x: fx.x, y: fx.y, born: t, life: 440, r0: 8, r1: 58, color: '#ff5b26' });
+        this.burst(fx.x, fx.y, 20, '#ff5b26', 4.2, 0, -2.2);
+        this.burst(fx.x, fx.y, 10, '#ffd166', 3.2, 0, -3);
+        this.effects.push({ kind: 'float', x: fx.x, y: fx.y - 10, born: t, life: 950, text: 'NÄSTA TRÄFF: ELD!', size: 18, color: '#ff7a26' });
+        break;
+      case 'burn':
+        this.effects.push({ kind: 'ring', x: fx.x, y: fx.y, born: t, life: 460, r0: 10, r1: 54, color: '#ff4b16' });
+        this.burst(fx.x, fx.y, 22, '#ff4b16', 4.7, 0, -2.4);
+        this.burst(fx.x, fx.y, 12, '#ffd166', 3.4, 0, -3.2);
+        this.effects.push({ kind: 'float', x: fx.x, y: fx.y - 24, born: t, life: 820, text: 'BRINNER!', size: 20, color: '#ff5b26', pop: true });
         break;
       case 'enrage': {
         // Combo-dodsstot: angriparen gar in i ursinne. Eld slar ut ur figuren
@@ -1956,6 +1981,10 @@ export class Renderer {
         ctx.drawImage(sprite, x - size / 2, y - size / 2, size, size);
       } else if (kind.id === 'kebab') {
         drawFallbackKebab(ctx, x, y);
+      } else if (kind.id === 'cola') {
+        drawFallbackCola(ctx, x, y);
+      } else if (kind.id === 'chili') {
+        drawFallbackChili(ctx, x, y);
       } else {
         drawFallbackPizza(ctx, x, y);
       }
@@ -2446,6 +2475,7 @@ export class Renderer {
     let plateTop = sprite
       ? this.drawSprite(ctx, p, sprite, cx, feetY, iceCastAlpha)
       : this.drawFigure(ctx, p, team, cx, iceCastAlpha);
+    if (p.br > 0) this.drawBurningTexture(ctx, p, cx, feetY);
     if (p.sf > 0) this.drawSunFireChannel(ctx, p, cx);
     // Skylten ritas utanfor transformen, sa den maste folja med uppforstoringen.
     if (berserk) plateTop = feetY + (plateTop - feetY) * rage.scale;
@@ -2907,6 +2937,16 @@ export class Renderer {
       ctx.restore();
     }
 
+    // Brinnande offer blinkar rott. Hinnan ar klippt mot exakt samma sprite
+    // som syns just nu, inklusive attack- och stun-rutor.
+    if (p.br > 0) {
+      const pulse = 0.22 + (Math.sin((performance.now() / CHILI_BUFF.blinkMs) * Math.PI * 2) + 1) * 0.22;
+      ctx.save();
+      ctx.globalAlpha *= pulse;
+      ctx.drawImage(this.silhouette(img, '#ff2d1f'), cx - anchorX * dw, top, dw, dh);
+      ctx.restore();
+    }
+
     if (iceCastAlpha > 0) {
       ctx.save();
       ctx.globalCompositeOperation = 'screen';
@@ -2974,6 +3014,19 @@ export class Renderer {
       ctx.restore();
     }
 
+    if (p.br > 0) {
+      const pulse = 0.2 + (Math.sin((performance.now() / CHILI_BUFF.blinkMs) * Math.PI * 2) + 1) * 0.2;
+      ctx.save();
+      ctx.globalAlpha *= pulse;
+      ctx.fillStyle = '#ff2d1f';
+      roundRect(ctx, x, y + 14, PLAYER.w, PLAYER.h - 14, 6);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(cx, y + 10, 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
     if (iceCastAlpha > 0) {
       ctx.save();
       ctx.globalCompositeOperation = 'screen';
@@ -2990,6 +3043,36 @@ export class Renderer {
     }
 
     return y - PLATE.height - PLATE.gap;
+  }
+
+  /** Animerade eldflisor ritas over kroppen, sa branden laser som en textur och inte bara en aura. */
+  drawBurningTexture(ctx, p, cx, feetY) {
+    const t = performance.now();
+    const pulse = 0.82 + Math.sin(t / 95 + p.i) * 0.16;
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.globalAlpha = pulse;
+    ctx.shadowColor = '#ff4b16';
+    ctx.shadowBlur = 10;
+
+    for (let i = 0; i < 6; i++) {
+      const phase = t / 170 + p.i * 0.73 + i * 1.91;
+      const x = cx + (i - 2.5) * 6 + Math.sin(phase * 1.7) * 2;
+      const baseY = feetY - 8 - (i % 3) * 10;
+      const h = 15 + ((Math.sin(phase) + 1) * 0.5) * 13;
+      ctx.fillStyle = i % 2 ? '#ff4b16' : '#ff8a18';
+      ctx.beginPath();
+      ctx.moveTo(x - 4, baseY + 4);
+      ctx.quadraticCurveTo(x - 6, baseY - h * 0.25, x + Math.sin(phase) * 3, baseY - h);
+      ctx.quadraticCurveTo(x + 7, baseY - h * 0.3, x + 4, baseY + 4);
+      ctx.closePath();
+      ctx.fill();
+      ctx.globalAlpha = pulse * 0.86;
+      ctx.fillStyle = '#ffe08a';
+      ctx.fillRect(x - 1.5, baseY - h * 0.38, 3, Math.max(4, h * 0.32));
+      ctx.globalAlpha = pulse;
+    }
+    ctx.restore();
   }
 
   drawCatEars(ctx, cx, hy, team) {
@@ -4222,6 +4305,41 @@ function drawFallbackKebab(ctx, x, y) {
   ctx.fillStyle = '#7bf1a8';
   ctx.beginPath();
   ctx.arc(-POWERUP.w / 2 + 6, -6, 3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawFallbackCola(ctx, x, y) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(-0.16);
+  ctx.fillStyle = '#d92323';
+  roundRect(ctx, -11, -20, 22, 40, 5);
+  ctx.fill();
+  ctx.fillStyle = '#e8eef8';
+  ctx.fillRect(-9, -17, 18, 4);
+  ctx.fillRect(-9, 13, 18, 4);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 9px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('COLA', 0, 4);
+  ctx.restore();
+}
+
+function drawFallbackChili(ctx, x, y) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(-0.48);
+  ctx.fillStyle = '#ff3b1c';
+  ctx.beginPath();
+  ctx.moveTo(-17, -4);
+  ctx.quadraticCurveTo(5, -19, 19, -7);
+  ctx.quadraticCurveTo(7, 15, -20, 11);
+  ctx.quadraticCurveTo(-25, 4, -17, -4);
+  ctx.fill();
+  ctx.fillStyle = '#69c842';
+  ctx.beginPath();
+  ctx.ellipse(17, -9, 8, 4, -0.35, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
 }

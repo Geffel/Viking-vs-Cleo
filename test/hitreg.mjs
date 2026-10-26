@@ -247,12 +247,19 @@ console.log(`narstrid: ${MELEE.damageMin}-${MELEE.damageMax} skada, rackvidd ${M
   const b = foes[0];
   b.facing = -1;
   cast(g, a, 'a3');
-  advance(g, 12000);
-  check('power shield ligger kvar utan timeout', a.shieldCharges === ABILITY_TUNING.powerShield.charges, `charges ${a.shieldCharges}`);
+  advance(g, ABILITY_TUNING.powerShield.durationMs - 1000);
+  check('power shield ar aktiv innan 20 sekunder', a.shieldCharges === ABILITY_TUNING.powerShield.charges, `charges ${a.shieldCharges}`);
   g.action(b, 'a1');
   advance(g, 220);
   check('power shield blockerar inkommande ability', a.hp === PLAYER.maxHp, `hp ${a.hp}`);
   check('ability forbrukar exakt en shield', a.shieldCharges === ABILITY_TUNING.powerShield.charges - 1, `charges ${a.shieldCharges}`);
+
+  advance(g, 1200);
+  check('power shield forsvinner efter hogst 20 sekunder', a.shieldCharges === 0, `charges ${a.shieldCharges}`);
+  b.cd.a1 = 0; // vi vill prova den utgangna skolden, inte angriparens cooldown
+  g.action(b, 'a1');
+  advance(g, 220);
+  check('ability gar igenom nar shield-tiden ar slut', a.hp < PLAYER.maxHp, `hp ${a.hp}`);
 }
 
 // ------------------------------------------------------------------ dodsfall

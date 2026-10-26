@@ -1,7 +1,7 @@
 // Powerups: servern ager spawn, maxgrans, lakning (pizza) och skadebuff (kebab).
 
 import { Game } from '../server/game.js';
-import { PLAYER, POWERUP, DAMAGE_BUFF } from '../shared/constants.js';
+import { PLAYER, POWERUP, DAMAGE_BUFF, COLA_BUFF, CHILI_BUFF } from '../shared/constants.js';
 
 let clock = 100000;
 const game = new Game({ clock: () => clock, rng: () => 1 }); // rng: aldrig crit, sa att skadan blir exakt
@@ -30,7 +30,7 @@ check('ingen powerup innan forsta spawn-tiden', game.powerups.length === 0);
 
 stepTo(100000 + POWERUP.firstSpawnMs);
 check('forsta powerupen spawnar', game.powerups.length === 1);
-check('powerupen har en sort', ['pizza', 'kebab'].includes(game.powerups[0].kind), game.powerups[0].kind);
+check('powerupen har en sort', ['pizza', 'kebab', 'cola', 'chili'].includes(game.powerups[0].kind), game.powerups[0].kind);
 
 for (let i = 0; i < POWERUP.maxActive + 2; i++) {
   stepTo(clock + POWERUP.spawnIntervalMs);
@@ -38,6 +38,17 @@ for (let i = 0; i < POWERUP.maxActive + 2; i++) {
 
 check('aldrig fler an tre powerups ute samtidigt', game.powerups.length === POWERUP.maxActive, `${game.powerups.length} aktiva`);
 check('powerups delar inte spawnpunkt', new Set(game.powerups.map((p) => p.spawn)).size === game.powerups.length);
+
+// En overgiven powerup forsvinner efter 40 s och ersatts pa en annan plats.
+const expiring = game.powerups[0];
+const replacementAt = expiring.expiresAt;
+stepTo(replacementAt - 1);
+check('powerup finns kvar precis fore livslangden ar slut', game.powerups.some((p) => p.id === expiring.id));
+stepTo(replacementAt);
+const replacement = game.powerups.find((p) => p.id !== expiring.id && p.expiresAt === replacementAt + POWERUP.lifetimeMs);
+check('powerup forsvinner efter 40 sekunder', !game.powerups.some((p) => p.id === expiring.id));
+check('utgangen powerup ersatts direkt', Boolean(replacement));
+check('ersattaren hamnar pa en annan plats', replacement?.spawn !== expiring.spawn);
 
 // ------------------------------------------------------------------- pizza
 
@@ -106,6 +117,46 @@ player.dmgBuffUntil = clock + DAMAGE_BUFF.durationMs;
 game.kill(player, victim.id);
 game.spawn(player);
 check('buffen forsvinner vid respawn', player.dmgBuffUntil === 0);
+
+// -------------------------------------------------------------------- cola
+
+game.applyPowerup(player, { kind: 'cola', spawn: 0, x: player.x, y: player.y }, clock);
+check('cola satter fartbuff i 10 s', player.colaUntil === clock + COLA_BUFF.durationMs, `${player.colaUntil - clock} ms`);
+player.vx = 0;
+player.vy = 0;
+player.onGround = true;
+player.input.right = true;
+game.movePlayer(player, clock);
+check('cola ger 40% hogre acceleration', player.vx === PLAYER.accel * COLA_BUFF.mul, `${player.vx}`);
+player.input.right = false;
+
+// ------------------------------------------------------------------- chili
+
+player.colaUntil = 0;
+player.x = victim.x + 40;
+player.y = victim.y;
+player.invulnUntil = 0;
+victim.invulnUntil = 0;
+victim.dead = false;
+victim.hp = PLAYER.maxHp;
+game.applyPowerup(player, { kind: 'chili', spawn: 0, x: player.x, y: player.y }, clock);
+check('chili ar laddad efter upplock', player.chiliArmed === true);
+game.damage(victim, player, 10, 0, 0, clock);
+check('forsta traffen forbrukar chili', player.chiliArmed === false);
+check('traffen tander fienden i 6 s', victim.burn?.until === clock + CHILI_BUFF.durationMs);
+check('branden syns i ogonblicksbilden', game.snapshot().players.find((p) => p.i === victim.id).br === CHILI_BUFF.durationMs);
+
+for (let i = 1; i <= CHILI_BUFF.tickCount; i++) game.updateBurns(clock + i * CHILI_BUFF.tickMs);
+check('chili-DOT gor exakt 55 skada over sex tickar', victim.hp === PLAYER.maxHp - 10 - CHILI_BUFF.totalDamage, `${PLAYER.maxHp - victim.hp} skada`);
+check('branden ar slut efter sista ticken', victim.burn === null);
+
+victim.hp = PLAYER.maxHp;
+victim.dead = false;
+player.dmgBuffUntil = clock + DAMAGE_BUFF.durationMs;
+game.applyPowerup(player, { kind: 'chili', spawn: 0, x: player.x, y: player.y }, clock);
+game.damage(victim, player, 10, 0, 0, clock);
+for (let i = 1; i <= CHILI_BUFF.tickCount; i++) game.updateBurns(clock + i * CHILI_BUFF.tickMs);
+check('skadebuff okar aven chili-DOT', victim.hp === PLAYER.maxHp - 12 - Math.round(CHILI_BUFF.totalDamage * DAMAGE_BUFF.mul), `${PLAYER.maxHp - victim.hp} skada`);
 
 console.log('');
 console.log(fails.length ? `${fails.length} TEST MISSLYCKADES: ${fails.join(', ')}` : 'ALLA POWERUP-TESTER OK');

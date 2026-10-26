@@ -344,32 +344,51 @@
 
     <section class="instructions-overlay" id="instructions-overlay" role="dialog" aria-modal="true" aria-labelledby="instructions-title" hidden>
       <div class="instructions-head">
-        <div>
+        <button id="instructions-close" class="instructions-back" type="button">Back</button>
+        <div class="instructions-title-block">
           <div class="instructions-eyebrow">How to fight</div>
-          <h1 id="instructions-title">Movelist &amp; Combos</h1>
-        </div>
-        <div class="instructions-actions">
-          <button id="instructions-tab-cleo" class="instructions-tab" type="button" data-help-team="cleo">Cleo</button>
-          <button id="instructions-tab-viking" class="instructions-tab" type="button" data-help-team="viking">Viking</button>
-          <button id="instructions-close" class="instructions-close" type="button" aria-label="Close instructions">x</button>
+          <h1 id="instructions-title">Instructions</h1>
         </div>
       </div>
 
+      <div class="instructions-nav" role="tablist" aria-label="Instructions sections">
+        <button id="instructions-tab-abilities" class="instructions-tab on" type="button" role="tab" aria-controls="instructions-panel-abilities" aria-selected="true" data-help-section="abilities">Abilities</button>
+        <button id="instructions-tab-combos" class="instructions-tab" type="button" role="tab" aria-controls="instructions-panel-combos" aria-selected="false" data-help-section="combos">Combos</button>
+        <button id="instructions-tab-rearrange" class="instructions-tab" type="button" role="tab" aria-controls="instructions-panel-rearrange" aria-selected="false" data-help-section="rearrange">Rearrange abilities</button>
+      </div>
+
       <div class="instructions-body">
-        <section class="instructions-column" aria-labelledby="instructions-basics-title">
-          <h2 id="instructions-basics-title">Basic inputs</h2>
-          <div class="instructions-basics" id="instructions-basics"></div>
+        <section id="instructions-panel-abilities" class="instructions-panel" role="tabpanel" aria-labelledby="instructions-tab-abilities">
+          <div class="instructions-panel-heading">
+            <div><div class="instructions-eyebrow">Choose your fighter</div><h2>Abilities</h2></div>
+            <div class="instructions-fighters" aria-label="Fighter">
+              <button id="instructions-fighter-cleo" type="button" data-help-team="cleo" aria-pressed="true"><img src="/assets/cleo/idle.png" alt="" /><span>Cleo</span></button>
+              <button id="instructions-fighter-viking" type="button" data-help-team="viking" aria-pressed="false"><img src="/assets/viking/idle.png" alt="" /><span>Viking</span></button>
+            </div>
+          </div>
+          <div class="instructions-movement" id="instructions-basics"></div>
+          <div class="instructions-ability-grid" id="instructions-abilities"></div>
         </section>
 
-        <section class="instructions-column" aria-labelledby="instructions-combos-title">
-          <h2 id="instructions-combos-title">Signature combos</h2>
+        <section id="instructions-panel-combos" class="instructions-panel" role="tabpanel" aria-labelledby="instructions-tab-combos" hidden>
+          <div class="instructions-panel-heading"><div><div class="instructions-eyebrow">Land every hit</div><h2>Combos</h2></div></div>
+          <div class="instructions-combo-guide" id="instructions-combo-guide"></div>
           <div class="instructions-combos" id="instructions-combos"></div>
+        </section>
+
+        <section id="instructions-panel-rearrange" class="instructions-panel" role="tabpanel" aria-labelledby="instructions-tab-rearrange" hidden>
+          <div class="instructions-panel-heading"><div><div class="instructions-eyebrow">Make the hotbar yours</div><h2>Rearrange abilities</h2></div></div>
+          <p class="instructions-video-copy">In a match, hold an ability on your hotbar until it lifts, then drag it onto another slot to swap them. Select Done when you finish. Your layout is saved for each fighter.</p>
+          <video class="instructions-video" controls playsinline preload="metadata" aria-label="Video showing how to rearrange abilities">
+            <source src="/assets/instruction-video.mp4" type="video/mp4" />
+            Your browser cannot play this video.
+          </video>
         </section>
       </div>
 
       <div class="instructions-foot">
         <span></span>
-        <b>Esc</b> to close
+        <b>Esc</b> to go back
       </div>
     </section>
 

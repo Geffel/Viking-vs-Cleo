@@ -2260,7 +2260,7 @@ body {
 
 #lobby .panel {
   position: relative;
-  width: min(1280px, 96vw, calc(96vh * 16 / 9));
+  width: min(var(--menu-max-width), 96vw, calc(96vh * 16 / 9));
   aspect-ratio: 16 / 9;
   max-height: none;
   padding: 0;
@@ -7370,6 +7370,7 @@ body[data-connection="offline"] .leaderboard-dot {
 /* ------------------------------------------------ dynamic screens */
 
 :root {
+  --menu-max-width: 1920px;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -7444,8 +7445,8 @@ body {
 }
 
 #lobby .panel {
-  width: min(1280px, 96vw, calc(96vh * 16 / 9));
-  width: min(1280px, var(--viewport-inline), calc(var(--viewport-block) * 16 / 9));
+  width: min(var(--menu-max-width), 96vw, calc(96vh * 16 / 9));
+  width: min(var(--menu-max-width), var(--viewport-inline), calc(var(--viewport-block) * 16 / 9));
 }
 
 .match-list {
@@ -7494,8 +7495,8 @@ body {
   }
 
   #lobby .panel {
-    width: min(1280px, calc(100vw - var(--screen-gutter) - var(--screen-gutter)));
-    width: min(1280px, var(--viewport-inline));
+    width: min(var(--menu-max-width), calc(100vw - var(--screen-gutter) - var(--screen-gutter)));
+    width: min(var(--menu-max-width), var(--viewport-inline));
     height: calc(100vh - var(--screen-gutter) - var(--screen-gutter) - var(--safe-top) - var(--safe-bottom));
     height: var(--viewport-block);
     aspect-ratio: auto;
@@ -7989,7 +7990,7 @@ body > .instructions-overlay {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: min(1280px, 96vw, calc(96vh * 16 / 9));
+  width: min(var(--menu-max-width), var(--viewport-inline), calc(var(--viewport-block) * 16 / 9));
   aspect-ratio: 16 / 9;
   z-index: 60;
   border-radius: 16px;
@@ -8013,6 +8014,347 @@ body > .instructions-overlay.in-game {
   width: min(100vw, calc(100vh * 16 / 9));
   border-radius: 0;
   z-index: 90;
+}
+
+/* Instructions: one topic at a time, with the same Back treatment as the menu pages. */
+.instructions-head {
+  align-items: center;
+  justify-content: flex-start;
+  margin-bottom: 16px;
+}
+
+.instructions-back {
+  width: auto;
+  padding: 12px 22px;
+  border: 1px solid rgba(255, 209, 102, 0.42);
+  border-radius: 0;
+  background: rgba(255, 209, 102, 0.1);
+  color: var(--gold);
+  font-family: "Oswald", sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  clip-path: var(--cut);
+  cursor: pointer;
+}
+
+.instructions-back:hover {
+  background: rgba(255, 209, 102, 0.2);
+}
+
+.instructions-title-block {
+  padding-left: 4px;
+}
+
+.instructions-nav {
+  display: flex;
+  flex: none;
+  gap: 8px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.11);
+}
+
+.instructions-tab {
+  min-height: 42px;
+  padding: 9px 24px;
+}
+
+.instructions-tab.on {
+  border-color: var(--gold);
+  background: var(--gold);
+  color: var(--bg);
+}
+
+.instructions-body {
+  display: block;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.instructions-panel {
+  height: 100%;
+  min-height: 0;
+  padding: 18px 3px 8px 0;
+  overflow-y: auto;
+  scrollbar-color: rgba(255, 209, 102, 0.35) transparent;
+}
+
+.instructions-panel[hidden] {
+  display: none;
+}
+
+.instructions-panel-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 15px;
+}
+
+.instructions-panel-heading h2 {
+  margin: 2px 0 0;
+  font-family: "Anton", sans-serif;
+  font-size: 29px;
+  font-weight: 400;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.instructions-fighters {
+  display: flex;
+  gap: 10px;
+}
+
+.instructions-fighters button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 150px;
+  height: 60px;
+  padding: 5px 18px 5px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  font-family: "Anton", sans-serif;
+  font-size: 21px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  clip-path: var(--cut);
+  cursor: pointer;
+}
+
+.instructions-fighters button img {
+  width: 42px;
+  height: 46px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.instructions-fighters button.on {
+  border-color: var(--instructions-accent);
+  background: color-mix(in srgb, var(--instructions-accent) 19%, rgba(5, 7, 15, 0.95));
+  color: var(--instructions-accent);
+}
+
+.instructions-movement {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 17px;
+}
+
+.instructions-movement-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.instructions-movement-item b {
+  color: rgba(242, 245, 255, 0.68);
+  font-family: "Oswald", sans-serif;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.instructions-movement-item .instructions-keychain kbd {
+  min-width: 25px;
+  height: 25px;
+  font-size: 11px;
+}
+
+.instructions-ability-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.instructions-ability-card {
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr) auto;
+  gap: 14px;
+  min-height: 114px;
+  padding: 13px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-left: 3px solid var(--instructions-accent);
+  background: linear-gradient(110deg, color-mix(in srgb, var(--instructions-accent) 8%, transparent), rgba(255, 255, 255, 0.02));
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%);
+}
+
+.instructions-ability-art {
+  display: grid;
+  place-items: center;
+  width: 78px;
+  min-height: 78px;
+  background: rgba(3, 5, 12, 0.45);
+}
+
+.instructions-ability-art img {
+  max-width: 92%;
+  max-height: 85px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.instructions-ability-art span {
+  font-size: 34px;
+}
+
+.instructions-ability-copy {
+  min-width: 0;
+}
+
+.instructions-ability-topline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  color: var(--instructions-accent);
+  font-family: "Oswald", sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.instructions-ability-topline span + span {
+  color: rgba(242, 245, 255, 0.44);
+}
+
+.instructions-ability-copy h3 {
+  margin: 3px 0 4px;
+  font-family: "Oswald", sans-serif;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.instructions-ability-copy p {
+  margin: 0;
+  color: rgba(242, 245, 255, 0.65);
+  font-size: 12px;
+  line-height: 1.38;
+}
+
+.instructions-ability-key {
+  display: grid;
+  place-items: center;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 7px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
+  font-family: "Oswald", sans-serif;
+  font-size: 14px;
+}
+
+.instructions-combo-guide {
+  display: flex;
+  gap: 18px;
+  padding: 18px 20px;
+  margin-bottom: 18px;
+  border: 1px solid rgba(255, 209, 102, 0.32);
+  background: rgba(255, 209, 102, 0.07);
+}
+
+.instructions-guide-number {
+  color: var(--gold);
+  font-family: "Anton", sans-serif;
+  font-size: 34px;
+  line-height: 1;
+}
+
+.instructions-combo-guide h3 {
+  margin: 0 0 5px;
+  font-family: "Oswald", sans-serif;
+  font-size: 18px;
+  text-transform: uppercase;
+}
+
+.instructions-combo-guide p {
+  max-width: 770px;
+  margin: 0;
+  color: rgba(242, 245, 255, 0.72);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.instructions-combo-moves {
+  color: rgba(242, 245, 255, 0.68);
+  font-family: "Oswald", sans-serif;
+  font-size: 12px;
+}
+
+.instructions-combos {
+  padding: 0 2px 4px 0;
+  overflow: visible;
+}
+
+.instructions-combo p {
+  font-size: 12px;
+}
+
+.instructions-video-copy {
+  margin: 0 0 16px;
+  color: rgba(242, 245, 255, 0.7);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.instructions-video {
+  display: block;
+  width: min(100%, 900px);
+  max-height: min(48vh, 450px);
+  margin: 0 auto;
+  border: 1px solid rgba(255, 209, 102, 0.26);
+  background: #000;
+}
+
+@media (max-width: 900px), (max-height: 680px), (orientation: portrait) {
+  .instructions-head {
+    align-items: center;
+    flex-direction: row;
+  }
+
+  .instructions-body {
+    overflow: hidden;
+  }
+
+  .instructions-panel {
+    overflow-y: auto;
+  }
+
+  .instructions-combos {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .instructions-nav {
+    overflow-x: auto;
+  }
+
+  .instructions-tab {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .instructions-panel-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .instructions-fighters button {
+    min-width: 125px;
+  }
+
+  .instructions-ability-grid,
+  .instructions-combos {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Traningen rostar inte om kartan - ett klick racker. */
