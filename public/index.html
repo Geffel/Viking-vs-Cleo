@@ -60,6 +60,49 @@
       </div>
     </div>
 
+    <section id="legacy-migration" class="migration-gate" role="dialog" aria-modal="true" aria-labelledby="migration-title">
+      <div class="migration-card">
+        <div class="migration-kicker">Profile upgrade</div>
+        <h1 id="migration-title">Checking your fighter...</h1>
+        <p id="migration-copy">Please wait while the server checks this browser.</p>
+
+        <div id="migration-claim" hidden>
+          <div class="migration-profile">
+            <b id="migration-profile-name">Fighter</b>
+            <div id="migration-profile-stats"></div>
+          </div>
+          <p>This profile must be moved to a password-protected account before it can be used again.</p>
+          <form id="migration-form">
+            <label class="field"><span>Login name</span><input id="migration-username" type="text" minlength="3" maxlength="32" autocomplete="username" required /></label>
+            <label class="field"><span>Password</span><input id="migration-password" type="password" minlength="12" maxlength="128" autocomplete="new-password" required /></label>
+            <label class="field"><span>Repeat password</span><input id="migration-password-confirm" type="password" minlength="12" maxlength="128" autocomplete="new-password" required /></label>
+            <button class="migration-primary" type="submit">Migrate profile</button>
+          </form>
+          <button id="migration-use-login" class="migration-link" type="button">Sign in with another account</button>
+        </div>
+
+        <form id="migration-login" hidden>
+          <p>Your old profile will remain locked until you migrate it. You can still sign in to another existing account on this computer.</p>
+          <label class="field"><span>Login name</span><input id="migration-login-username" type="text" autocomplete="username" required /></label>
+          <label class="field"><span>Password</span><input id="migration-login-password" type="password" autocomplete="current-password" required /></label>
+          <button class="migration-primary" type="submit">Sign in</button>
+          <button id="migration-back" class="migration-link" type="button">Back to profile migration</button>
+        </form>
+
+        <div id="migration-recovery" hidden>
+          <h2>Save your recovery codes</h2>
+          <p>These codes are shown only once. Store them somewhere safe before continuing.</p>
+          <pre id="migration-recovery-codes"></pre>
+          <div class="migration-actions">
+            <button id="migration-copy-codes" type="button">Copy codes</button>
+            <button id="migration-continue" class="migration-primary" type="button">I saved them</button>
+          </div>
+        </div>
+
+        <p class="err" id="migration-error" aria-live="polite"></p>
+      </div>
+    </section>
+
     <div id="intro" class="app-view">
       <img class="intro-sprite intro-sprite-cleo" src="/assets/cleo/idle.png" alt="" />
       <div class="intro-sprite intro-sprite-viking">

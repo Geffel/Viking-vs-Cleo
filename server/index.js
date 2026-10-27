@@ -10,6 +10,8 @@ import { MatchRegistry } from './matches.js';
 import { MAX_MESSAGE_BYTES, parseClientMessage } from './protocol.js';
 import { claimRoundRegistration, clearRoundRegistration } from './round-registration.js';
 import { SqliteProfileStore } from './sqlite-profile-store.js';
+import { AccountService } from './account-service.js';
+import { installAuthRoutes, readSessionCookie } from './auth-http.js';
 import { hashLegacyClientId } from './profile-snapshot.js';
 import {
   ProfileStatistics,
@@ -82,7 +84,9 @@ const game = new Game({ clock: gameNow });
 const matchGames = new Map();
 const matches = new MatchRegistry();
 const profiles = new Map();
+const retiredLegacyHashes = new Set();
 const profileStore = new SqliteProfileStore({ dataDir: DATA_DIR });
+const accountService = new AccountService({ dataDir: DATA_DIR });
 const profileStatistics = new ProfileStatistics({ getProfileById });
 const tickMetrics = new TickMetrics();
 const recordedMapVoteStats = new Set();
@@ -103,14 +107,43 @@ if (existsSync(path.join(DATA_DIR, 'profiles.json')) && !existsSync(profileStore
   throw new Error('Legacy profiles.json must be imported with npm run profiles:import before the server can start');
 }
 await profileStore.open();
+await accountService.open();
 await loadProfiles();
 
-wss.on('connection', (ws) => {
+installAuthRoutes(app, accountService, {
+  onMigrated(clientId, result) {
+    const clientIdHash = hashLegacyClientId(clientId);
+    const profile = profiles.get(clientIdHash);
+    retiredLegacyHashes.add(clientIdHash);
+    if (profile) {
+      profiles.delete(clientIdHash);
+      profile.clientIdHash = '';
+      profiles.set(`account:${result.profileId}`, profile);
+    }
+    for (const socket of wss.clients) {
+      if (!socket.clientId || hashLegacyClientId(socket.clientId) !== clientIdHash) continue;
+      if (socket.playerId) removePlayerSession(socket);
+      if (socket.matchId) leaveLobbyMatch(socket);
+      socket.clientId = null;
+      socket.profileId = 0;
+      send(socket, { t: 'appError', message: 'This profile was migrated. Reconnect with its account session.' });
+    }
+  },
+});
+
+wss.on('connection', async (ws, request) => {
+  let authSession = null;
+  const sessionToken = readSessionCookie(request);
+  if (sessionToken) {
+    try { authSession = await accountService.verifySession(sessionToken); } catch { authSession = null; }
+  }
   ws.sessionId = nextSessionId++;
+  ws.accountId = authSession?.accountId ?? null;
+  ws.authProfileId = authSession?.profileId ?? null;
   ws.name = '';
   ws.hasLoggedJoin = false;
   ws.clientId = null;
-  ws.profileId = 0;
+  ws.profileId = ws.authProfileId ?? 0;
   ws.matchId = '';
   ws.playerId = 0;
   ws.halfRtt = 0;
@@ -425,9 +458,10 @@ function handleMessage(ws, msg) {
     }
     case 'join': {
       if (ws.playerId) return;
-      const name = cleanName(msg.name);
+      const requestedName = cleanName(msg.name);
       const team = TEAM_IDS.includes(msg.team) ? msg.team : game.suggestTeam();
-      const identity = resolveIdentity(msg.clientId, name);
+      const identity = identityForSocket(ws, msg.clientId, requestedName);
+      const name = ws.authProfileId ? getProfileById(identity.profileId)?.name ?? requestedName : requestedName;
       ws.name = name;
       ws.clientId = identity.clientId;
       ws.profileId = identity.profileId;
@@ -468,8 +502,9 @@ function handleMessage(ws, msg) {
 
 function identifySocket(ws, msg) {
   const name = cleanName(msg.name);
-  const identity = resolveIdentity(msg.clientId, name);
-  ws.name = name;
+  const accountProfile = ws.authProfileId ? getProfileById(ws.authProfileId) : null;
+  const identity = identityForSocket(ws, msg.clientId, name);
+  ws.name = accountProfile?.name ?? name;
   ws.clientId = identity.clientId;
   ws.profileId = identity.profileId;
 
@@ -487,6 +522,13 @@ function identifySocket(ws, msg) {
       match.updatedAt = Date.now();
     }
   }
+}
+
+function identityForSocket(ws, rawClientId, name) {
+  if (ws.authProfileId && getProfileById(ws.authProfileId)) {
+    return { clientId: null, profileId: ws.authProfileId };
+  }
+  return resolveIdentity(rawClientId, name);
 }
 
 function requireIdentity(ws) {
@@ -863,9 +905,11 @@ function resolveIdentity(rawClientId, name) {
   if (!clientId) return { clientId: null, profileId: 0 };
 
   const clientIdHash = hashLegacyClientId(clientId);
+  if (retiredLegacyHashes.has(clientIdHash)) return { clientId: null, profileId: 0 };
   let profile = profiles.get(clientIdHash);
   if (!profile) {
     profile = createProfile(nextProfileId++, name);
+    profile.clientIdHash = clientIdHash;
     profiles.set(clientIdHash, profile);
     gameLog('PROFILE', `Created #${profile.profileId} for ${profile.name}.`);
   }
@@ -878,8 +922,7 @@ function resolveIdentity(rawClientId, name) {
 }
 
 function activateProfile(player) {
-  if (!player.clientId) return;
-  const profile = profiles.get(hashLegacyClientId(player.clientId));
+  const profile = getProfileById(player.profileId);
   if (!profile) return;
   profile.name = player.name;
   profile.lastSeenAt = Date.now();
@@ -910,8 +953,7 @@ function removePlayerSession(ws) {
 }
 
 function finalizeProfile(player) {
-  if (!player?.clientId) return;
-  const profile = profiles.get(hashLegacyClientId(player.clientId));
+  const profile = getProfileById(player?.profileId);
   if (!profile || profile.active?.playerId !== player.id) return;
 
   profile.name = player.name;
@@ -1104,10 +1146,13 @@ async function loadProfiles() {
 
     for (const row of data.profiles ?? []) {
       const clientIdHash = row.clientIdHash || (cleanClientId(row.clientId) ? hashLegacyClientId(row.clientId) : '');
-      if (!/^[a-f0-9]{64}$/.test(clientIdHash)) continue;
-
       const profileId = Math.max(1, Number(row.profileId) || nextProfileId++);
+      const hasLegacyId = /^[a-f0-9]{64}$/.test(clientIdHash);
+      const migrated = row.legacyStatus === 'migrated' || !!row.accountId;
+      if (!hasLegacyId && !migrated) continue;
+      if (migrated && hasLegacyId) retiredLegacyHashes.add(clientIdHash);
       const profile = createProfile(profileId, row.name);
+      profile.clientIdHash = migrated ? '' : clientIdHash;
       profile.points = Math.max(0, Number(row.points) || 0);
       profile.playMs = Math.max(0, Number(row.playMs) || 0);
       profile.seen = Math.max(0, Number(row.seen) || 0);
@@ -1121,7 +1166,7 @@ async function loadProfiles() {
       profile.stats = cleanProfileStats(row.stats);
       profile.achievements = cleanProfileAchievements(row.achievements);
       profileStatistics.unlockAchievements(new Set([profile]));
-      profiles.set(clientIdHash, profile);
+      profiles.set(migrated ? `account:${profileId}` : clientIdHash, profile);
       nextProfileId = Math.max(nextProfileId, profileId + 1);
     }
   } catch (err) {
@@ -1154,8 +1199,8 @@ function saveProfiles() {
         version: SCHEMA_VERSION,
         nextProfileId,
         globalStats,
-        profiles: [...profiles.entries()].map(([clientIdHash, profile]) => ({
-        clientIdHash,
+        profiles: [...profiles.values()].map((profile) => ({
+        clientIdHash: profile.clientIdHash,
         profileId: profile.profileId,
         name: profile.name,
         points: profile.points,
@@ -1188,6 +1233,12 @@ async function shutdown() {
     console.error('Kunde inte tomma profilkon:', err.message);
     process.exitCode = 1;
   }
+  try {
+    await accountService.close();
+  } catch (err) {
+    console.error('Kunde inte stanga kontolagret:', err.message);
+    process.exitCode = 1;
+  }
   const timing = tickMetrics.snapshot();
   if (timing.ticks) {
     gameLog(
@@ -1200,6 +1251,7 @@ async function shutdown() {
 
 function createProfile(profileId, name) {
   return {
+    clientIdHash: '',
     profileId,
     name: cleanName(name),
     points: 0,

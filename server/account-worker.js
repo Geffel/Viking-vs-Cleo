@@ -4,6 +4,7 @@ import {
   accountLogKey, authError, generateRecoveryCodes, generateSessionToken, hashPassword,
   hashRecoveryCode, hashSessionToken, normalizeUsername, validatePassword, verifyPassword,
 } from './auth-crypto.js';
+import { hashLegacyClientId } from './profile-snapshot.js';
 
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const GENERIC_LOGIN_MESSAGE = 'Fel anvandarnamn eller losenord';
@@ -24,14 +25,38 @@ async function handle({ id, type, payload = {} }) {
     else if (type === 'logoutAll') result = database.revokeAllSessions(payload.accountId, payload.now);
     else if (type === 'resetPassword') result = await resetPassword(payload);
     else if (type === 'regenerateRecoveryCodes') result = await regenerateRecoveryCodes(payload);
+    else if (type === 'findLegacyProfile') result = findLegacyProfile(payload);
+    else if (type === 'migrateLegacyProfile') result = await migrateLegacyProfile(payload);
     else if (type === 'cleanupSessions') result = database.cleanupSessions(payload.now);
     else if (type === 'close') { database.close(); result = true; }
     else throw authError('UNKNOWN_COMMAND', `Unknown account worker command: ${type}`);
     parentPort.postMessage({ id, result });
-    if (type === 'close') process.exit(0);
   } catch (error) {
     parentPort.postMessage({ id, error: { code: error.code || 'AUTH_ERROR', message: error.message } });
   }
+}
+
+function findLegacyProfile({ clientId }) {
+  requireLegacyClientId(clientId);
+  return database.findPendingLegacyProfile(hashLegacyClientId(clientId));
+}
+
+async function migrateLegacyProfile({ clientId, username, password, now }) {
+  requireLegacyClientId(clientId);
+  const names = normalizeUsername(username);
+  validatePassword(password);
+  const recoveryCodes = generateRecoveryCodes();
+  const token = generateSessionToken();
+  const result = database.completeLegacyMigration({
+    clientIdHash: hashLegacyClientId(clientId),
+    usernameNormalized: names.normalized,
+    usernameDisplay: names.display,
+    passwordHash: await hashPassword(password),
+    recoveryCodeHashes: recoveryCodes.map(hashRecoveryCode),
+    tokenHash: hashSessionToken(token),
+    now,
+  });
+  return { ...result, recoveryCodes, token };
 }
 
 async function register({ username, password, now }) {
@@ -91,3 +116,9 @@ async function regenerateRecoveryCodes({ accountId, currentPassword, now }) {
 // Unknown accounts still perform the same scrypt work. The digest deliberately
 // does not correspond to a usable password, while its format and cost are real.
 const dummyPasswordHash = `v1$scrypt$N=131072,r=8,p=1,k=64$AAAAAAAAAAAAAAAAAAAAAA$${'A'.repeat(86)}`;
+
+function requireLegacyClientId(clientId) {
+  if (typeof clientId !== 'string' || !clientId.length || clientId.length > 80) {
+    throw authError('INVALID_LEGACY_ID', 'Invalid legacy profile identity');
+  }
+}

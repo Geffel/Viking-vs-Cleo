@@ -1027,6 +1027,48 @@ a.gamepad-hover,
   display: none !important;
 }
 
+.migration-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  overflow-y: auto;
+  background: radial-gradient(circle at 50% 15%, rgba(77, 195, 255, 0.16), transparent 38%), rgba(3, 5, 12, 0.97);
+}
+
+.migration-gate[hidden],
+.migration-gate [hidden] {
+  display: none !important;
+}
+
+.migration-card {
+  width: min(520px, 94vw);
+  padding: clamp(22px, 4vw, 36px);
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--viking);
+  border-radius: 16px;
+  background: var(--panel);
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.7);
+}
+
+.migration-card h1,
+.migration-card h2 { margin: 0 0 12px; }
+.migration-card p { line-height: 1.5; opacity: 0.82; }
+.migration-kicker { color: var(--viking); font-weight: 800; text-transform: uppercase; letter-spacing: 0.12em; }
+.migration-profile { margin: 20px 0; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,0.05); }
+.migration-profile b { display: block; font-size: 22px; }
+#migration-profile-stats { margin-top: 6px; opacity: 0.7; }
+.migration-primary, .migration-actions button, .migration-link {
+  width: 100%; padding: 12px 14px; border-radius: 9px; border: 1px solid var(--line);
+  color: var(--ink); background: rgba(255,255,255,0.1); font: inherit; font-weight: 800; cursor: pointer;
+}
+.migration-primary { background: linear-gradient(135deg, var(--cleo), var(--viking)); color: #06080f; border: 0; }
+.migration-link { margin-top: 10px; background: transparent; }
+.migration-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+#migration-recovery-codes { padding: 16px; border-radius: 10px; overflow-x: auto; user-select: all; background: #070a12; color: #ffd166; line-height: 1.55; }
+
 #intro {
   position: absolute;
   inset: 0;

@@ -46,6 +46,26 @@ const intro = document.getElementById('intro');
 const introForm = document.getElementById('intro-form');
 const introName = document.getElementById('intro-name');
 const introError = document.getElementById('intro-error');
+const migrationGate = document.getElementById('legacy-migration');
+const migrationTitle = document.getElementById('migration-title');
+const migrationCopy = document.getElementById('migration-copy');
+const migrationClaim = document.getElementById('migration-claim');
+const migrationForm = document.getElementById('migration-form');
+const migrationProfileName = document.getElementById('migration-profile-name');
+const migrationProfileStats = document.getElementById('migration-profile-stats');
+const migrationUsername = document.getElementById('migration-username');
+const migrationPassword = document.getElementById('migration-password');
+const migrationPasswordConfirm = document.getElementById('migration-password-confirm');
+const migrationUseLogin = document.getElementById('migration-use-login');
+const migrationLogin = document.getElementById('migration-login');
+const migrationLoginUsername = document.getElementById('migration-login-username');
+const migrationLoginPassword = document.getElementById('migration-login-password');
+const migrationBack = document.getElementById('migration-back');
+const migrationRecovery = document.getElementById('migration-recovery');
+const migrationRecoveryCodes = document.getElementById('migration-recovery-codes');
+const migrationCopyCodes = document.getElementById('migration-copy-codes');
+const migrationContinue = document.getElementById('migration-continue');
+const migrationError = document.getElementById('migration-error');
 const lobby = document.getElementById('lobby');
 const lobbyPlayerName = document.getElementById('lobby-player-name');
 const lobbyError = document.getElementById('lobby-error');
@@ -196,11 +216,22 @@ const netDebug = initNetDebug(NET_DEBUG);
 initMenuClicks();
 setView('intro');
 syncMatchMusic(null);
+initLegacyMigration();
 
 introForm.addEventListener('submit', (e) => {
   e.preventDefault();
   submitName();
 });
+
+migrationForm?.addEventListener('submit', submitLegacyMigration);
+migrationLogin?.addEventListener('submit', submitMigrationLogin);
+migrationUseLogin?.addEventListener('click', () => showMigrationLogin(true));
+migrationBack?.addEventListener('click', () => showMigrationLogin(false));
+migrationCopyCodes?.addEventListener('click', async () => {
+  await navigator.clipboard?.writeText(migrationRecoveryCodes.textContent).catch(() => {});
+  migrationCopyCodes.textContent = 'Copied';
+});
+migrationContinue?.addEventListener('click', () => location.reload());
 
 createMatchBtn.addEventListener('click', () => {
   lobbyError.textContent = '';
@@ -450,6 +481,102 @@ function frame(now) {
 requestAnimationFrame(frame);
 
 // ------------------------------------------------------------------ vyer
+
+async function initLegacyMigration() {
+  if (!migrationGate) return;
+  try {
+    const state = await authRequest('/api/auth/state', { clientId });
+    if (state.authenticated || !state.migration) {
+      migrationGate.hidden = true;
+      return;
+    }
+    const profile = state.migration;
+    migrationTitle.textContent = 'Protect your existing fighter';
+    migrationCopy.textContent = 'This browser contains an older profile. Migration is required before that profile can be used again.';
+    migrationProfileName.textContent = profile.displayName;
+    migrationProfileStats.textContent = [
+      `${profile.points} points`, `${profile.kills} kills`, `${profile.deaths} deaths`,
+      `${profile.matches} matches`, `${profile.achievements} achievements`, formatPlayTime(profile.playMs),
+    ].join(' · ');
+    migrationUsername.value = suggestedUsername(profile.displayName);
+    migrationClaim.hidden = false;
+    migrationUsername.focus();
+  } catch (error) {
+    migrationTitle.textContent = 'Profile check failed';
+    migrationCopy.textContent = 'The server could not safely check your old profile. Reload the page to try again.';
+    migrationError.textContent = error.message;
+  }
+}
+
+async function submitLegacyMigration(event) {
+  event.preventDefault();
+  migrationError.textContent = '';
+  if (migrationPassword.value !== migrationPasswordConfirm.value) {
+    migrationError.textContent = 'The passwords do not match.';
+    migrationPasswordConfirm.focus();
+    return;
+  }
+  setFormBusy(migrationForm, true);
+  try {
+    const result = await authRequest('/api/auth/migrate', {
+      clientId, username: migrationUsername.value, password: migrationPassword.value,
+    });
+    currentName = migrationProfileName.textContent;
+    localStorage.setItem('vvc.name', currentName);
+    migrationClaim.hidden = true;
+    migrationLogin.hidden = true;
+    migrationRecoveryCodes.textContent = result.recoveryCodes.join('\n');
+    migrationRecovery.hidden = false;
+    migrationTitle.textContent = 'Migration complete';
+    migrationCopy.textContent = 'Your fighter is now connected to your new account.';
+    migrationCopyCodes.focus();
+  } catch (error) {
+    migrationError.textContent = error.message;
+  } finally {
+    setFormBusy(migrationForm, false);
+  }
+}
+
+async function submitMigrationLogin(event) {
+  event.preventDefault();
+  migrationError.textContent = '';
+  setFormBusy(migrationLogin, true);
+  try {
+    await authRequest('/api/auth/login', {
+      username: migrationLoginUsername.value, password: migrationLoginPassword.value,
+    });
+    location.reload();
+  } catch (error) {
+    migrationError.textContent = error.message;
+    setFormBusy(migrationLogin, false);
+  }
+}
+
+function showMigrationLogin(show) {
+  migrationError.textContent = '';
+  migrationClaim.hidden = show;
+  migrationLogin.hidden = !show;
+  migrationTitle.textContent = show ? 'Sign in to another account' : 'Protect your existing fighter';
+  (show ? migrationLoginUsername : migrationUsername).focus();
+}
+
+async function authRequest(url, body) {
+  const response = await fetch(url, {
+    method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.message || 'The request failed.');
+  return data;
+}
+
+function setFormBusy(form, busy) {
+  for (const control of form?.elements ?? []) control.disabled = busy;
+}
+
+function suggestedUsername(displayName) {
+  const candidate = String(displayName || '').trim().toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9._-]/g, '').slice(0, 32);
+  return /^[a-z0-9._-]{3,32}$/.test(candidate) ? candidate : '';
+}
 
 function submitName() {
   const name = introName.value.trim().slice(0, NAME_MAX);

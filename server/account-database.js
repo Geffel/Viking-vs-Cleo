@@ -22,6 +22,61 @@ export class AccountDatabase {
       FROM accounts WHERE account_id = ?`).get(accountId) ?? null;
   }
 
+  findPendingLegacyProfile(clientIdHash) {
+    const row = this.db.prepare(`SELECT p.profile_id, p.display_name, p.points, p.play_ms, p.seen,
+        p.stats_json, p.achievements_json,
+        COALESCE(SUM(o.kills), 0) AS kills, COALESCE(SUM(o.deaths), 0) AS deaths
+      FROM legacy_profile_claims c JOIN profiles p USING(profile_id)
+      LEFT JOIN profile_opponents o USING(profile_id)
+      WHERE c.client_id_hash = ? AND c.status = 'pending' AND p.account_id IS NULL
+      GROUP BY p.profile_id`).get(clientIdHash);
+    if (!row) return null;
+    const stats = parseJson(row.stats_json);
+    const achievements = parseJson(row.achievements_json);
+    return {
+      profileId: Number(row.profile_id), displayName: row.display_name,
+      points: Number(row.points), playMs: Number(row.play_ms), seen: Number(row.seen),
+      kills: Number(row.kills), deaths: Number(row.deaths),
+      matches: Math.max(0, Number(stats?.matches?.played) || 0),
+      achievements: Object.keys(achievements?.unlocked ?? {}).length,
+    };
+  }
+
+  completeLegacyMigration({ clientIdHash, usernameNormalized, usernameDisplay, passwordHash,
+    recoveryCodeHashes, tokenHash, now }) {
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const claim = this.db.prepare(`SELECT c.profile_id FROM legacy_profile_claims c
+        JOIN profiles p USING(profile_id)
+        WHERE c.client_id_hash = ? AND c.status = 'pending' AND p.account_id IS NULL`).get(clientIdHash);
+      if (!claim) throw authError('LEGACY_PROFILE_UNAVAILABLE', 'Legacy profile is not available for migration');
+      if (this.findAccount(usernameNormalized)) throw authError('USERNAME_TAKEN', 'Username is already in use');
+
+      const inserted = this.db.prepare(`INSERT INTO accounts
+        (username_normalized, username_display, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`)
+        .run(usernameNormalized, usernameDisplay, passwordHash, now, now);
+      const accountId = Number(inserted.lastInsertRowid);
+      const profileId = Number(claim.profile_id);
+      const linked = this.db.prepare(`UPDATE profiles SET account_id = ?, migrated_at = ?
+        WHERE profile_id = ? AND account_id IS NULL`).run(accountId, now, profileId);
+      const claimed = this.db.prepare(`UPDATE legacy_profile_claims SET status = 'migrated', migrated_at = ?
+        WHERE profile_id = ? AND status = 'pending'`).run(now, profileId);
+      if (linked.changes !== 1 || claimed.changes !== 1) {
+        throw authError('LEGACY_PROFILE_UNAVAILABLE', 'Legacy profile is not available for migration');
+      }
+      const addCode = this.db.prepare('INSERT INTO recovery_codes(account_id, code_hash, created_at) VALUES (?, ?, ?)');
+      for (const codeHash of recoveryCodeHashes) addCode.run(accountId, codeHash, now);
+      this.db.prepare(`INSERT INTO sessions(token_hash, account_id, created_at, last_used_at, expires_at)
+        VALUES (?, ?, ?, ?, ?)`).run(tokenHash, accountId, now, now, now + SESSION_IDLE_MS);
+      this.db.exec('COMMIT');
+      return { account: { accountId, username: usernameDisplay, status: 'active' }, profileId };
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      if (String(error.message).includes('accounts.username_normalized')) throw authError('USERNAME_TAKEN', 'Username is already in use');
+      throw error;
+    }
+  }
+
   createAccount({ usernameNormalized, usernameDisplay, passwordHash, recoveryCodeHashes, now }) {
     this.db.exec('BEGIN IMMEDIATE');
     try {
@@ -124,4 +179,8 @@ export class AccountDatabase {
 
 function publicAccount(row) {
   return { accountId: Number(row.account_id), username: row.username_display, status: row.status };
+}
+
+function parseJson(value) {
+  try { return JSON.parse(value); } catch { return {}; }
 }

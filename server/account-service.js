@@ -19,7 +19,9 @@ export class AccountService {
     this.worker = new Worker(new URL('./account-worker.js', import.meta.url), { workerData: { filePath: this.filePath } });
     this.worker.on('message', (message) => this.#settle(message));
     this.worker.on('error', (error) => this.#failAll(error));
-    this.worker.on('exit', (code) => { if (!this.closed && code) this.#failAll(new Error(`Account worker exited with code ${code}`)); });
+    this.worker.on('exit', (code) => {
+      if (!this.closed) this.#failAll(new Error(`Account worker exited before closing (code ${code})`));
+    });
   }
 
   register(username, password) { return this.#request('register', { username, password, now: this.now() }); }
@@ -35,6 +37,10 @@ export class AccountService {
   }
   regenerateRecoveryCodes(accountId, currentPassword) {
     return this.#request('regenerateRecoveryCodes', { accountId, currentPassword, now: this.now() });
+  }
+  findLegacyProfile(clientId) { return this.#request('findLegacyProfile', { clientId }); }
+  migrateLegacyProfile(clientId, username, password) {
+    return this.#request('migrateLegacyProfile', { clientId, username, password, now: this.now() });
   }
   cleanupSessions() { return this.#request('cleanupSessions', { now: this.now() }); }
 

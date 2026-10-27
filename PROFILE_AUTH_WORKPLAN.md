@@ -249,7 +249,7 @@ tyst försvagas.
 - [x] Bryt ut lagrings- och statistikgränser samt mät nuvarande ticktider.
 - [x] Implementera SQLite-schema, skrivkö och verifierbar import.
 - [x] Implementera konto-, lösenords- och sessionslagret.
-- [ ] Implementera det obligatoriska migrationsflödet.
+- [x] Implementera det obligatoriska migrationsflödet.
 - [ ] Spärra alla spellägen bakom serververifierad session.
 - [ ] Genomför importrepetition mot en kopia av verkliga data.
 - [ ] Ta backup, stoppa servern, kör slutlig import och verifiera.

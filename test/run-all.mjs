@@ -20,6 +20,8 @@ const logicTests = [
   ['profile-boundaries', 'test/profile-boundaries.mjs'],
   ['sqlite-profile-store', 'test/sqlite-profile-store.mjs'],
   ['account-service', 'test/account-service.mjs'],
+  ['profile-migration', 'test/profile-migration.mjs'],
+  ['migration-http', 'test/migration-http.mjs'],
 ];
 
 const smokeScale = Number(process.env.SMOKE_TIME_SCALE || 10);
