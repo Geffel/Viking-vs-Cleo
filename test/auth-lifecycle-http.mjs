@@ -1,11 +1,15 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
+import { mkdtemp, rm } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import WebSocket from 'ws';
 import { startTestServer } from './test-server.mjs';
 
 let server;
+const dataDir = await mkdtemp(path.join(os.tmpdir(), 'vvc-auth-lifecycle-'));
 try {
-  server = await startTestServer();
+  server = await startTestServer({ dataDir });
   const httpUrl = server.url.replace(/^ws/, 'http');
 
   const anonymous = await post(httpUrl, '/api/auth/state', { clientId: 'fresh-browser' });
@@ -43,14 +47,22 @@ try {
   assert.equal(loggedIn.response.status, 200);
   const reconnectCookie = cookieFrom(loggedIn.response);
   const firstConnection = await identify(server.url, server.origin, reconnectCookie);
-  const reconnected = await identify(server.url, server.origin, reconnectCookie);
   assert.equal(firstConnection.profileId, 1);
+
+  await server.stop();
+  server = await startTestServer({ dataDir });
+  const restartedHttpUrl = server.url.replace(/^ws/, 'http');
+  const restored = await post(restartedHttpUrl, '/api/auth/state', { clientId: 'fresh-browser' }, reconnectCookie);
+  assert.equal(restored.data.authenticated, true, 'the session survives a server restart');
+  assert.equal(restored.data.session.profileId, 1);
+  const reconnected = await identify(server.url, server.origin, reconnectCookie);
   assert.equal(reconnected.profileId, 1);
   assert.equal(reconnected.name, 'New Fighter');
 
-  console.log('AUTH LIFECYCLE HTTP TESTS OK: fresh registration, logout, login and session reconnect work end to end');
+  console.log('AUTH LIFECYCLE HTTP TESTS OK: fresh registration, logout, login and restart reconnect work end to end');
 } finally {
   await server?.stop();
+  await rm(dataDir, { recursive: true, force: true });
 }
 
 async function post(base, route, body, cookie = '', parseJson = true) {
