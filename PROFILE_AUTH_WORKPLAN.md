@@ -248,7 +248,7 @@ tyst försvagas.
 - [x] Lås Node-version, säkerhetsregler och återställningsmodell.
 - [x] Bryt ut lagrings- och statistikgränser samt mät nuvarande ticktider.
 - [x] Implementera SQLite-schema, skrivkö och verifierbar import.
-- [ ] Implementera konto-, lösenords- och sessionslagret.
+- [x] Implementera konto-, lösenords- och sessionslagret.
 - [ ] Implementera det obligatoriska migrationsflödet.
 - [ ] Spärra alla spellägen bakom serververifierad session.
 - [ ] Genomför importrepetition mot en kopia av verkliga data.

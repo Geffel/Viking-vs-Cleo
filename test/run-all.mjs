@@ -19,6 +19,7 @@ const logicTests = [
   ['profile-attribution', 'test/profile-attribution.mjs'],
   ['profile-boundaries', 'test/profile-boundaries.mjs'],
   ['sqlite-profile-store', 'test/sqlite-profile-store.mjs'],
+  ['account-service', 'test/account-service.mjs'],
 ];
 
 const smokeScale = Number(process.env.SMOKE_TIME_SCALE || 10);

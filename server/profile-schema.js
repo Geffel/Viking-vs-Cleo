@@ -82,4 +82,8 @@ export const PROFILE_SCHEMA_SQL = `
     ON login_failures(account_key, attempted_at);
   CREATE INDEX IF NOT EXISTS login_failures_ip_time
     ON login_failures(source_ip, attempted_at);
+  CREATE INDEX IF NOT EXISTS sessions_account
+    ON sessions(account_id);
+  CREATE INDEX IF NOT EXISTS sessions_expiry
+    ON sessions(expires_at);
 `;
