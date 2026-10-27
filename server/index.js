@@ -110,6 +110,11 @@ await accountService.open();
 await loadProfiles();
 
 installAuthRoutes(app, accountService, {
+  onRegistered(result) {
+    const profile = createProfile(result.profileId, result.displayName);
+    profiles.set(`account:${result.profileId}`, profile);
+    nextProfileId = Math.max(nextProfileId, result.profileId + 1);
+  },
   onMigrated(clientId, result) {
     const clientIdHash = hashLegacyClientId(clientId);
     const profile = profiles.get(clientIdHash);

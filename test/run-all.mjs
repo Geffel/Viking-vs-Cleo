@@ -22,6 +22,7 @@ const logicTests = [
   ['account-service', 'test/account-service.mjs'],
   ['profile-migration', 'test/profile-migration.mjs'],
   ['migration-http', 'test/migration-http.mjs'],
+  ['auth-lifecycle-http', 'test/auth-lifecycle-http.mjs'],
 ];
 
 const smokeScale = Number(process.env.SMOKE_TIME_SCALE || 10);

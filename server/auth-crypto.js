@@ -30,6 +30,17 @@ export function validatePassword(value) {
   return value;
 }
 
+export function validateDisplayName(value) {
+  if (typeof value !== 'string' || hasUnpairedSurrogate(value)) {
+    throw authError('INVALID_DISPLAY_NAME', 'Fighter name must be valid Unicode text');
+  }
+  const displayName = value.replace(/[\u0000-\u001f\u007f]/g, '').trim();
+  if (![...displayName].length || [...displayName].length > 14) {
+    throw authError('INVALID_DISPLAY_NAME', 'Fighter name must contain 1-14 characters');
+  }
+  return displayName;
+}
+
 export async function hashPassword(password, salt = randomBytes(16)) {
   validatePassword(password);
   const derived = await derive(password, salt, SCRYPT_PARAMS);

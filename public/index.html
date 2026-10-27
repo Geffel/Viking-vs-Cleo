@@ -86,7 +86,18 @@
           <label class="field"><span>Login name</span><input id="migration-login-username" type="text" autocomplete="username" required /></label>
           <label class="field"><span>Password</span><input id="migration-login-password" type="password" autocomplete="current-password" required /></label>
           <button class="migration-primary" type="submit">Sign in</button>
+          <button id="migration-use-register" class="migration-link" type="button">Create account</button>
           <button id="migration-back" class="migration-link" type="button">Back to profile migration</button>
+        </form>
+
+        <form id="migration-register" hidden>
+          <p>Create a password-protected account and a new fighter profile.</p>
+          <label class="field"><span>Fighter name</span><input id="migration-register-display-name" type="text" minlength="1" maxlength="14" autocomplete="nickname" required /></label>
+          <label class="field"><span>Login name</span><input id="migration-register-username" type="text" minlength="3" maxlength="32" autocomplete="username" required /></label>
+          <label class="field"><span>Password</span><input id="migration-register-password" type="password" minlength="12" maxlength="128" autocomplete="new-password" required /></label>
+          <label class="field"><span>Repeat password</span><input id="migration-register-password-confirm" type="password" minlength="12" maxlength="128" autocomplete="new-password" required /></label>
+          <button class="migration-primary" type="submit">Create account</button>
+          <button id="migration-register-back" class="migration-link" type="button">Back to sign in</button>
         </form>
 
         <div id="migration-recovery" hidden>
@@ -145,6 +156,7 @@
               <a class="screen-link" href="/leaderboard.html" target="_blank" rel="noopener">Leaderboard</a>
               <button id="open-achievements" type="button">Achievements</button>
               <button id="open-settings" type="button">Settings</button>
+              <button id="logout" type="button">Sign out</button>
               <button id="create-match" type="button">Create match</button>
               <button id="training-mode" type="button" title="Practice solo against a training dummy">Training mode</button>
             </div>

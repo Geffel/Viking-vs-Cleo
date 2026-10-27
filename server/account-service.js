@@ -24,7 +24,9 @@ export class AccountService {
     });
   }
 
-  register(username, password) { return this.#request('register', { username, password, now: this.now() }); }
+  register(username, password, displayName = username) {
+    return this.#request('register', { username, password, displayName, now: this.now() });
+  }
   login(username, password, sourceIp) {
     const safeIp = typeof sourceIp === 'string' && sourceIp.length <= 64 ? sourceIp : 'unknown';
     return this.#request('login', { username, password, sourceIp: safeIp, now: this.now() });

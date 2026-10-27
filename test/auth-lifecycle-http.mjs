@@ -1,0 +1,95 @@
+import assert from 'node:assert/strict';
+import WebSocket from 'ws';
+import { startTestServer } from './test-server.mjs';
+
+let server;
+try {
+  server = await startTestServer();
+  const httpUrl = server.url.replace(/^ws/, 'http');
+
+  const anonymous = await post(httpUrl, '/api/auth/state', { clientId: 'fresh-browser' });
+  assert.equal(anonymous.response.status, 200);
+  assert.equal(anonymous.data.authenticated, false);
+  assert.equal(anonymous.data.migration, null);
+
+  const registered = await post(httpUrl, '/api/auth/register', {
+    username: 'new.player', password: 'a secure new password', displayName: 'New Fighter',
+  });
+  assert.equal(registered.response.status, 201);
+  assert.equal(registered.data.profileId, 1);
+  assert.equal(registered.data.displayName, 'New Fighter');
+  assert.equal(registered.data.recoveryCodes.length, 10);
+  const firstCookie = cookieFrom(registered.response);
+
+  const active = await post(httpUrl, '/api/auth/state', { clientId: 'fresh-browser' }, firstCookie);
+  assert.equal(active.data.authenticated, true);
+  assert.equal(active.data.session.profileId, 1);
+  assert.equal((await identify(server.url, server.origin, firstCookie)).name, 'New Fighter');
+
+  const loggedOut = await post(httpUrl, '/api/auth/logout', {}, firstCookie, false);
+  assert.equal(loggedOut.response.status, 204);
+  assert.match(loggedOut.response.headers.get('set-cookie'), /^vvc_session=;/);
+  const afterLogout = await post(httpUrl, '/api/auth/state', { clientId: 'fresh-browser' }, firstCookie);
+  assert.equal(afterLogout.data.authenticated, false);
+  assert.equal(await rejectedWebSocket(server.url, server.origin, firstCookie), 401);
+
+  const loggedIn = await post(httpUrl, '/api/auth/login', {
+    username: 'NEW.PLAYER', password: 'a secure new password',
+  });
+  assert.equal(loggedIn.response.status, 200);
+  const reconnectCookie = cookieFrom(loggedIn.response);
+  const firstConnection = await identify(server.url, server.origin, reconnectCookie);
+  const reconnected = await identify(server.url, server.origin, reconnectCookie);
+  assert.equal(firstConnection.profileId, 1);
+  assert.equal(reconnected.profileId, 1);
+  assert.equal(reconnected.name, 'New Fighter');
+
+  console.log('AUTH LIFECYCLE HTTP TESTS OK: fresh registration, logout, login and session reconnect work end to end');
+} finally {
+  await server?.stop();
+}
+
+async function post(base, route, body, cookie = '', parseJson = true) {
+  const response = await fetch(`${base}${route}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}) },
+    body: JSON.stringify(body),
+  });
+  return { response, data: parseJson ? await response.json() : null };
+}
+
+function cookieFrom(response) {
+  const setCookie = response.headers.get('set-cookie');
+  assert.match(setCookie, /^vvc_session=[A-Za-z0-9_-]{43};/);
+  return setCookie.split(';', 1)[0];
+}
+
+function identify(url, origin, cookie) {
+  return new Promise((resolve, reject) => {
+    const socket = new WebSocket(url, { headers: { Origin: origin, Cookie: cookie } });
+    const timer = setTimeout(() => { socket.terminate(); reject(new Error('WebSocket auth test timed out')); }, 5000);
+    socket.on('message', (raw) => {
+      const message = JSON.parse(raw.toString());
+      if (message.t === 'welcome') socket.send(JSON.stringify({ t: 'identify', name: 'Forged', clientId: 'forged' }));
+      if (message.t === 'identified') {
+        clearTimeout(timer);
+        socket.close();
+        resolve(message);
+      }
+    });
+    socket.on('error', (error) => { clearTimeout(timer); reject(error); });
+  });
+}
+
+function rejectedWebSocket(url, origin, cookie) {
+  return new Promise((resolve, reject) => {
+    const socket = new WebSocket(url, { headers: { Origin: origin, Cookie: cookie } });
+    socket.once('unexpected-response', (_request, response) => {
+      response.resume();
+      resolve(response.statusCode);
+    });
+    socket.once('open', () => { socket.terminate(); reject(new Error('Revoked session unexpectedly opened')); });
+    socket.once('error', (error) => {
+      if (!String(error.message).includes('Unexpected server response')) reject(error);
+    });
+  });
+}

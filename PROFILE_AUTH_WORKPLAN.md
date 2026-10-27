@@ -216,7 +216,7 @@ servern måste upprätthålla spärren.
 
 ## Delarbete F – test och driftsättning
 
-- [ ] Ny installation kan skapa konto, logga in, logga ut och återansluta.
+- [x] Ny installation kan skapa konto, logga in, logga ut och återansluta.
 - [x] Oinloggade klienter nekas samtliga spellägen även med handskrivna
       WebSocket-meddelanden.
 - [ ] En identifierad äldre profil kan inte passera migrationsvyn utan att

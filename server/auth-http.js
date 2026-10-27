@@ -3,7 +3,7 @@ import { SESSION_ABSOLUTE_MS } from './auth-crypto.js';
 
 export const SESSION_COOKIE = 'vvc_session';
 
-export function installAuthRoutes(app, accountService, { onMigrated = () => {} } = {}) {
+export function installAuthRoutes(app, accountService, { onRegistered = () => {}, onMigrated = () => {} } = {}) {
   const json = express.json({ limit: '8kb', strict: true });
 
   app.post('/api/auth/state', json, asyncRoute(async (req, res) => {
@@ -17,6 +17,21 @@ export function installAuthRoutes(app, accountService, { onMigrated = () => {} }
     const result = await accountService.login(req.body?.username, req.body?.password, sourceIp(req));
     setSessionCookie(res, result.token, req.secure);
     res.json({ account: result.account });
+  }));
+
+  app.post('/api/auth/register', json, asyncRoute(async (req, res) => {
+    const result = await accountService.register(req.body?.username, req.body?.password, req.body?.displayName);
+    setSessionCookie(res, result.token, req.secure);
+    onRegistered(result);
+    res.status(201).json({ account: result.account, profileId: result.profileId,
+      displayName: result.displayName, recoveryCodes: result.recoveryCodes });
+  }));
+
+  app.post('/api/auth/logout', json, asyncRoute(async (req, res) => {
+    const token = readSessionCookie(req);
+    if (token) await accountService.logout(token);
+    clearSessionCookie(res, req.secure);
+    res.status(204).end();
   }));
 
   app.post('/api/auth/migrate', json, asyncRoute(async (req, res) => {
@@ -57,6 +72,12 @@ function setSessionCookie(response, token, secure) {
     'SameSite=Strict',
     `Max-Age=${Math.floor(SESSION_ABSOLUTE_MS / 1000)}`,
   ];
+  if (secure) attributes.push('Secure');
+  response.setHeader('Set-Cookie', attributes.join('; '));
+}
+
+function clearSessionCookie(response, secure) {
+  const attributes = [`${SESSION_COOKIE}=`, 'Path=/', 'HttpOnly', 'SameSite=Strict', 'Max-Age=0'];
   if (secure) attributes.push('Secure');
   response.setHeader('Set-Cookie', attributes.join('; '));
 }

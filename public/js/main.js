@@ -62,6 +62,13 @@ const migrationLoginCopy = migrationLogin?.querySelector('p');
 const migrationLoginUsername = document.getElementById('migration-login-username');
 const migrationLoginPassword = document.getElementById('migration-login-password');
 const migrationBack = document.getElementById('migration-back');
+const migrationUseRegister = document.getElementById('migration-use-register');
+const migrationRegister = document.getElementById('migration-register');
+const migrationRegisterDisplayName = document.getElementById('migration-register-display-name');
+const migrationRegisterUsername = document.getElementById('migration-register-username');
+const migrationRegisterPassword = document.getElementById('migration-register-password');
+const migrationRegisterPasswordConfirm = document.getElementById('migration-register-password-confirm');
+const migrationRegisterBack = document.getElementById('migration-register-back');
 const migrationRecovery = document.getElementById('migration-recovery');
 const migrationRecoveryCodes = document.getElementById('migration-recovery-codes');
 const migrationCopyCodes = document.getElementById('migration-copy-codes');
@@ -77,6 +84,7 @@ const trainingModeBtn = document.getElementById('training-mode');
 const openAchievementsBtn = document.getElementById('open-achievements');
 const achievementsView = document.getElementById('achievements-view');
 const openSettingsBtn = document.getElementById('open-settings');
+const logoutBtn = document.getElementById('logout');
 const settingsView = document.getElementById('settings-view');
 const matchRoom = document.getElementById('match-room');
 const matchRoomTitle = document.getElementById('match-room-title');
@@ -226,13 +234,17 @@ introForm.addEventListener('submit', (e) => {
 
 migrationForm?.addEventListener('submit', submitLegacyMigration);
 migrationLogin?.addEventListener('submit', submitMigrationLogin);
+migrationRegister?.addEventListener('submit', submitRegistration);
 migrationUseLogin?.addEventListener('click', () => showMigrationLogin(true));
 migrationBack?.addEventListener('click', () => showMigrationLogin(false));
+migrationUseRegister?.addEventListener('click', showRegistration);
+migrationRegisterBack?.addEventListener('click', () => showMigrationLogin(true));
 migrationCopyCodes?.addEventListener('click', async () => {
   await navigator.clipboard?.writeText(migrationRecoveryCodes.textContent).catch(() => {});
   migrationCopyCodes.textContent = 'Copied';
 });
 migrationContinue?.addEventListener('click', () => location.reload());
+logoutBtn?.addEventListener('click', logout);
 
 createMatchBtn.addEventListener('click', () => {
   lobbyError.textContent = '';
@@ -537,6 +549,7 @@ async function submitLegacyMigration(event) {
     localStorage.setItem('vvc.name', currentName);
     migrationClaim.hidden = true;
     migrationLogin.hidden = true;
+    migrationRegister.hidden = true;
     migrationRecoveryCodes.textContent = result.recoveryCodes.join('\n');
     migrationRecovery.hidden = false;
     migrationTitle.textContent = 'Migration complete';
@@ -564,15 +577,76 @@ async function submitMigrationLogin(event) {
   }
 }
 
+async function submitRegistration(event) {
+  event.preventDefault();
+  migrationError.textContent = '';
+  if (migrationRegisterPassword.value !== migrationRegisterPasswordConfirm.value) {
+    migrationError.textContent = 'The passwords do not match.';
+    migrationRegisterPasswordConfirm.focus();
+    return;
+  }
+  setFormBusy(migrationRegister, true);
+  try {
+    const result = await authRequest('/api/auth/register', {
+      displayName: migrationRegisterDisplayName.value,
+      username: migrationRegisterUsername.value,
+      password: migrationRegisterPassword.value,
+    });
+    currentName = result.displayName;
+    localStorage.setItem('vvc.name', currentName);
+    migrationRegister.hidden = true;
+    showRecoveryCodes(result.recoveryCodes, 'Account created', 'Your new fighter is ready.');
+  } catch (error) {
+    migrationError.textContent = error.message;
+  } finally {
+    setFormBusy(migrationRegister, false);
+  }
+}
+
+async function logout() {
+  logoutBtn.disabled = true;
+  try {
+    await authRequest('/api/auth/logout', {});
+    location.reload();
+  } catch (error) {
+    lobbyError.textContent = error.message;
+    logoutBtn.disabled = false;
+  }
+}
+
 function showMigrationLogin(show) {
   migrationError.textContent = '';
   migrationClaim.hidden = show;
   migrationLogin.hidden = !show;
+  migrationRegister.hidden = true;
   migrationTitle.textContent = show
     ? pendingLegacyMigration ? 'Sign in to another account' : 'Sign in required'
     : 'Protect your existing fighter';
   if (migrationBack) migrationBack.hidden = show && !pendingLegacyMigration;
+  if (migrationUseRegister) migrationUseRegister.hidden = pendingLegacyMigration;
   (show ? migrationLoginUsername : migrationUsername).focus();
+}
+
+function showRegistration() {
+  if (pendingLegacyMigration) return;
+  migrationError.textContent = '';
+  migrationClaim.hidden = true;
+  migrationLogin.hidden = true;
+  migrationRegister.hidden = false;
+  migrationTitle.textContent = 'Create account';
+  migrationCopy.textContent = 'Choose a fighter name and sign-in details to enter the arena.';
+  migrationRegisterDisplayName.focus();
+}
+
+function showRecoveryCodes(codes, title, copy) {
+  migrationClaim.hidden = true;
+  migrationLogin.hidden = true;
+  migrationRegister.hidden = true;
+  migrationRecoveryCodes.textContent = codes.join('\n');
+  migrationRecovery.hidden = false;
+  migrationTitle.textContent = title;
+  migrationCopy.textContent = copy;
+  migrationCopyCodes.focus();
 }
 
 async function authRequest(url, body) {

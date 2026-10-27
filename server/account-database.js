@@ -77,7 +77,7 @@ export class AccountDatabase {
     }
   }
 
-  createAccount({ usernameNormalized, usernameDisplay, passwordHash, recoveryCodeHashes, now }) {
+  createAccount({ usernameNormalized, usernameDisplay, displayName, passwordHash, recoveryCodeHashes, tokenHash, now }) {
     this.db.exec('BEGIN IMMEDIATE');
     try {
       if (this.findAccount(usernameNormalized)) throw authError('USERNAME_TAKEN', 'Username is already in use');
@@ -85,10 +85,23 @@ export class AccountDatabase {
         (username_normalized, username_display, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`)
         .run(usernameNormalized, usernameDisplay, passwordHash, now, now);
       const accountId = Number(inserted.lastInsertRowid);
+      const next = this.db.prepare("SELECT value FROM schema_meta WHERE key = 'next_profile_id'").get();
+      const highest = Number(this.db.prepare('SELECT COALESCE(MAX(profile_id), 0) AS id FROM profiles').get().id);
+      const profileId = Math.max(1, Number(next?.value) || 1, highest + 1);
+      this.db.prepare(`INSERT INTO profiles (
+        profile_id, account_id, display_name, points, play_ms, seen, last_seen_at,
+        cleo_play_ms, viking_play_ms, stats_json, achievements_json, created_at, migrated_at
+      ) VALUES (?, ?, ?, 0, 0, 0, 0, 0, 0, '{}', '{"unlocked":{}}', ?, ?)`)
+        .run(profileId, accountId, displayName, now, now);
+      this.db.prepare(`INSERT INTO schema_meta(key, value) VALUES ('next_profile_id', ?)
+        ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run(String(profileId + 1));
       const addCode = this.db.prepare('INSERT INTO recovery_codes(account_id, code_hash, created_at) VALUES (?, ?, ?)');
       for (const codeHash of recoveryCodeHashes) addCode.run(accountId, codeHash, now);
+      this.db.prepare(`INSERT INTO sessions(token_hash, account_id, created_at, last_used_at, expires_at)
+        VALUES (?, ?, ?, ?, ?)`).run(tokenHash, accountId, now, now, now + SESSION_IDLE_MS);
       this.db.exec('COMMIT');
-      return publicAccount({ account_id: accountId, username_display: usernameDisplay, status: 'active' });
+      return { account: publicAccount({ account_id: accountId, username_display: usernameDisplay, status: 'active' }),
+        profileId, displayName };
     } catch (error) {
       this.db.exec('ROLLBACK');
       if (String(error.message).includes('accounts.username_normalized')) throw authError('USERNAME_TAKEN', 'Username is already in use');
