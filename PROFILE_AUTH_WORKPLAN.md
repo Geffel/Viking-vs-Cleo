@@ -221,12 +221,12 @@ servern måste upprätthålla spärren.
 - [x] Ny installation kan skapa konto, logga in, logga ut och återansluta.
 - [x] Oinloggade klienter nekas samtliga spellägen även med handskrivna
       WebSocket-meddelanden.
-- [ ] En identifierad äldre profil kan inte passera migrationsvyn utan att
+- [x] En identifierad äldre profil kan inte passera migrationsvyn utan att
       migrera eller logga in på ett annat befintligt konto.
 - [ ] Två samtidiga anspråk kan inte migrera samma profil två gånger.
 - [ ] Ett visningsnamn räcker aldrig för att ta över en profil.
 - [ ] Dubbletter bland äldre visningsnamn kan migreras till skilda konton.
-- [x] Profil-ID, totalsummor, achievements och motståndarrelationer är identiska
+- [ ] Profil-ID, totalsummor, achievements och motståndarrelationer är identiska
       efter dataimporten.
 - [ ] Om import eller verifiering misslyckas startar servern inte mot en
       halvfärdig databas.
@@ -253,7 +253,8 @@ tyst försvagas.
 - [x] Implementera konto-, lösenords- och sessionslagret.
 - [x] Implementera det obligatoriska migrationsflödet.
 - [x] Spärra alla spellägen bakom serververifierad session.
-- [x] Genomför importrepetition mot en kopia av verkliga data.
+- [ ] Genomför importrepetition mot en kopia av verkliga data.
 - [x] Ta backup, stoppa servern, kör slutlig import och verifiera.
 - [ ] Driftsätt med rollbackmöjlighet och följ upp köfel, inloggningsfel och
       ticktider.
+-

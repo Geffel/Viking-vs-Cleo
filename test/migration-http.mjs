@@ -28,6 +28,33 @@ try {
   assert.equal(pending.data.migration.profileId, 7);
   assert.equal(pending.data.migration.displayName, 'Old Fighter');
 
+  const registeredOther = await post(httpUrl, '/api/auth/register', {
+    displayName: 'Other Fighter', username: 'other.fighter', password: 'other account password 123',
+  });
+  assert.equal(registeredOther.response.status, 201);
+  assert.notEqual(registeredOther.data.profileId, 7);
+
+  const loggedInOther = await post(httpUrl, '/api/auth/login', {
+    username: 'other.fighter', password: 'other account password 123',
+  });
+  assert.equal(loggedInOther.response.status, 200);
+  const otherCookie = loggedInOther.response.headers.get('set-cookie').split(';', 1)[0];
+  const otherState = await post(httpUrl, '/api/auth/state', { clientId: 'browser-legacy-id' }, otherCookie);
+  assert.equal(otherState.data.authenticated, true,
+    'a browser with a pending legacy profile may sign in to another existing account');
+  assert.equal(otherState.data.session.profileId, registeredOther.data.profileId);
+  assert.equal(otherState.data.migration, null);
+  const identifiedOther = await identifyWithCookie(server.url, server.origin, otherCookie);
+  assert.equal(identifiedOther.profileId, registeredOther.data.profileId);
+  assert.equal(identifiedOther.name, 'Other Fighter');
+
+  const stillPending = await post(httpUrl, '/api/auth/state', { clientId: 'browser-legacy-id' });
+  assert.equal(stillPending.data.authenticated, false);
+  assert.equal(stillPending.data.migration.profileId, 7,
+    'signing in elsewhere must not unlock or consume the legacy profile');
+  assert.equal(await rejectedWebSocket(server.url, server.origin), 401,
+    'the pending legacy identity cannot bypass migration with an anonymous game connection');
+
   const migrated = await post(httpUrl, '/api/auth/migrate', {
     clientId: 'browser-legacy-id', username: 'old.fighter', password: 'migration password 123',
   });
@@ -59,7 +86,7 @@ try {
   assert.equal(identified.profileId, 7, 'the first session owns the unchanged profile ID');
   assert.equal(identified.name, 'Old Fighter', 'the account session keeps the profile display name');
 
-  console.log('MIGRATION HTTP TESTS OK: blocking lookup, atomic claim, session cookie and profile ownership work end to end');
+  console.log('MIGRATION HTTP TESTS OK: blocking lookup, alternate login, atomic claim, session cookie and profile ownership work end to end');
 } finally {
   await server?.stop();
   await rm(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
