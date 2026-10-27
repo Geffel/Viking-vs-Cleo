@@ -68,3 +68,18 @@ achievement-digesten
 och relationsdigesten
 `4e0abed8d7904a9f1752cbf3a44ab37fbd7cbe56f171e0346b5496fb0612dd0a`.
 Det visar att identiteterna och datan, inte bara antalen, överensstämde.
+
+## Slutimport 2026-10-27
+
+Serverport 3000 var stängd före importen. Den verifierade källfilen
+`data/profiles.json` (35 061 byte, SHA-256
+`b072dfa754ddfb1d77e9b3df2d3f4e9f6eef7aa2215e6badef5cf1daaab28119`)
+importerades med projektets låsta Node 24.22.1 till `data/profiles.sqlite`.
+
+Importen skapade den skrivskyddade backupen
+`data/backups/profiles-2026-10-27T14-14-55-162Z.json` och ett skrivskyddat
+manifest. Backupens SHA-256 är identisk med källfilens. Importens kontroll och
+en separat körning av `profiles:verify` gav båda `integrity_check = ok`, noll
+foreign-key-fel och samma totalsummor och identitetsdigests som repetitionen
+ovan. Produktionsdatabasen aktiverades först efter att importkontrollen hade
+passerat.

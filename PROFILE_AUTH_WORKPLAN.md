@@ -254,6 +254,6 @@ tyst försvagas.
 - [x] Implementera det obligatoriska migrationsflödet.
 - [x] Spärra alla spellägen bakom serververifierad session.
 - [x] Genomför importrepetition mot en kopia av verkliga data.
-- [ ] Ta backup, stoppa servern, kör slutlig import och verifiera.
+- [x] Ta backup, stoppa servern, kör slutlig import och verifiera.
 - [ ] Driftsätt med rollbackmöjlighet och följ upp köfel, inloggningsfel och
       ticktider.
