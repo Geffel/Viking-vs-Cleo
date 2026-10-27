@@ -224,7 +224,7 @@ servern måste upprätthålla spärren.
 - [ ] Två samtidiga anspråk kan inte migrera samma profil två gånger.
 - [ ] Ett visningsnamn räcker aldrig för att ta över en profil.
 - [ ] Dubbletter bland äldre visningsnamn kan migreras till skilda konton.
-- [ ] Profil-ID, totalsummor, achievements och motståndarrelationer är identiska
+- [x] Profil-ID, totalsummor, achievements och motståndarrelationer är identiska
       efter dataimporten.
 - [ ] Om import eller verifiering misslyckas startar servern inte mot en
       halvfärdig databas.
@@ -251,7 +251,7 @@ tyst försvagas.
 - [x] Implementera konto-, lösenords- och sessionslagret.
 - [x] Implementera det obligatoriska migrationsflödet.
 - [x] Spärra alla spellägen bakom serververifierad session.
-- [ ] Genomför importrepetition mot en kopia av verkliga data.
+- [x] Genomför importrepetition mot en kopia av verkliga data.
 - [ ] Ta backup, stoppa servern, kör slutlig import och verifiera.
 - [ ] Driftsätt med rollbackmöjlighet och följ upp köfel, inloggningsfel och
       ticktider.

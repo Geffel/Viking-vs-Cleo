@@ -7,8 +7,11 @@ export function hashLegacyClientId(clientId) {
 export function snapshotTotals(snapshot) {
   const totals = {
     profiles: 0, points: 0, playMs: 0, kills: 0, deaths: 0,
-    matches: 0, achievements: 0, opponentRelations: 0, opponentRelationSha256: '',
+    matches: 0, achievements: 0, opponentRelations: 0,
+    profileIdSha256: '', achievementSha256: '', opponentRelationSha256: '',
   };
+  const profileIds = [];
+  const achievements = [];
   const relations = [];
   for (const profile of snapshot?.profiles ?? []) {
     totals.profiles++;
@@ -18,6 +21,8 @@ export function snapshotTotals(snapshot) {
     totals.deaths += sum(profile.deathsBy);
     totals.matches += positive(profile.stats?.matches?.played);
     totals.achievements += Object.keys(profile.achievements?.unlocked ?? {}).length;
+    profileIds.push(String(profile.profileId));
+    achievements.push(`${profile.profileId}:${canonicalJson(profile.achievements ?? { unlocked: {} })}`);
     const opponents = new Set([
       ...Object.keys(profile.killsAgainst ?? {}),
       ...Object.keys(profile.deathsBy ?? {}),
@@ -27,7 +32,9 @@ export function snapshotTotals(snapshot) {
       relations.push(`${profile.profileId}:${opponent}:${positive(profile.killsAgainst?.[opponent])}:${positive(profile.deathsBy?.[opponent])}`);
     }
   }
-  totals.opponentRelationSha256 = createHash('sha256').update(relations.sort().join('|')).digest('hex');
+  totals.profileIdSha256 = digest(profileIds.sort((a, b) => Number(a) - Number(b)).join('|'));
+  totals.achievementSha256 = digest(achievements.sort().join('|'));
+  totals.opponentRelationSha256 = digest(relations.sort().join('|'));
   return totals;
 }
 
@@ -51,3 +58,12 @@ export function validateLegacySnapshot(snapshot) {
 function positive(value) { return Math.max(0, Number(value) || 0); }
 function integer(value) { const n = Number(value); return Number.isSafeInteger(n) && n > 0 ? n : 0; }
 function sum(map) { return Object.values(map ?? {}).reduce((total, value) => total + positive(value), 0); }
+function digest(value) { return createHash('sha256').update(value).digest('hex'); }
+
+function canonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}

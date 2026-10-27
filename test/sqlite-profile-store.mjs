@@ -42,6 +42,16 @@ assert.match(manifest.sha256, /^[a-f0-9]{64}$/);
 assert.deepEqual(manifest.totals, imported.verification.actualTotals);
 await access(targetPath);
 
+const changedProfileIds = structuredClone(snapshot);
+changedProfileIds.profiles[0].profileId = 10;
+assert.equal(verifyProfileDatabase(targetPath, changedProfileIds).ok, false,
+  'verification rejects a different profile ID set even when the profile count is unchanged');
+
+const changedAchievements = structuredClone(snapshot);
+changedAchievements.profiles[0].achievements.unlocked = { another_achievement: 9 };
+assert.equal(verifyProfileDatabase(targetPath, changedAchievements).ok, false,
+  'verification rejects different achievements even when the unlocked count is unchanged');
+
 const invalid = makeSnapshot(2);
 invalid.profiles[1].profileId = 1;
 await assert.rejects(
