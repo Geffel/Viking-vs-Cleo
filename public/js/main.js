@@ -58,6 +58,7 @@ const migrationPassword = document.getElementById('migration-password');
 const migrationPasswordConfirm = document.getElementById('migration-password-confirm');
 const migrationUseLogin = document.getElementById('migration-use-login');
 const migrationLogin = document.getElementById('migration-login');
+const migrationLoginCopy = migrationLogin?.querySelector('p');
 const migrationLoginUsername = document.getElementById('migration-login-username');
 const migrationLoginPassword = document.getElementById('migration-login-password');
 const migrationBack = document.getElementById('migration-back');
@@ -190,6 +191,7 @@ let screenPromptKey = '';
 let instructionsTeam = 'cleo';
 let instructionsSection = 'abilities';
 let instructionsFocusReturn = null;
+let pendingLegacyMigration = false;
 const sharedSeatInput = {
   frame: 0,
   pads: new Map(),
@@ -216,7 +218,6 @@ const netDebug = initNetDebug(NET_DEBUG);
 initMenuClicks();
 setView('intro');
 syncMatchMusic(null);
-initLegacyMigration();
 
 introForm.addEventListener('submit', (e) => {
   e.preventDefault();
@@ -419,7 +420,7 @@ net.on('close', () => {
   hud.hide();
 });
 
-net.connect();
+if (await initLegacyMigration()) net.connect();
 
 // ------------------------------------------------------------- renderloop
 
@@ -483,14 +484,23 @@ requestAnimationFrame(frame);
 // ------------------------------------------------------------------ vyer
 
 async function initLegacyMigration() {
-  if (!migrationGate) return;
+  if (!migrationGate) return false;
   try {
     const state = await authRequest('/api/auth/state', { clientId });
-    if (state.authenticated || !state.migration) {
+    if (state.authenticated) {
       migrationGate.hidden = true;
-      return;
+      return true;
+    }
+    if (!state.migration) {
+      pendingLegacyMigration = false;
+      migrationTitle.textContent = 'Sign in required';
+      migrationCopy.textContent = 'You need an account session before you can enter the lobby or start any game mode.';
+      if (migrationLoginCopy) migrationLoginCopy.textContent = 'Sign in with an existing account to continue.';
+      showMigrationLogin(true);
+      return false;
     }
     const profile = state.migration;
+    pendingLegacyMigration = true;
     migrationTitle.textContent = 'Protect your existing fighter';
     migrationCopy.textContent = 'This browser contains an older profile. Migration is required before that profile can be used again.';
     migrationProfileName.textContent = profile.displayName;
@@ -501,10 +511,12 @@ async function initLegacyMigration() {
     migrationUsername.value = suggestedUsername(profile.displayName);
     migrationClaim.hidden = false;
     migrationUsername.focus();
+    return false;
   } catch (error) {
     migrationTitle.textContent = 'Profile check failed';
     migrationCopy.textContent = 'The server could not safely check your old profile. Reload the page to try again.';
     migrationError.textContent = error.message;
+    return false;
   }
 }
 
@@ -556,7 +568,10 @@ function showMigrationLogin(show) {
   migrationError.textContent = '';
   migrationClaim.hidden = show;
   migrationLogin.hidden = !show;
-  migrationTitle.textContent = show ? 'Sign in to another account' : 'Protect your existing fighter';
+  migrationTitle.textContent = show
+    ? pendingLegacyMigration ? 'Sign in to another account' : 'Sign in required'
+    : 'Protect your existing fighter';
+  if (migrationBack) migrationBack.hidden = show && !pendingLegacyMigration;
   (show ? migrationLoginUsername : migrationUsername).focus();
 }
 

@@ -7,6 +7,7 @@ import WebSocket from 'ws';
 import { ACHIEVEMENTS, achievementProgress } from '../shared/achievements.js';
 import { startTestServer } from './test-server.mjs';
 import { SqliteProfileDatabase } from '../server/sqlite-profile-database.js';
+import { AccountService } from '../server/account-service.js';
 import { hashLegacyClientId } from '../server/profile-snapshot.js';
 
 const TIME_SCALE = 10;
@@ -23,8 +24,8 @@ async function until(predicate, timeoutMs = 4000) {
   return false;
 }
 
-function connect(url, { name, team = '', clientId, join = false }) {
-  const ws = new WebSocket(url);
+function connect(url, { name, team = '', clientId, cookie, join = false }) {
+  const ws = new WebSocket(url, { headers: { Origin: url.replace(/^ws/, 'http'), Cookie: cookie } });
   const client = { ws, name, clientId, id: 0, me: null, state: null, feed: [] };
   ws.on('message', (raw) => {
     const message = JSON.parse(raw);
@@ -36,6 +37,7 @@ function connect(url, { name, team = '', clientId, join = false }) {
     }
   });
   client.ready = once(ws, 'open').then(() => {
+    ws.send(JSON.stringify({ t: 'identify', name, clientId }));
     if (join) ws.send(JSON.stringify({ t: 'join', name, team, clientId }));
   });
   client.send = (message) => ws.send(JSON.stringify(message));
@@ -79,12 +81,12 @@ function assertKillTotals(snapshot, expectedKills, stage, expectedDeaths = 0) {
   assert.equal(achievementProgress(noMercy, snapshot.profile).cur, expectedKills, `${stage}: achievements preserve kills`);
 }
 
-async function savedPoints(dataDir) {
+async function savedPoints(dataDir, profileId) {
   try {
     const database = new SqliteProfileDatabase(path.join(dataDir, 'profiles.sqlite'), { readOnly: true });
     try {
       const data = database.load();
-      return data.profiles.find((profile) => profile.clientIdHash === hashLegacyClientId('kill-attacker'))?.points ?? 0;
+      return data.profiles.find((profile) => profile.profileId === profileId)?.points ?? 0;
     } finally {
       database.close();
     }
@@ -102,12 +104,14 @@ try {
     timeScale: TIME_SCALE,
     dataDir,
     env: { VVC_AUTOSAVE_MS: String(AUTOSAVE_MS) },
+    authenticatedProfiles: ['Kill attacker', 'Kill victim'],
   });
+  const attackerCookie = server.authCookies[0];
   const attacker = connect(server.url, {
-    name: 'Kill attacker', team: 'cleo', clientId: 'kill-attacker', join: true,
+    name: 'Kill attacker', team: 'cleo', clientId: 'kill-attacker', cookie: attackerCookie, join: true,
   });
   const victim = connect(server.url, {
-    name: 'Kill victim', team: 'viking', clientId: 'kill-victim', join: true,
+    name: 'Kill victim', team: 'viking', clientId: 'kill-victim', cookie: server.authCookies[1], join: true,
   });
   sockets.add(attacker.ws);
   sockets.add(victim.ws);
@@ -133,11 +137,11 @@ try {
   victim.send({ t: 'move', l: false, r: false });
   assert.ok(await until(() => attacker.feed.some((kill) => kill.victim === victim.name)), 'kill is published');
 
-  assert.equal(await savedPoints(dataDir), 0, 'the kill has not reached the autosave checkpoint yet');
+  assert.equal(await savedPoints(dataDir, 1), 0, 'the kill has not reached the autosave checkpoint yet');
   assertKillTotals(await profileSnapshot(attacker), 1, 'before checkpoint');
 
   assert.ok(
-    await until(async () => (await savedPoints(dataDir)) === 1, AUTOSAVE_MS + 2000),
+    await until(async () => (await savedPoints(dataDir, 1)) === 1, AUTOSAVE_MS + 2000),
     'the autosave checkpoint persists the kill',
   );
   assertKillTotals(await profileSnapshot(attacker), 1, 'after checkpoint');
@@ -145,7 +149,9 @@ try {
   attacker.ws.close();
   await once(attacker.ws, 'close');
   sockets.delete(attacker.ws);
-  const reconnected = connect(server.url, { name: attacker.name, clientId: attacker.clientId });
+  const reconnected = connect(server.url, {
+    name: attacker.name, clientId: attacker.clientId, cookie: server.authCookies[0],
+  });
   sockets.add(reconnected.ws);
   await reconnected.ready;
   assertKillTotals(await profileSnapshot(reconnected), 1, 'after disconnect');
@@ -157,7 +163,7 @@ try {
   const profilesFile = path.join(dataDir, 'profiles.sqlite');
   const database = new SqliteProfileDatabase(profilesFile);
   const stored = database.load();
-  const template = stored.profiles.find((profile) => profile.clientIdHash === hashLegacyClientId(attacker.clientId));
+  const template = stored.profiles.find((profile) => profile.profileId === 1);
   const statsOnly = structuredClone(template);
   statsOnly.clientIdHash = hashLegacyClientId('legacy-stats-only');
   statsOnly.profileId = stored.nextProfileId++;
@@ -181,19 +187,39 @@ try {
   database.replaceSnapshot(stored, { validate: true });
   database.close();
 
+  const accounts = new AccountService({ dataDir });
+  await accounts.open();
+  const legacyStatsLogin = await accounts.migrateLegacyProfile(
+    'legacy-stats-only', 'legacy.stats', 'legacy stats password',
+  );
+  const legacyPointsLogin = await accounts.migrateLegacyProfile(
+    'legacy-points-only', 'legacy.points', 'legacy points password',
+  );
+  await accounts.close();
+
   server = await startTestServer({ dataDir });
 
-  const restarted = connect(server.url, { name: attacker.name, clientId: attacker.clientId });
+  const restarted = connect(server.url, {
+    name: attacker.name, clientId: attacker.clientId, cookie: attackerCookie,
+  });
   sockets.add(restarted.ws);
   await restarted.ready;
   assertKillTotals(await profileSnapshot(restarted), 1, 'after server restart');
 
-  const legacyStats = connect(server.url, { name: statsOnly.name, clientId: 'legacy-stats-only' });
+  const legacyStats = connect(server.url, {
+    name: statsOnly.name,
+    clientId: 'legacy-stats-only',
+    cookie: `vvc_session=${encodeURIComponent(legacyStatsLogin.token)}`,
+  });
   sockets.add(legacyStats.ws);
   await legacyStats.ready;
   assertKillTotals(await profileSnapshot(legacyStats), 7, 'legacy combat stats', 4);
 
-  const legacyPoints = connect(server.url, { name: pointsOnly.name, clientId: 'legacy-points-only' });
+  const legacyPoints = connect(server.url, {
+    name: pointsOnly.name,
+    clientId: 'legacy-points-only',
+    cookie: `vvc_session=${encodeURIComponent(legacyPointsLogin.token)}`,
+  });
   sockets.add(legacyPoints.ws);
   await legacyPoints.ready;
   assertKillTotals(await profileSnapshot(legacyPoints), 5, 'legacy points');

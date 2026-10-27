@@ -58,9 +58,10 @@ function printResult(result) {
 async function runSmoke() {
   let server;
   try {
-    server = await startTestServer({ timeScale: smokeScale });
+    server = await startTestServer({ timeScale: smokeScale, authenticatedProfiles: ['Katten', 'Bjorn'] });
     return await runNode('smoke', 'test/smoke.mjs', {
       URL: server.url,
+      AUTH_COOKIES: JSON.stringify(server.authCookies),
       SMOKE_TIME_SCALE: String(smokeScale),
     });
   } catch (error) {

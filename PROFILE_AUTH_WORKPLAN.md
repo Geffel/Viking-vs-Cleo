@@ -217,7 +217,7 @@ servern måste upprätthålla spärren.
 ## Delarbete F – test och driftsättning
 
 - [ ] Ny installation kan skapa konto, logga in, logga ut och återansluta.
-- [ ] Oinloggade klienter nekas samtliga spellägen även med handskrivna
+- [x] Oinloggade klienter nekas samtliga spellägen även med handskrivna
       WebSocket-meddelanden.
 - [ ] En identifierad äldre profil kan inte passera migrationsvyn utan att
       migrera eller logga in på ett annat befintligt konto.
@@ -250,7 +250,7 @@ tyst försvagas.
 - [x] Implementera SQLite-schema, skrivkö och verifierbar import.
 - [x] Implementera konto-, lösenords- och sessionslagret.
 - [x] Implementera det obligatoriska migrationsflödet.
-- [ ] Spärra alla spellägen bakom serververifierad session.
+- [x] Spärra alla spellägen bakom serververifierad session.
 - [ ] Genomför importrepetition mot en kopia av verkliga data.
 - [ ] Ta backup, stoppa servern, kör slutlig import och verifiera.
 - [ ] Driftsätt med rollbackmöjlighet och följ upp köfel, inloggningsfel och

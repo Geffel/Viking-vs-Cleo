@@ -76,7 +76,7 @@ app.use(
 app.use('/shared', express.static(path.join(ROOT, 'shared')));
 
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server, maxPayload: MAX_MESSAGE_BYTES });
+const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE_BYTES });
 
 // Legacy-spelet finns kvar for direktjoin-vagen, men lobby-matcher far egna
 // Game-instanser nar deras countdown startar.
@@ -84,7 +84,6 @@ const game = new Game({ clock: gameNow });
 const matchGames = new Map();
 const matches = new MatchRegistry();
 const profiles = new Map();
-const retiredLegacyHashes = new Set();
 const profileStore = new SqliteProfileStore({ dataDir: DATA_DIR });
 const accountService = new AccountService({ dataDir: DATA_DIR });
 const profileStatistics = new ProfileStatistics({ getProfileById });
@@ -114,32 +113,40 @@ installAuthRoutes(app, accountService, {
   onMigrated(clientId, result) {
     const clientIdHash = hashLegacyClientId(clientId);
     const profile = profiles.get(clientIdHash);
-    retiredLegacyHashes.add(clientIdHash);
     if (profile) {
       profiles.delete(clientIdHash);
       profile.clientIdHash = '';
       profiles.set(`account:${result.profileId}`, profile);
     }
-    for (const socket of wss.clients) {
-      if (!socket.clientId || hashLegacyClientId(socket.clientId) !== clientIdHash) continue;
-      if (socket.playerId) removePlayerSession(socket);
-      if (socket.matchId) leaveLobbyMatch(socket);
-      socket.clientId = null;
-      socket.profileId = 0;
-      send(socket, { t: 'appError', message: 'This profile was migrated. Reconnect with its account session.' });
-    }
   },
 });
 
-wss.on('connection', async (ws, request) => {
-  let authSession = null;
+server.on('upgrade', async (request, socket, head) => {
+  socket.on('error', () => {});
+  if (!isAllowedWebSocketOrigin(request)) {
+    rejectWebSocketUpgrade(socket, 403, 'Forbidden');
+    return;
+  }
+
   const sessionToken = readSessionCookie(request);
+  let authSession = null;
   if (sessionToken) {
     try { authSession = await accountService.verifySession(sessionToken); } catch { authSession = null; }
   }
+  if (!authSession?.accountId || !authSession?.profileId || !getProfileById(authSession.profileId)) {
+    rejectWebSocketUpgrade(socket, 401, 'Authentication required');
+    return;
+  }
+
+  wss.handleUpgrade(request, socket, head, (ws) => {
+    wss.emit('connection', ws, request, authSession);
+  });
+});
+
+wss.on('connection', (ws, _request, authSession) => {
   ws.sessionId = nextSessionId++;
-  ws.accountId = authSession?.accountId ?? null;
-  ws.authProfileId = authSession?.profileId ?? null;
+  ws.accountId = authSession.accountId;
+  ws.authProfileId = authSession.profileId;
   ws.name = '';
   ws.hasLoggedJoin = false;
   ws.clientId = null;
@@ -197,13 +204,18 @@ wss.on('connection', async (ws, request) => {
 });
 
 function handleMessage(ws, msg) {
+  if (!ws.accountId || !ws.authProfileId) {
+    send(ws, { t: 'appError', code: 'AUTH_REQUIRED', message: 'Authentication required.' });
+    ws.close(1008, 'Authentication required');
+    return;
+  }
   switch (msg.t) {
     case 'clientPing': {
       send(ws, { t: 'clientPong', id: Math.max(0, Number(msg.id) || 0), serverNow: Date.now() });
       break;
     }
     case 'identify': {
-      identifySocket(ws, msg);
+      identifySocket(ws);
       send(ws, {
         t: 'identified',
         serverNow: Date.now(),
@@ -457,13 +469,13 @@ function handleMessage(ws, msg) {
       break;
     }
     case 'join': {
+      if (!requireIdentity(ws)) return;
       if (ws.playerId) return;
-      const requestedName = cleanName(msg.name);
       const team = TEAM_IDS.includes(msg.team) ? msg.team : game.suggestTeam();
-      const identity = identityForSocket(ws, msg.clientId, requestedName);
-      const name = ws.authProfileId ? getProfileById(identity.profileId)?.name ?? requestedName : requestedName;
+      const identity = identityForSocket(ws);
+      const name = getProfileById(identity.profileId).name;
       ws.name = name;
-      ws.clientId = identity.clientId;
+      ws.clientId = null;
       ws.profileId = identity.profileId;
       if (ws.matchId) leaveLobbyMatch(ws);
       const p = game.addPlayer(name, team, identity);
@@ -500,12 +512,11 @@ function handleMessage(ws, msg) {
   }
 }
 
-function identifySocket(ws, msg) {
-  const name = cleanName(msg.name);
-  const accountProfile = ws.authProfileId ? getProfileById(ws.authProfileId) : null;
-  const identity = identityForSocket(ws, msg.clientId, name);
-  ws.name = accountProfile?.name ?? name;
-  ws.clientId = identity.clientId;
+function identifySocket(ws) {
+  const accountProfile = getProfileById(ws.authProfileId);
+  const identity = identityForSocket(ws);
+  ws.name = accountProfile.name;
+  ws.clientId = null;
   ws.profileId = identity.profileId;
 
   if (!ws.hasLoggedJoin) {
@@ -517,21 +528,22 @@ function identifySocket(ws, msg) {
     const match = matches.get(ws.matchId);
     const row = match?.players.get(ws.sessionId);
     if (row) {
-      row.n = name;
+      row.n = ws.name;
       row.profileId = ws.profileId;
       match.updatedAt = Date.now();
     }
   }
 }
 
-function identityForSocket(ws, rawClientId, name) {
-  if (ws.authProfileId && getProfileById(ws.authProfileId)) {
-    return { clientId: null, profileId: ws.authProfileId };
-  }
-  return resolveIdentity(rawClientId, name);
+function identityForSocket(ws) {
+  return { clientId: null, profileId: ws.authProfileId };
 }
 
 function requireIdentity(ws) {
+  if (!ws.accountId || !ws.authProfileId || !getProfileById(ws.authProfileId)) {
+    send(ws, { t: 'appError', code: 'AUTH_REQUIRED', message: 'Authentication required.' });
+    return false;
+  }
   if (ws.name) return true;
   send(ws, { t: 'appError', message: 'Enter a name first.' });
   return false;
@@ -900,27 +912,6 @@ function cleanSeatId(raw) {
   return LOCAL_SEAT_IDS.includes(id) ? id : '';
 }
 
-function resolveIdentity(rawClientId, name) {
-  const clientId = cleanClientId(rawClientId);
-  if (!clientId) return { clientId: null, profileId: 0 };
-
-  const clientIdHash = hashLegacyClientId(clientId);
-  if (retiredLegacyHashes.has(clientIdHash)) return { clientId: null, profileId: 0 };
-  let profile = profiles.get(clientIdHash);
-  if (!profile) {
-    profile = createProfile(nextProfileId++, name);
-    profile.clientIdHash = clientIdHash;
-    profiles.set(clientIdHash, profile);
-    gameLog('PROFILE', `Created #${profile.profileId} for ${profile.name}.`);
-  }
-
-  profile.name = name;
-  profile.seen++;
-  profile.lastSeenAt = Date.now();
-  saveProfiles();
-  return { clientId, profileId: profile.profileId };
-}
-
 function activateProfile(player) {
   const profile = getProfileById(player.profileId);
   if (!profile) return;
@@ -1150,7 +1141,6 @@ async function loadProfiles() {
       const hasLegacyId = /^[a-f0-9]{64}$/.test(clientIdHash);
       const migrated = row.legacyStatus === 'migrated' || !!row.accountId;
       if (!hasLegacyId && !migrated) continue;
-      if (migrated && hasLegacyId) retiredLegacyHashes.add(clientIdHash);
       const profile = createProfile(profileId, row.name);
       profile.clientIdHash = migrated ? '' : clientIdHash;
       profile.points = Math.max(0, Number(row.points) || 0);
@@ -1466,6 +1456,29 @@ function favoriteCharacter(teamPlayMs) {
 
 function send(ws, obj) {
   if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(obj));
+}
+
+function isAllowedWebSocketOrigin(request) {
+  const host = String(request.headers.host ?? '').toLowerCase();
+  const origin = String(request.headers.origin ?? '');
+  if (!host || !origin) return false;
+  try {
+    const url = new URL(origin);
+    return (url.protocol === 'http:' || url.protocol === 'https:') && url.host.toLowerCase() === host;
+  } catch {
+    return false;
+  }
+}
+
+function rejectWebSocketUpgrade(socket, status, message) {
+  if (!socket.writable) return socket.destroy();
+  const body = `${message}\n`;
+  socket.end(
+    `HTTP/1.1 ${status} ${message}\r\n` +
+    'Connection: close\r\n' +
+    'Content-Type: text/plain; charset=utf-8\r\n' +
+    `Content-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`,
+  );
 }
 
 function broadcastTo(str, predicate) {

@@ -4,12 +4,15 @@ import { MAPS, MATCH_PHASES } from '../shared/constants.js';
 import { claimRoundRegistration, clearRoundRegistration } from '../server/round-registration.js';
 import { startTestServer } from './test-server.mjs';
 
-const server = await startTestServer();
+const server = await startTestServer({ authenticatedProfiles: ['Round host', 'Round guest'] });
 const sockets = [];
+let nextCookie = 0;
 
 function connect() {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(server.url);
+    const ws = new WebSocket(server.url, {
+      headers: { Origin: server.origin, Cookie: server.authCookies[nextCookie++] },
+    });
     sockets.push(ws);
     ws.on('error', reject);
     ws.once('open', () => resolve(ws));

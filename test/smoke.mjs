@@ -4,11 +4,13 @@ import WebSocket from 'ws';
 import { ABILITIES, ABILITY_TUNING, PLAYER } from '../shared/constants.js';
 
 const URL = process.env.URL || 'ws://localhost:3000';
+const ORIGIN = URL.replace(/^ws/, 'http');
+const AUTH_COOKIES = JSON.parse(process.env.AUTH_COOKIES || '[]');
 const TIME_SCALE = Math.max(1, Number(process.env.SMOKE_TIME_SCALE) || 1);
 const scaled = (ms, floor = 20) => Math.max(floor, Math.ceil(ms / TIME_SCALE));
 
-function client(name, team) {
-  const ws = new WebSocket(URL);
+function client(name, team, cookie) {
+  const ws = new WebSocket(URL, { headers: { Origin: ORIGIN, Cookie: cookie } });
   const c = { ws, name, team, id: 0, me: null, state: null, feed: [], fx: [] };
   ws.on('message', (raw) => {
     const m = JSON.parse(raw);
@@ -22,6 +24,7 @@ function client(name, team) {
   });
   c.ready = new Promise((res) =>
     ws.on('open', () => {
+      ws.send(JSON.stringify({ t: 'identify', name: 'Ignored client name', clientId: 'ignored-client-id' }));
       ws.send(JSON.stringify({ t: 'join', name, team }));
       res();
     }),
@@ -46,8 +49,8 @@ const check = (label, ok, extra = '') => {
   if (!ok) fails.push(label);
 };
 
-const a = client('Katten', 'cleo');
-const b = client('Bjorn', 'viking');
+const a = client('Katten', 'cleo', AUTH_COOKIES[0]);
+const b = client('Bjorn', 'viking', AUTH_COOKIES[1]);
 await Promise.all([a.ready, b.ready]);
 await until(() => a.me && b.me);
 

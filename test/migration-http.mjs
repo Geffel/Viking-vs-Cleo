@@ -52,10 +52,10 @@ try {
   assert.equal(repeated.response.status, 409);
   assert.equal(repeated.data.error, 'LEGACY_PROFILE_UNAVAILABLE');
 
-  const legacyOnly = await identifyWithCookie(server.url, '');
-  assert.equal(legacyOnly.profileId, 0, 'the retired legacy identity no longer grants profile access');
+  assert.equal(await rejectedWebSocket(server.url, server.origin), 401,
+    'the retired legacy identity cannot open an anonymous game connection');
 
-  const identified = await identifyWithCookie(server.url, cookie);
+  const identified = await identifyWithCookie(server.url, server.origin, cookie);
   assert.equal(identified.profileId, 7, 'the first session owns the unchanged profile ID');
   assert.equal(identified.name, 'Old Fighter', 'the account session keeps the profile display name');
 
@@ -73,9 +73,9 @@ async function post(base, route, body, cookie = '') {
   return { response, data: await response.json() };
 }
 
-function identifyWithCookie(url, cookie) {
+function identifyWithCookie(url, origin, cookie) {
   return new Promise((resolve, reject) => {
-    const socket = new WebSocket(url, cookie ? { headers: { Cookie: cookie } } : {});
+    const socket = new WebSocket(url, { headers: { Origin: origin, Cookie: cookie } });
     const timer = setTimeout(() => { socket.terminate(); reject(new Error('WebSocket migration test timed out')); }, 5000);
     socket.on('message', (raw) => {
       const message = JSON.parse(raw.toString());
@@ -87,5 +87,19 @@ function identifyWithCookie(url, cookie) {
       }
     });
     socket.on('error', (error) => { clearTimeout(timer); reject(error); });
+  });
+}
+
+function rejectedWebSocket(url, origin) {
+  return new Promise((resolve, reject) => {
+    const socket = new WebSocket(url, { headers: { Origin: origin } });
+    socket.once('unexpected-response', (_request, response) => {
+      response.resume();
+      resolve(response.statusCode);
+    });
+    socket.once('open', () => { socket.terminate(); reject(new Error('Anonymous WebSocket unexpectedly opened')); });
+    socket.once('error', (error) => {
+      if (!String(error.message).includes('Unexpected server response')) reject(error);
+    });
   });
 }

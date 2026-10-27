@@ -4,11 +4,11 @@ import WebSocket from 'ws';
 import { startTestServer } from './test-server.mjs';
 import { MAX_MESSAGE_BYTES } from '../server/protocol.js';
 
-const server = await startTestServer();
+const server = await startTestServer({ authenticatedProfiles: ['Protocol test'] });
 const sockets = [];
-function connect() {
+function connect(cookie = server.authCookies[0], origin = server.origin) {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(server.url);
+    const ws = new WebSocket(server.url, { headers: { Origin: origin, ...(cookie ? { Cookie: cookie } : {}) } });
     sockets.push(ws);
     ws.on('error', reject);
     ws.once('open', () => resolve(ws));
@@ -25,6 +25,10 @@ function message(ws, predicate) {
   });
 }
 try {
+  assert.equal(await rejectedUpgrade('', server.origin), 401, 'a handwritten anonymous WebSocket is rejected');
+  assert.equal(await rejectedUpgrade(server.authCookies[0], 'https://attacker.invalid'), 403,
+    'a valid cookie cannot be used from a foreign origin');
+
   const ws = await connect();
   for (const raw of ['null', '[]', 'true', '42', '"text"', '{}', '{',
     '{"t":"constructor"}', '{"t":"identify","name":{}}', '{"t":"move","l":{},"r":true}',
@@ -33,6 +37,12 @@ try {
   const pong = message(ws, (m) => m.t === 'clientPong' && m.id === 7);
   ws.send(JSON.stringify({ t: 'clientPing', id: 7 }));
   await pong;
+
+  const identified = message(ws, (m) => m.t === 'identified');
+  ws.send(JSON.stringify({ t: 'identify', name: 'Forged name', clientId: 'forged-client-id' }));
+  const identity = await identified;
+  assert.equal(identity.name, 'Protocol test', 'display name comes from the authenticated profile');
+  assert.equal(identity.profileId, 1, 'profile ID comes from the authenticated session');
 
   const joined = message(ws, (m) => m.t === 'joined');
   ws.send(JSON.stringify({ t: 'join', name: 'Protocol test', team: 'cleo' }));
@@ -52,8 +62,22 @@ try {
   const alive = message(ws, (m) => m.t === 'clientPong' && m.id === 8);
   ws.send(JSON.stringify({ t: 'clientPing', id: 8 }));
   await alive;
-  console.log('SERVER PROTOCOL TESTS OK: malformed JSON/fields, binary/oversized frames, valid timed melee, server survives');
+  console.log('SERVER PROTOCOL TESTS OK: auth/origin gate, session identity, malformed frames and valid timed melee work');
 } finally {
   for (const ws of sockets) ws.terminate();
   await server.stop();
+}
+
+function rejectedUpgrade(cookie, origin) {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(server.url, { headers: { Origin: origin, ...(cookie ? { Cookie: cookie } : {}) } });
+    ws.once('unexpected-response', (_request, response) => {
+      response.resume();
+      resolve(response.statusCode);
+    });
+    ws.once('open', () => { ws.terminate(); reject(new Error('Rejected WebSocket upgrade unexpectedly opened')); });
+    ws.once('error', (error) => {
+      if (!String(error.message).includes('Unexpected server response')) reject(error);
+    });
+  });
 }
