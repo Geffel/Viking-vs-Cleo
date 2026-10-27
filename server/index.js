@@ -41,7 +41,7 @@ const SCHEMA_VERSION = 4;
 
 // Hur ofta pagaende sessioners poang och speltid checkpointas till disk. En
 // hard krasch (stromavbrott, kill -9) forlorar da som mest denna tid.
-const AUTOSAVE_MS = 30000;
+const AUTOSAVE_MS = Math.max(100, Number(process.env.VVC_AUTOSAVE_MS) || 30000);
 const LEADERBOARD_BROADCAST_MS = 5000;
 const SNAPSHOT_RATE_HZ = Math.max(10, Math.min(Math.round(1000 / TICK_MS), Number(process.env.NET_SNAPSHOT_HZ) || 30));
 const SNAPSHOT_MS = 1000 / SNAPSHOT_RATE_HZ;
@@ -1757,7 +1757,9 @@ function getProfileById(profileId) {
 function buildProfileView(profile) {
   let points = profile.points;
   let playMs = profile.playMs;
-  let kills = sumCounterMap(profile.killsAgainst);
+  // Killfeed-handelser bokfors direkt i killsAgainst. Det ar darfor den enda
+  // kallan for visade kills; player.kills anvands bara for osparade poang.
+  const kills = sumCounterMap(profile.killsAgainst);
   const deaths = sumCounterMap(profile.deathsBy);
   const teamPlayMs = { ...profile.teamPlayMs };
 
@@ -1770,7 +1772,6 @@ function buildProfileView(profile) {
       const pendingKills = Math.max(0, player.kills - (active.committedKills ?? 0));
       const ms = Math.max(0, (Date.now() - active.startedAt) - (active.committedMs ?? 0));
       points += pendingKills;
-      kills += pendingKills;
       playMs += ms;
       teamPlayMs[player.team] = (teamPlayMs[player.team] ?? 0) + ms;
     }

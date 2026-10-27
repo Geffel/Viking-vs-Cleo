@@ -6,11 +6,12 @@ import { fileURLToPath } from 'node:url';
 
 // Every integration run owns its process, ephemeral port and profile directory.
 // Never send malformed protocol probes to somebody's running game server.
-export async function startTestServer({ timeScale = 1 } = {}) {
-  const dataDir = await mkdtemp(path.join(os.tmpdir(), 'vvc-net-test-'));
+export async function startTestServer({ timeScale = 1, dataDir: providedDataDir = '', env = {} } = {}) {
+  const ownsDataDir = !providedDataDir;
+  const dataDir = providedDataDir || await mkdtemp(path.join(os.tmpdir(), 'vvc-net-test-'));
   const child = spawn(process.execPath, ['server/index.js'], {
     cwd: fileURLToPath(new URL('..', import.meta.url)),
-    env: { ...process.env, PORT: '0', VVC_DATA_DIR: dataDir, GAME_TIME_SCALE: String(timeScale) },
+    env: { ...process.env, ...env, PORT: '0', VVC_DATA_DIR: dataDir, GAME_TIME_SCALE: String(timeScale) },
     stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
   });
   let output = '';
@@ -19,9 +20,11 @@ export async function startTestServer({ timeScale = 1 } = {}) {
   const stop = async () => {
     if (child.exitCode === null && child.signalCode === null) child.kill();
     await closed;
-    // Only our own flat, freshly-created directory is removed.
-    for (const name of await readdir(dataDir)) await unlink(path.join(dataDir, name));
-    await rmdir(dataDir);
+    if (ownsDataDir) {
+      // Only our own flat, freshly-created directory is removed.
+      for (const name of await readdir(dataDir)) await unlink(path.join(dataDir, name));
+      await rmdir(dataDir);
+    }
   };
   try {
     const port = await new Promise((resolve, reject) => {
@@ -35,7 +38,7 @@ export async function startTestServer({ timeScale = 1 } = {}) {
         if (match) finish(resolve, Number(match[1]));
       });
     });
-    return { url: `ws://127.0.0.1:${port}`, stop, output: () => output };
+    return { url: `ws://127.0.0.1:${port}`, dataDir, stop, output: () => output };
   } catch (error) {
     await stop();
     throw error;

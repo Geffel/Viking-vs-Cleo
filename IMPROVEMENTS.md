@@ -25,7 +25,7 @@ implementerade. Lokal rörelseförutsägelse är fortfarande öppen.
 | IMP-02 | P1 | Träffkontroll mot faktiskt ritad bild | Implementerad |
 | IMP-03 | P1 | Validera nätverksmeddelanden och begränsa paketstorlek | Implementerad |
 | IMP-04 | P2 | Registrera resultat och kart­röster för varje rond | Implementerad |
-| IMP-05 | P2 | Ta bort dubbelräkning av kills | Öppen |
+| IMP-05 | P2 | Ta bort dubbelräkning av kills | Implementerad |
 | IMP-06 | P2 | Hindra profil-ID 0 från att bli profil 1 | Öppen |
 | IMP-07 | P2 | Uppdatera delad HUD utan att bygga om hela innehållet | Öppen |
 | IMP-08 | P2 | Lokal rörelseförutsägelse och serverkorrigering | Öppen |
@@ -139,8 +139,8 @@ utan att lägga samma händelse till flera gånger i den visade totalsumman.
 
 **Klart när:**
 
-- [ ] En kill visas som en före och efter checkpoint, disconnect och serveromstart.
-- [ ] Leaderboard och achievements använder samma korrekta antal.
+- [x] En kill visas som en före och efter checkpoint, disconnect och serveromstart.
+- [x] Leaderboard och achievements använder samma korrekta antal.
 
 ## IMP-06 – Profil-ID 0 får inte mappas till profil 1
 
