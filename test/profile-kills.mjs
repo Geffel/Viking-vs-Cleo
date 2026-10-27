@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
-import { mkdtemp, readFile, readdir, unlink, rmdir } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, unlink, rmdir, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import WebSocket from 'ws';
@@ -68,11 +68,13 @@ async function profileSnapshot(client) {
   };
 }
 
-function assertSingleKill(snapshot, stage) {
-  assert.equal(snapshot.profile.kills, 1, `${stage}: profile shows one kill`);
-  assert.equal(snapshot.leaderboard?.kills, 1, `${stage}: leaderboard shows one kill`);
+function assertKillTotals(snapshot, expectedKills, stage, expectedDeaths = 0) {
+  assert.equal(snapshot.profile.kills, expectedKills, `${stage}: profile preserves kills`);
+  assert.equal(snapshot.profile.deaths, expectedDeaths, `${stage}: profile preserves deaths`);
+  assert.equal(snapshot.leaderboard?.kills, expectedKills, `${stage}: leaderboard preserves kills`);
+  assert.equal(snapshot.leaderboard?.deaths, expectedDeaths, `${stage}: leaderboard preserves deaths`);
   const noMercy = ACHIEVEMENTS.find((achievement) => achievement.id === 'no_mercy');
-  assert.equal(achievementProgress(noMercy, snapshot.profile).cur, 1, `${stage}: achievements see one kill`);
+  assert.equal(achievementProgress(noMercy, snapshot.profile).cur, expectedKills, `${stage}: achievements preserve kills`);
 }
 
 async function savedPoints(dataDir) {
@@ -125,13 +127,13 @@ try {
   assert.ok(await until(() => attacker.feed.some((kill) => kill.victim === victim.name)), 'kill is published');
 
   assert.equal(await savedPoints(dataDir), 0, 'the kill has not reached the autosave checkpoint yet');
-  assertSingleKill(await profileSnapshot(attacker), 'before checkpoint');
+  assertKillTotals(await profileSnapshot(attacker), 1, 'before checkpoint');
 
   assert.ok(
     await until(async () => (await savedPoints(dataDir)) === 1, AUTOSAVE_MS + 2000),
     'the autosave checkpoint persists the kill',
   );
-  assertSingleKill(await profileSnapshot(attacker), 'after checkpoint');
+  assertKillTotals(await profileSnapshot(attacker), 1, 'after checkpoint');
 
   attacker.ws.close();
   await once(attacker.ws, 'close');
@@ -139,19 +141,55 @@ try {
   const reconnected = connect(server.url, { name: attacker.name, clientId: attacker.clientId });
   sockets.add(reconnected.ws);
   await reconnected.ready;
-  assertSingleKill(await profileSnapshot(reconnected), 'after disconnect');
+  assertKillTotals(await profileSnapshot(reconnected), 1, 'after disconnect');
 
   for (const ws of sockets) ws.terminate();
   sockets.clear();
   await server.stop();
+
+  const profilesFile = path.join(dataDir, 'profiles.json');
+  const stored = JSON.parse(await readFile(profilesFile, 'utf8'));
+  const template = stored.profiles.find((profile) => profile.clientId === attacker.clientId);
+  const statsOnly = structuredClone(template);
+  statsOnly.clientId = 'legacy-stats-only';
+  statsOnly.profileId = stored.nextProfileId++;
+  statsOnly.name = 'Legacy stats';
+  statsOnly.points = 3;
+  delete statsOnly.killsAgainst;
+  delete statsOnly.deathsBy;
+  statsOnly.stats.combat.kills = 7;
+  statsOnly.stats.combat.deaths = 4;
+  statsOnly.achievements = { unlocked: {} };
+  const pointsOnly = structuredClone(template);
+  pointsOnly.clientId = 'legacy-points-only';
+  pointsOnly.profileId = stored.nextProfileId++;
+  pointsOnly.name = 'Legacy points';
+  pointsOnly.points = 5;
+  delete pointsOnly.killsAgainst;
+  delete pointsOnly.deathsBy;
+  delete pointsOnly.stats;
+  pointsOnly.achievements = { unlocked: {} };
+  stored.profiles.push(statsOnly, pointsOnly);
+  await writeFile(profilesFile, `${JSON.stringify(stored, null, 2)}\n`, 'utf8');
+
   server = await startTestServer({ dataDir });
 
   const restarted = connect(server.url, { name: attacker.name, clientId: attacker.clientId });
   sockets.add(restarted.ws);
   await restarted.ready;
-  assertSingleKill(await profileSnapshot(restarted), 'after server restart');
+  assertKillTotals(await profileSnapshot(restarted), 1, 'after server restart');
 
-  console.log('PROFILE KILL TESTS OK: one kill stays one across checkpoint, disconnect, restart, leaderboard and achievements');
+  const legacyStats = connect(server.url, { name: statsOnly.name, clientId: statsOnly.clientId });
+  sockets.add(legacyStats.ws);
+  await legacyStats.ready;
+  assertKillTotals(await profileSnapshot(legacyStats), 7, 'legacy combat stats', 4);
+
+  const legacyPoints = connect(server.url, { name: pointsOnly.name, clientId: pointsOnly.clientId });
+  sockets.add(legacyPoints.ws);
+  await legacyPoints.ready;
+  assertKillTotals(await profileSnapshot(legacyPoints), 5, 'legacy points');
+
+  console.log('PROFILE KILL TESTS OK: live and legacy totals survive checkpoint, disconnect and restart consistently');
 } finally {
   for (const ws of sockets) ws.terminate();
   await server?.stop();

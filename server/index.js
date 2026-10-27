@@ -1757,10 +1757,18 @@ function getProfileById(profileId) {
 function buildProfileView(profile) {
   let points = profile.points;
   let playMs = profile.playMs;
-  // Killfeed-handelser bokfors direkt i killsAgainst. Det ar darfor den enda
-  // kallan for visade kills; player.kills anvands bara for osparade poang.
-  const kills = sumCounterMap(profile.killsAgainst);
-  const deaths = sumCounterMap(profile.deathsBy);
+  // Nya killfeed-handelser bokfors direkt i bade motstandarkartan och combat-
+  // statistiken. Aldre profilversioner kan bara ha en av dessa eller points,
+  // sa det hogsta bestendiga vardet bevarar historiken utan live-dubbelrakning.
+  const kills = Math.max(
+    sumCounterMap(profile.killsAgainst),
+    Math.max(0, Number(profile.stats?.combat?.kills) || 0),
+    Math.max(0, Number(profile.points) || 0),
+  );
+  const deaths = Math.max(
+    sumCounterMap(profile.deathsBy),
+    Math.max(0, Number(profile.stats?.combat?.deaths) || 0),
+  );
   const teamPlayMs = { ...profile.teamPlayMs };
 
   const active = profile.active;
