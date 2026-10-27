@@ -9,6 +9,8 @@ $ManagerLog = Join-Path $Root "ServerManager.log"
 $ServerLog = Join-Path $Root "server.log"
 $ServerErrorLog = Join-Path $Root "server-error.log"
 
+. (Join-Path $Root "tools\local-node-runtime.ps1")
+
 $script:ServerProcess = $null
 $script:LastNightlyRestart = $null
 $script:CommandBuffer = ""
@@ -116,26 +118,11 @@ function Stop-GameServer {
 }
 
 function Start-GameServer {
-    if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
-        throw "Node.js was not found. Install Node.js and try again."
-    }
-
     if (-not (Test-Path -LiteralPath (Join-Path $Root "server\index.js"))) {
         throw "server\index.js was not found in $Root"
     }
 
-    & node (Join-Path $Root "tools\check-runtime.mjs")
-    if ($LASTEXITCODE -ne 0) {
-        throw "Unsupported Node.js runtime. Install or select the version in .nvmrc."
-    }
-
-    if (-not (Test-Path -LiteralPath (Join-Path $Root "node_modules"))) {
-        Write-Log "node_modules is missing. Running npm install..."
-        & npm install
-        if ($LASTEXITCODE -ne 0) {
-            throw "npm install failed with exit code $LASTEXITCODE."
-        }
-    }
+    $runtime = Initialize-VvcRuntime -ProjectRoot $Root
 
     $oldProcesses = @(Get-NodeListener)
     foreach ($oldProcess in $oldProcesses) {
@@ -149,7 +136,7 @@ function Start-GameServer {
     $script:LogTailPositions.Error = if (Test-Path -LiteralPath $ServerErrorLog) { (Get-Item -LiteralPath $ServerErrorLog).Length } else { 0 }
 
     $script:ServerProcess = Start-Process `
-        -FilePath "node" `
+        -FilePath $runtime.Node `
         -ArgumentList @("server/index.js") `
         -WorkingDirectory $Root `
         -RedirectStandardOutput $ServerLog `

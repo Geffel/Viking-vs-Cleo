@@ -1,5 +1,6 @@
 # Beroenden
 node_modules/
+.runtime/
 
 # Loggar
 npm-debug.log*

@@ -8,11 +8,15 @@ tester.
 
 - Produktion och utveckling använder exakt Node.js **24.22.1 (Krypton LTS)**.
   Versionen finns i `.nvmrc`, `package.json` och verifieras före `npm start`.
+- På Windows hämtar `Start.bat` vid behov den officiella ZIP-distributionen till
+  `.runtime/` och verifierar dess låsta SHA-256 före uppackning. Den lokala
+  körmiljön ändrar varken systemets `PATH` eller andra Node-installationer.
 - `node:sqlite` används utan startflagga. Databasens synkrona API får bara köras
   i den dedikerade lagringsworkern, aldrig på spellopen.
-- Uppgradering görs genom att stoppa servern, installera/välja versionen i
-  `.nvmrc`, köra `npm ci`, `npm test` och `npm run check:runtime`, och först
-  därefter starta servern igen. En ny patchversion tas inte i drift automatiskt.
+- Uppgradering görs genom att stoppa servern, uppdatera `.nvmrc`, runtime-
+  skriptets URL och checksumma samt `package.json`, köra `npm ci`, `npm test` och
+  `npm run check:runtime`, och först därefter starta servern igen. En ny
+  patchversion tas inte i drift automatiskt.
 
 ## Inloggningsnamn och lösenord
 

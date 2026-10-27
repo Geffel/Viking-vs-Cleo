@@ -5,11 +5,13 @@ alltid på servern — man skriver in namn, väljer lag och hoppar rakt in.
 
 ## Kom igång
 
-Spelet kräver exakt **Node.js 24.22.1**. Versionen är låst i `.nvmrc`; kontrollera
-installationen med `npm run check:runtime` innan första starten eller efter en
-Node-uppgradering.
+Spelet använder exakt **Node.js 24.22.1**. Vid första körningen hämtar `Start.bat`
+automatiskt en verifierad kopia till `.runtime/` och installerar paketen från
+`package-lock.json`. Installationen gäller bara spelet, kräver inte
+administratörsrättigheter och påverkar inte datorns övriga Node-installationer.
+Senare starter använder den lokala kopian och behöver normalt ingen nedladdning.
 
-Dubbelklicka på **`start-game.bat`**. Den hämtar beroenden om det behövs, startar
+Dubbelklicka på **`Start.bat`**. Den hämtar beroenden om det behövs, startar
 servern och öppnar webbläsaren. Fönstret som blir kvar *är* servern — låt det stå
 öppet så länge ni spelar.
 
@@ -21,16 +23,16 @@ servern via port 3000 och avslutar den — bra när fönstret har hamnat bakom a
 annat eller körs minimerat. Har något annat program än Node.js tagit porten lämnas
 det ifred.
 
-Kör man `start-game.bat` medan spelet redan är igång stängs den gamla servern
+Kör man `Start.bat` medan spelet redan är igång stängs den gamla servern
 först, så det blir aldrig krock om porten.
 
 > **Första gången:** Windows-brandväggen frågar om Node.js får ta emot anslutningar.
 > Tillåt på **privata nätverk**, annars kommer ingen annan dator in.
 
-Samma sak från terminalen, om man hellre vill det:
+Manuell start från terminalen kräver motsvarande Node-version:
 
 ```bash
-npm install
+npm ci
 ```
 
 ```bash
