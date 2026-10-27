@@ -16,6 +16,7 @@ const logicTests = [
   ['server-protocol', 'test/server-protocol.mjs'],
   ['round-stats', 'test/round-stats.mjs'],
   ['profile-kills', 'test/profile-kills.mjs'],
+  ['profile-attribution', 'test/profile-attribution.mjs'],
 ];
 
 const smokeScale = Number(process.env.SMOKE_TIME_SCALE || 10);

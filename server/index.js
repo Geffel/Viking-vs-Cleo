@@ -8,6 +8,7 @@ import { WebSocketServer } from 'ws';
 import { Game } from './game.js';
 import { MatchRegistry } from './matches.js';
 import { MAX_MESSAGE_BYTES, parseClientMessage } from './protocol.js';
+import { applyKillFeedToProfiles, resolveProfileReference } from './profile-ids.js';
 import { claimRoundRegistration, clearRoundRegistration } from './round-registration.js';
 import { ACHIEVEMENTS, achievementUnlockStats, evaluateAchievements, publicAchievements } from '../shared/achievements.js';
 import {
@@ -1426,8 +1427,7 @@ function inc(obj, key, amount = 1) {
 }
 
 function statProfile(ref) {
-  const profileId = Math.max(1, Number(ref?.profileId) || 0);
-  return profileId ? getProfileById(profileId) : null;
+  return resolveProfileReference(ref, getProfileById);
 }
 
 function mapStats(stats, mapId) {
@@ -1437,20 +1437,7 @@ function mapStats(stats, mapId) {
 }
 
 function processKillStats(feed) {
-  let dirty = false;
-  for (const kill of feed ?? []) {
-    const killerId = Math.max(1, Number(kill.killerProfileId) || 0);
-    const victimId = Math.max(1, Number(kill.victimProfileId) || 0);
-    if (!killerId || !victimId || killerId === victimId) continue;
-
-    const killer = getProfileById(killerId);
-    const victim = getProfileById(victimId);
-    if (!killer || !victim) continue;
-
-    killer.killsAgainst[victimId] = (killer.killsAgainst[victimId] ?? 0) + 1;
-    victim.deathsBy[killerId] = (victim.deathsBy[killerId] ?? 0) + 1;
-    dirty = true;
-  }
+  let dirty = applyKillFeedToProfiles(feed, getProfileById);
   if (dirty) {
     dirty = unlockPendingAchievements({ notify: true }) || dirty;
     saveProfiles();

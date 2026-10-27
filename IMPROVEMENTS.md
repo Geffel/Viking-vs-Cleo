@@ -26,7 +26,7 @@ implementerade. Lokal rörelseförutsägelse är fortfarande öppen.
 | IMP-03 | P1 | Validera nätverksmeddelanden och begränsa paketstorlek | Implementerad |
 | IMP-04 | P2 | Registrera resultat och kart­röster för varje rond | Implementerad |
 | IMP-05 | P2 | Ta bort dubbelräkning av kills | Implementerad |
-| IMP-06 | P2 | Hindra profil-ID 0 från att bli profil 1 | Öppen |
+| IMP-06 | P2 | Hindra profil-ID 0 från att bli profil 1 | Implementerad |
 | IMP-07 | P2 | Uppdatera delad HUD utan att bygga om hela innehållet | Öppen |
 | IMP-08 | P2 | Lokal rörelseförutsägelse och serverkorrigering | Öppen |
 | IMP-09 | P2 | Kontrollera köbildning hos långsamma nätverksklienter | Öppen |
@@ -149,15 +149,18 @@ omvandlar avsaknad av profil till ID 1. Liknande omvandling finns i
 `processKillStats`. Händelser utan riktig profil kan därför påverka första
 användaren i kodvägar där statistik är aktiverad.
 
-**Förslag:** behandla saknad/ogiltig profil som frånvaro och avsluta uppdateringen.
-Kontrollera motsvarande uppslagningar konsekvent.
+**Implementerat:** saknade och ogiltiga profil-ID:n behandlas som frånvaro i
+både stridshändelser och killstatistik. Giltiga positiva heltals-ID:n behåller
+det befintliga beteendet och lagringsformatet är oförändrat.
 
-**Berört:** [server/index.js](server/index.js): `statProfile`, `processKillStats`.
+**Berört:** [server/index.js](server/index.js): `statProfile`, `processKillStats`;
+[server/profile-ids.js](server/profile-ids.js);
+[test/profile-attribution.mjs](test/profile-attribution.mjs).
 
 **Klart när:**
 
-- [ ] Händelser med ID 0 eller saknat ID lämnar alla sparade profiler oförändrade.
-- [ ] Gäster och registrerade spelare fungerar tillsammans utan felaktig attribution.
+- [x] Händelser med ID 0 eller saknat ID lämnar alla sparade profiler oförändrade.
+- [x] Gäster och registrerade spelare fungerar tillsammans utan felaktig attribution.
 
 ## IMP-07 – Delad HUD utan full ombyggnad
 
@@ -377,5 +380,7 @@ Använd ID:t i uppgifter, exempelvis: **”Ta IMP-07”**. Vid arbete med en pun
 
 ## Ändringslogg
 
+- **2026-10-27:** IMP-06 implementerad och regressionstestad utan ändring av
+  profilernas lagringsformat.
 - **2026-10-27:** Arbetsdokument skapat. Tidigare implementerade IMP-02, IMP-03
   och IMP-15 markerade. Resterande fynd och föreslagna förbättringar samlade.
