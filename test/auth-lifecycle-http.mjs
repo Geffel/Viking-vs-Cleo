@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { once } from 'node:events';
 import WebSocket from 'ws';
 import { startTestServer } from './test-server.mjs';
 
@@ -26,8 +27,11 @@ try {
   assert.equal(active.data.session.profileId, 1);
   assert.equal((await identify(server.url, server.origin, firstCookie)).name, 'New Fighter');
 
+  const activeSocket = await openIdentified(server.url, server.origin, firstCookie);
+  const revoked = once(activeSocket.socket, 'close', { signal: AbortSignal.timeout(5000) });
   const loggedOut = await post(httpUrl, '/api/auth/logout', {}, firstCookie, false);
   assert.equal(loggedOut.response.status, 204);
+  assert.equal((await revoked)[0], 1008, 'logout closes an already connected game socket');
   assert.match(loggedOut.response.headers.get('set-cookie'), /^vvc_session=;/);
   const afterLogout = await post(httpUrl, '/api/auth/state', { clientId: 'fresh-browser' }, firstCookie);
   assert.equal(afterLogout.data.authenticated, false);
@@ -64,6 +68,13 @@ function cookieFrom(response) {
 }
 
 function identify(url, origin, cookie) {
+  return openIdentified(url, origin, cookie).then(({ socket, message }) => {
+    socket.close();
+    return message;
+  });
+}
+
+function openIdentified(url, origin, cookie) {
   return new Promise((resolve, reject) => {
     const socket = new WebSocket(url, { headers: { Origin: origin, Cookie: cookie } });
     const timer = setTimeout(() => { socket.terminate(); reject(new Error('WebSocket auth test timed out')); }, 5000);
@@ -72,8 +83,7 @@ function identify(url, origin, cookie) {
       if (message.t === 'welcome') socket.send(JSON.stringify({ t: 'identify', name: 'Forged', clientId: 'forged' }));
       if (message.t === 'identified') {
         clearTimeout(timer);
-        socket.close();
-        resolve(message);
+        resolve({ socket, message });
       }
     });
     socket.on('error', (error) => { clearTimeout(timer); reject(error); });

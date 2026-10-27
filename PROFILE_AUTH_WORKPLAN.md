@@ -188,6 +188,8 @@ ett konto först när den obligatoriska migreringen slutförs.
 - Begränsning och loggning av misslyckade inloggningsförsök utan att logga
   lösenord eller sessionstokens.
 - Ingen återanvändning av klientinskickat profil-ID som behörighetskälla.
+- Etablerade spelanslutningar stängs vid utloggning och återverifieras löpande
+  så att utgångna eller serveråterkallade sessioner inte behåller spelåtkomst.
 
 ## Delarbete D – migrationsflöde
 

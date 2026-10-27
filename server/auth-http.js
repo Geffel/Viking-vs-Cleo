@@ -3,7 +3,9 @@ import { SESSION_ABSOLUTE_MS } from './auth-crypto.js';
 
 export const SESSION_COOKIE = 'vvc_session';
 
-export function installAuthRoutes(app, accountService, { onRegistered = () => {}, onMigrated = () => {} } = {}) {
+export function installAuthRoutes(app, accountService, {
+  onRegistered = () => {}, onMigrated = () => {}, onLoggedOut = () => {},
+} = {}) {
   const json = express.json({ limit: '8kb', strict: true });
 
   app.post('/api/auth/state', json, asyncRoute(async (req, res) => {
@@ -29,7 +31,10 @@ export function installAuthRoutes(app, accountService, { onRegistered = () => {}
 
   app.post('/api/auth/logout', json, asyncRoute(async (req, res) => {
     const token = readSessionCookie(req);
-    if (token) await accountService.logout(token);
+    if (token) {
+      await accountService.logout(token);
+      onLoggedOut(token);
+    }
     clearSessionCookie(res, req.secure);
     res.status(204).end();
   }));

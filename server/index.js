@@ -57,6 +57,7 @@ const SCHEMA_VERSION = 4;
 // hard krasch (stromavbrott, kill -9) forlorar da som mest denna tid.
 const AUTOSAVE_MS = Math.max(100, Number(process.env.VVC_AUTOSAVE_MS) || 30000);
 const LEADERBOARD_BROADCAST_MS = 5000;
+const SESSION_REVALIDATE_MS = Math.max(1000, Number(process.env.VVC_SESSION_REVALIDATE_MS) || 60000);
 const SNAPSHOT_RATE_HZ = Math.max(10, Math.min(Math.round(1000 / TICK_MS), Number(process.env.NET_SNAPSHOT_HZ) || 30));
 const SNAPSHOT_MS = 1000 / SNAPSHOT_RATE_HZ;
 // Leaderboarden visar bara toppen: profiles vaxer, men listan stannar pa denna langd.
@@ -124,6 +125,11 @@ installAuthRoutes(app, accountService, {
       profiles.set(`account:${result.profileId}`, profile);
     }
   },
+  onLoggedOut(sessionToken) {
+    for (const ws of wss.clients) {
+      if (ws.sessionToken === sessionToken) closeUnauthenticatedSocket(ws, 'Session revoked');
+    }
+  },
 });
 
 server.on('upgrade', async (request, socket, head) => {
@@ -144,12 +150,13 @@ server.on('upgrade', async (request, socket, head) => {
   }
 
   wss.handleUpgrade(request, socket, head, (ws) => {
-    wss.emit('connection', ws, request, authSession);
+    wss.emit('connection', ws, request, authSession, sessionToken);
   });
 });
 
-wss.on('connection', (ws, _request, authSession) => {
+wss.on('connection', (ws, _request, authSession, sessionToken) => {
   ws.sessionId = nextSessionId++;
+  ws.sessionToken = sessionToken;
   ws.accountId = authSession.accountId;
   ws.authProfileId = authSession.profileId;
   ws.name = '';
@@ -515,6 +522,12 @@ function handleMessage(ws, msg) {
       break;
     }
   }
+}
+
+function closeUnauthenticatedSocket(ws, reason = 'Authentication required') {
+  if (ws.readyState !== ws.OPEN) return;
+  send(ws, { t: 'appError', code: 'AUTH_REQUIRED', message: `${reason}.` });
+  ws.close(1008, reason);
 }
 
 function identifySocket(ws) {
@@ -1505,6 +1518,24 @@ function sendGameSnapshot(targetGame, predicate, { statsEnabled = true } = {}) {
 setInterval(() => {
   broadcastLeaderboard();
 }, LEADERBOARD_BROADCAST_MS);
+
+// A WebSocket may outlive the cookie that opened it. Revalidate active
+// sessions so expiry, password resets and server-side revocation also remove
+// access from already connected game clients.
+setInterval(() => {
+  for (const ws of wss.clients) {
+    if (ws.readyState !== ws.OPEN || ws.sessionCheckPending) continue;
+    ws.sessionCheckPending = true;
+    accountService.verifySession(ws.sessionToken)
+      .then((session) => {
+        if (!session || session.accountId !== ws.accountId || session.profileId !== ws.authProfileId) {
+          closeUnauthenticatedSocket(ws, 'Session expired');
+        }
+      })
+      .catch(() => closeUnauthenticatedSocket(ws, 'Session verification failed'))
+      .finally(() => { ws.sessionCheckPending = false; });
+  }
+}, SESSION_REVALIDATE_MS);
 
 setInterval(() => {
   const changes = matches.advancePhases({
