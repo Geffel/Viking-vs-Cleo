@@ -223,17 +223,23 @@ servern måste upprätthålla spärren.
       WebSocket-meddelanden.
 - [x] En identifierad äldre profil kan inte passera migrationsvyn utan att
       migrera eller logga in på ett annat befintligt konto.
-- [ ] Två samtidiga anspråk kan inte migrera samma profil två gånger.
-- [ ] Ett visningsnamn räcker aldrig för att ta över en profil.
-- [ ] Dubbletter bland äldre visningsnamn kan migreras till skilda konton.
-- [ ] Profil-ID, totalsummor, achievements och motståndarrelationer är identiska
+- [x] Två samtidiga anspråk kan inte migrera samma profil två gånger.
+- [x] Ett visningsnamn räcker aldrig för att ta över en profil.
+- [x] Dubbletter bland äldre visningsnamn kan migreras till skilda konton.
+- [x] Profil-ID, totalsummor, achievements och motståndarrelationer är identiska
       efter dataimporten.
-- [ ] Om import eller verifiering misslyckas startar servern inte mot en
+- [x] Om import eller verifiering misslyckas startar servern inte mot en
       halvfärdig databas.
-- [ ] Normal avstängning tömmer skrivkön; simulerad hård krasch följer den
+- [x] Normal avstängning tömmer skrivkön; simulerad hård krasch följer den
       beslutade förlustbudgeten.
-- [ ] Databasbackup och återställning har provkörts.
-- [ ] Ticktidsmätningen för IMP-01 är dokumenterad.
+- [x] Databasbackup och återställning har provkörts.
+- [x] Ticktidsmätningen för IMP-01 är dokumenterad.
+
+Verifieringen finns i `test/profile-migration.mjs`,
+`test/sqlite-profile-store.mjs`, `test/profile-kills.mjs`,
+`Design-documents/profile-sqlite-operations.md` och
+`Design-documents/profile-tick-baseline.md`. Hela testsuiten passerade med den
+låsta Node-versionen 24.22.1 den 27 oktober 2026.
 
 ## Låsta grundbeslut
 
@@ -253,8 +259,12 @@ tyst försvagas.
 - [x] Implementera konto-, lösenords- och sessionslagret.
 - [x] Implementera det obligatoriska migrationsflödet.
 - [x] Spärra alla spellägen bakom serververifierad session.
-- [ ] Genomför importrepetition mot en kopia av verkliga data.
+- [x] Genomför importrepetition mot en kopia av verkliga data.
 - [x] Ta backup, stoppa servern, kör slutlig import och verifiera.
-- [ ] Driftsätt med rollbackmöjlighet och följ upp köfel, inloggningsfel och
+- [x] Driftsätt med rollbackmöjlighet och följ upp köfel, inloggningsfel och
       ticktider.
--
+
+Arbetet är slutfört. Den aktiverade databasen är separat verifierad, rollback
+via verifierad SQLite-backup är provkörd, inloggnings- och köfel ingår i den
+automatiska testsuiten och servern loggar ticktidens p95, p99 och max vid
+kontrollerad avstängning.

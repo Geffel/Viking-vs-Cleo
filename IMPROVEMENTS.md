@@ -21,7 +21,7 @@ implementerade. Lokal rörelseförutsägelse är fortfarande öppen.
 
 | ID | Prioritet | Förbättring | Status |
 | --- | --- | --- | --- |
-| IMP-01 | P1 | Flytta profilskrivning från spellopen | Planerad i [PROFILE_AUTH_WORKPLAN.md](PROFILE_AUTH_WORKPLAN.md) |
+| IMP-01 | P1 | Flytta profilskrivning från spellopen | Implementerad |
 | IMP-02 | P1 | Träffkontroll mot faktiskt ritad bild | Implementerad |
 | IMP-03 | P1 | Validera nätverksmeddelanden och begränsa paketstorlek | Implementerad |
 | IMP-04 | P2 | Registrera resultat och kart­röster för varje rond | Implementerad |
@@ -39,10 +39,10 @@ implementerade. Lokal rörelseförutsägelse är fortfarande öppen.
 
 ## IMP-01 – Profilskrivning utanför spellopen
 
-**Planerad:** punkten ingår som ett eget delarbete i
+**Implementerad:** profilskrivning sker via en sammanslagen skrivkö och en
+SQLite-worker utanför spellopen. Import, backup, återställning, förlustbudget
+och ticktider är verifierade i
 [arbetsdokumentet för konton, profilmigrering och SQLite](PROFILE_AUTH_WORKPLAN.md).
-Verifieringskraven nedan är överförda dit och ska följas upp tillsammans med
-datamigreringen.
 
 **Fynd:** träffar, förmågor och kills kan utlösa serialisering och synkron
 omskrivning av hela profilfilen på samma tråd som matcherna. Achievement-kontrollen

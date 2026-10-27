@@ -22,6 +22,8 @@
     "measure:ticks": "node tools/measure-tick-baseline.mjs",
     "profiles:import": "node tools/import-profiles.mjs import",
     "profiles:verify": "node tools/import-profiles.mjs verify",
+    "profiles:backup": "node tools/import-profiles.mjs backup",
+    "profiles:restore": "node tools/import-profiles.mjs restore",
     "peek": "node test/peek.mjs",
     "sprites": "node tools/prepare-sprites.mjs",
     "sprites:shield": "node tools/prepare-viking-shield.mjs",

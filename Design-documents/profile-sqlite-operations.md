@@ -40,6 +40,33 @@ flytta undan `profiles.sqlite` och återköra importen från manifestets backup.
 Efter första konto-/profilskrivningen ska en verifierad SQLite-backup återställas
 i stället; återgång till JSON är då förbjuden.
 
+## SQLite-backup och återställning
+
+Skapa en transaktionellt konsekvent backup via SQLite backup-API:t, även om
+WAL-filen finns:
+
+```powershell
+npm run profiles:backup
+```
+
+Kommandot verifierar källdatabasen, skriver en tidsstämplad `.sqlite`-fil och
+ett manifest med SHA-256, byteantal, totalsummor och identitetsdigests, och
+verifierar sedan backupen. Backup och manifest skrivskyddas.
+
+Stoppa servern före återställning och flytta den aktiva databasen inklusive
+eventuella `-wal`/`-shm`-filer till en karantänkatalog. Återställningen vägrar
+skriva över en befintlig målfil:
+
+```powershell
+npm run profiles:restore -- data/backups/profiles-<timestamp>.sqlite data/profiles.sqlite
+npm run profiles:verify
+```
+
+Återställningen kontrollerar först backupens byteantal och SHA-256 mot
+manifestet. Därefter kopierar den till en temporär fil, kör integritets-,
+foreign-key-, totalsumme- och digestkontroller och aktiverar målfilen först när
+allt passerar.
+
 ## Importrepetition 2026-10-27
 
 En kopia av den verkliga `data/profiles.json` importerades med Node 24.22.1 till
@@ -83,3 +110,14 @@ en separat körning av `profiles:verify` gav båda `integrity_check = ok`, noll
 foreign-key-fel och samma totalsummor och identitetsdigests som repetitionen
 ovan. Produktionsdatabasen aktiverades först efter att importkontrollen hade
 passerat.
+
+## Backup- och återställningsrepetition 2026-10-27
+
+Med serverport 3000 stängd skapades en live-backup av den aktiverade databasen:
+`data/backups/profiles-2026-10-27T14-31-15-044Z.sqlite` (106 496 byte, SHA-256
+`e40eb26ba7592780774798e91dd36b019bb60fab5b6da69d017003fc5a8f3e55`).
+Backupen återställdes till en isolerad repetitionsfil och kontrollerades
+separat mot `data/profiles.json`. Både backup, återställning och separat
+efterkontroll gav `integrity_check = ok`, noll foreign-key-fel samt identiska
+totalsummor och identitetsdigests som slutimporten. Repetitionsfilen togs bort;
+den aktiva databasen ersattes inte.

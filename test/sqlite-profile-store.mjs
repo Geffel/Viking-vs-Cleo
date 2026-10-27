@@ -1,9 +1,14 @@
 import assert from 'node:assert/strict';
-import { access, mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { access, mkdtemp, readFile, readdir, rename, rm, stat } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { SqliteProfileStore } from '../server/sqlite-profile-store.js';
-import { importLegacyProfiles, verifyProfileDatabase } from '../server/profile-import.js';
+import {
+  backupProfileDatabase,
+  importLegacyProfiles,
+  restoreProfileDatabase,
+  verifyProfileDatabase,
+} from '../server/profile-import.js';
 
 const tempDir = await mkdtemp(path.join(os.tmpdir(), 'vvc-sqlite-store-'));
 const snapshot = makeSnapshot(3);
@@ -58,11 +63,41 @@ await assert.rejects(
   importLegacyProfiles({ sourcePath: await writeSnapshot(importDir, invalid), targetPath: path.join(importDir, 'bad.sqlite'), backupDir }),
   /Invalid or duplicate profileId/,
 );
+await assert.rejects(access(path.join(importDir, 'bad.sqlite')),
+  'a failed import never activates a target database');
+assert.equal((await readdir(importDir)).some((name) => name.startsWith('bad.sqlite.import-')), false,
+  'a failed import leaves no half-finished database');
+
+const liveBackupDir = path.join(importDir, 'sqlite-backups');
+const liveBackup = await backupProfileDatabase({
+  sourcePath: targetPath,
+  backupDir: liveBackupDir,
+  now: () => new Date('2026-10-27T13:00:00.000Z'),
+});
+assert.equal(liveBackup.verification.ok, true);
+assert.equal((await readdir(liveBackupDir)).some((name) => name.includes('.partial-')), false,
+  'backup verification leaves no temporary SQLite sidecars');
+const liveManifest = JSON.parse(await readFile(liveBackup.manifestPath, 'utf8'));
+assert.match(liveManifest.sha256, /^[a-f0-9]{64}$/);
+assert.deepEqual(liveManifest.totals, imported.verification.actualTotals);
+
+const parkedTarget = `${targetPath}.before-restore`;
+await rename(targetPath, parkedTarget);
+const restored = await restoreProfileDatabase({ backupPath: liveBackup.backupPath, targetPath });
+assert.equal(restored.verification.ok, true);
+assert.deepEqual(restored.verification.actualTotals, imported.verification.actualTotals,
+  'a restored SQLite backup preserves all verified profile totals and identity digests');
+assert.equal((await readdir(importDir)).some((name) => name.includes('.restore-')), false,
+  'restore verification leaves no temporary SQLite sidecars');
+await assert.rejects(
+  restoreProfileDatabase({ backupPath: liveBackup.backupPath, targetPath }),
+  /Target already exists/,
+  'restore never overwrites an active database');
 
 await rm(tempDir, { recursive: true, force: true });
 await rm(importDir, { recursive: true, force: true });
 
-console.log('SQLITE PROFILE STORE TESTS OK: schema, ordered coalescing, import backup and verification');
+console.log('SQLITE PROFILE STORE TESTS OK: queue, guarded import, live backup and restore verification');
 
 function makeSnapshot(points) {
   return {

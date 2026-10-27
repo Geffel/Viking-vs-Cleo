@@ -32,6 +32,8 @@ try {
     kills: 4, deaths: 3, matches: 5, achievements: 1,
   });
   assert.equal(await first.findLegacyProfile('unknown-client'), null);
+  assert.equal(await first.findLegacyProfile('Same Fighter'), null,
+    'a display name is never accepted as proof of legacy profile ownership');
 
   const attempts = await Promise.allSettled([
     first.migrateLegacyProfile('legacy-one', 'fighter.one', 'one secure migration password'),
