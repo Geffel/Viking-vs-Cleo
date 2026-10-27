@@ -151,16 +151,16 @@ isolerad kontroll gav 30 filomskrivningar för 30 omgångar träffhändelser.
 
 ### Klart när
 
-- [ ] Strid orsakar inga synkrona diskoperationer på spellopen.
-- [ ] Kö, felhantering och avstängning bevarar ordningen utan
+- [x] Strid orsakar inga synkrona diskoperationer på spellopen.
+- [x] Kö, felhantering och avstängning bevarar ordningen utan
       dubbelregistrering.
-- [ ] Tillåten förlust av ännu osparad statistik vid hård krasch är bestämd och
+- [x] Tillåten förlust av ännu osparad statistik vid hård krasch är bestämd och
       testad.
-- [ ] Befintliga profiler kan migreras med verifierade totalsummor och
+- [x] Befintliga profiler kan migreras med verifierade totalsummor och
       återställningsmöjlighet.
-- [ ] Ticktidens p95/p99 och längsta paus har jämförts före och efter under
+- [x] Ticktidens p95/p99 och längsta paus har jämförts före och efter under
       strid och sparning.
-- [ ] Statistik kan testas utan HTTP-server, WebSocket-anslutning eller verklig
+- [x] Statistik kan testas utan HTTP-server, WebSocket-anslutning eller verklig
       produktionsdatabas.
 
 ## Delarbete B – verifierbar dataimport
@@ -247,7 +247,7 @@ tyst försvagas.
 
 - [x] Lås Node-version, säkerhetsregler och återställningsmodell.
 - [x] Bryt ut lagrings- och statistikgränser samt mät nuvarande ticktider.
-- [ ] Implementera SQLite-schema, skrivkö och verifierbar import.
+- [x] Implementera SQLite-schema, skrivkö och verifierbar import.
 - [ ] Implementera konto-, lösenords- och sessionslagret.
 - [ ] Implementera det obligatoriska migrationsflödet.
 - [ ] Spärra alla spellägen bakom serververifierad session.

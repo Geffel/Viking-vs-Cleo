@@ -1,6 +1,7 @@
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { WebSocketServer } from 'ws';
@@ -8,7 +9,8 @@ import { Game } from './game.js';
 import { MatchRegistry } from './matches.js';
 import { MAX_MESSAGE_BYTES, parseClientMessage } from './protocol.js';
 import { claimRoundRegistration, clearRoundRegistration } from './round-registration.js';
-import { JsonProfileStore } from './profile-store.js';
+import { SqliteProfileStore } from './sqlite-profile-store.js';
+import { hashLegacyClientId } from './profile-snapshot.js';
 import {
   ProfileStatistics,
   ensureProfileAchievements as ensureStoredAchievements,
@@ -80,7 +82,7 @@ const game = new Game({ clock: gameNow });
 const matchGames = new Map();
 const matches = new MatchRegistry();
 const profiles = new Map();
-const profileStore = new JsonProfileStore({ dataDir: DATA_DIR });
+const profileStore = new SqliteProfileStore({ dataDir: DATA_DIR });
 const profileStatistics = new ProfileStatistics({ getProfileById });
 const tickMetrics = new TickMetrics();
 const recordedMapVoteStats = new Set();
@@ -97,7 +99,11 @@ let lastLeaderboardBroadcastSig = '';
 // laser denna, och en const i temporal dead zone skulle annars krascha inlasningen.
 const CONTROL_CHARS = new RegExp('[\\u0000-\\u001f\\u007f]', 'g');
 
-loadProfiles();
+if (existsSync(path.join(DATA_DIR, 'profiles.json')) && !existsSync(profileStore.filePath)) {
+  throw new Error('Legacy profiles.json must be imported with npm run profiles:import before the server can start');
+}
+await profileStore.open();
+await loadProfiles();
 
 wss.on('connection', (ws) => {
   ws.sessionId = nextSessionId++;
@@ -856,10 +862,11 @@ function resolveIdentity(rawClientId, name) {
   const clientId = cleanClientId(rawClientId);
   if (!clientId) return { clientId: null, profileId: 0 };
 
-  let profile = profiles.get(clientId);
+  const clientIdHash = hashLegacyClientId(clientId);
+  let profile = profiles.get(clientIdHash);
   if (!profile) {
     profile = createProfile(nextProfileId++, name);
-    profiles.set(clientId, profile);
+    profiles.set(clientIdHash, profile);
     gameLog('PROFILE', `Created #${profile.profileId} for ${profile.name}.`);
   }
 
@@ -872,7 +879,7 @@ function resolveIdentity(rawClientId, name) {
 
 function activateProfile(player) {
   if (!player.clientId) return;
-  const profile = profiles.get(player.clientId);
+  const profile = profiles.get(hashLegacyClientId(player.clientId));
   if (!profile) return;
   profile.name = player.name;
   profile.lastSeenAt = Date.now();
@@ -904,7 +911,7 @@ function removePlayerSession(ws) {
 
 function finalizeProfile(player) {
   if (!player?.clientId) return;
-  const profile = profiles.get(player.clientId);
+  const profile = profiles.get(hashLegacyClientId(player.clientId));
   if (!profile || profile.active?.playerId !== player.id) return;
 
   profile.name = player.name;
@@ -1087,17 +1094,17 @@ function leaderboardSignature(payload) {
   });
 }
 
-function loadProfiles() {
+async function loadProfiles() {
   try {
-    const stored = profileStore.load();
+    const stored = await profileStore.load();
     if (!stored) return;
     const data = migrateProfiles(stored);
     nextProfileId = Math.max(1, Number(data.nextProfileId) || 1);
     globalStats.factionWins = cleanFactionWins(data.globalStats?.factionWins);
 
     for (const row of data.profiles ?? []) {
-      const clientId = cleanClientId(row.clientId);
-      if (!clientId) continue;
+      const clientIdHash = row.clientIdHash || (cleanClientId(row.clientId) ? hashLegacyClientId(row.clientId) : '');
+      if (!/^[a-f0-9]{64}$/.test(clientIdHash)) continue;
 
       const profileId = Math.max(1, Number(row.profileId) || nextProfileId++);
       const profile = createProfile(profileId, row.name);
@@ -1114,11 +1121,12 @@ function loadProfiles() {
       profile.stats = cleanProfileStats(row.stats);
       profile.achievements = cleanProfileAchievements(row.achievements);
       profileStatistics.unlockAchievements(new Set([profile]));
-      profiles.set(clientId, profile);
+      profiles.set(clientIdHash, profile);
       nextProfileId = Math.max(nextProfileId, profileId + 1);
     }
   } catch (err) {
     console.warn('Kunde inte lasa profiler:', err.message);
+    throw err;
   }
 }
 
@@ -1146,8 +1154,8 @@ function saveProfiles() {
         version: SCHEMA_VERSION,
         nextProfileId,
         globalStats,
-        profiles: [...profiles.entries()].map(([clientId, profile]) => ({
-        clientId,
+        profiles: [...profiles.entries()].map(([clientIdHash, profile]) => ({
+        clientIdHash,
         profileId: profile.profileId,
         name: profile.name,
         points: profile.points,
@@ -1167,13 +1175,19 @@ function saveProfiles() {
   }
 }
 
-function shutdown() {
+async function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
   gameLog('SERVER', 'Shutting down gracefully.');
 
   for (const player of allPlayers()) finalizeProfile(player);
   saveProfiles();
+  try {
+    await profileStore.close();
+  } catch (err) {
+    console.error('Kunde inte tomma profilkon:', err.message);
+    process.exitCode = 1;
+  }
   const timing = tickMetrics.snapshot();
   if (timing.ticks) {
     gameLog(
@@ -1523,18 +1537,14 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log('');
 });
 
-process.on('SIGINT', () => {
-  shutdown();
-  process.exit(0);
+process.on('SIGINT', async () => {
+  await shutdown();
+  process.exit(process.exitCode ?? 0);
 });
 
-process.on('SIGTERM', () => {
-  shutdown();
-  process.exit(0);
-});
-
-process.on('exit', () => {
-  shutdown();
+process.on('SIGTERM', async () => {
+  await shutdown();
+  process.exit(process.exitCode ?? 0);
 });
 
 function lanUrls(port) {

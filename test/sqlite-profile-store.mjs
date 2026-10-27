@@ -1,0 +1,76 @@
+import assert from 'node:assert/strict';
+import { access, mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { SqliteProfileStore } from '../server/sqlite-profile-store.js';
+import { importLegacyProfiles, verifyProfileDatabase } from '../server/profile-import.js';
+
+const tempDir = await mkdtemp(path.join(os.tmpdir(), 'vvc-sqlite-store-'));
+const snapshot = makeSnapshot(3);
+const store = new SqliteProfileStore({ dataDir: tempDir });
+await store.open();
+assert.equal(await store.load(), null);
+
+store.save(snapshot);
+const latest = structuredClone(snapshot);
+latest.profiles[0].points = 7;
+latest.profiles[0].killsAgainst[2] = 4;
+latest.profiles[1].deathsBy[1] = 4;
+store.save(latest);
+await store.flush();
+assert.equal(store.status.pending, 0);
+assert.equal(store.status.lastError, null);
+await store.close();
+
+const saved = verifyProfileDatabase(path.join(tempDir, 'profiles.sqlite'), latest);
+assert.equal(saved.ok, true, JSON.stringify(saved));
+assert.deepEqual(saved.actualTotals, saved.expectedTotals);
+
+const importDir = await mkdtemp(path.join(os.tmpdir(), 'vvc-profile-import-'));
+const sourcePath = path.join(importDir, 'profiles.json');
+const targetPath = path.join(importDir, 'profiles.sqlite');
+const backupDir = path.join(importDir, 'backups');
+await import('node:fs/promises').then(({ writeFile }) => writeFile(sourcePath, `${JSON.stringify(snapshot, null, 2)}\n`));
+const imported = await importLegacyProfiles({
+  sourcePath, targetPath, backupDir,
+  now: () => new Date('2026-10-27T12:00:00.000Z'),
+});
+assert.equal(imported.verification.ok, true);
+assert.equal((await stat(imported.backupPath)).size, (await stat(sourcePath)).size);
+const manifest = JSON.parse(await readFile(imported.manifestPath, 'utf8'));
+assert.match(manifest.sha256, /^[a-f0-9]{64}$/);
+assert.deepEqual(manifest.totals, imported.verification.actualTotals);
+await access(targetPath);
+
+const invalid = makeSnapshot(2);
+invalid.profiles[1].profileId = 1;
+await assert.rejects(
+  importLegacyProfiles({ sourcePath: await writeSnapshot(importDir, invalid), targetPath: path.join(importDir, 'bad.sqlite'), backupDir }),
+  /Invalid or duplicate profileId/,
+);
+
+await rm(tempDir, { recursive: true, force: true });
+await rm(importDir, { recursive: true, force: true });
+
+console.log('SQLITE PROFILE STORE TESTS OK: schema, ordered coalescing, import backup and verification');
+
+function makeSnapshot(points) {
+  return {
+    version: 4, nextProfileId: 3, globalStats: { factionWins: { cleo: 2, viking: 1 } },
+    profiles: [
+      { clientId: 'client-one', profileId: 1, name: 'One', points, playMs: 100, seen: 2, lastSeenAt: 10,
+        killsAgainst: { 2: 1 }, deathsBy: { 2: 2 }, teamPlayMs: { cleo: 60, viking: 40 },
+        stats: { matches: { played: 2 } }, achievements: { unlocked: { first_blood: 9 } } },
+      { clientId: 'client-two', profileId: 2, name: 'Two', points: 2, playMs: 80, seen: 1, lastSeenAt: 11,
+        killsAgainst: { 1: 2 }, deathsBy: { 1: 1 }, teamPlayMs: { cleo: 20, viking: 60 },
+        stats: { matches: { played: 2 } }, achievements: { unlocked: {} } },
+    ],
+  };
+}
+
+async function writeSnapshot(directory, value) {
+  const file = path.join(directory, 'invalid.json');
+  const { writeFile } = await import('node:fs/promises');
+  await writeFile(file, JSON.stringify(value));
+  return file;
+}

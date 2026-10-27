@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
-import { mkdtemp, readFile, readdir, unlink, rmdir, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, unlink, rmdir } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import WebSocket from 'ws';
 import { ACHIEVEMENTS, achievementProgress } from '../shared/achievements.js';
 import { startTestServer } from './test-server.mjs';
+import { SqliteProfileDatabase } from '../server/sqlite-profile-database.js';
+import { hashLegacyClientId } from '../server/profile-snapshot.js';
 
 const TIME_SCALE = 10;
 const AUTOSAVE_MS = 10000;
@@ -79,8 +81,13 @@ function assertKillTotals(snapshot, expectedKills, stage, expectedDeaths = 0) {
 
 async function savedPoints(dataDir) {
   try {
-    const data = JSON.parse(await readFile(path.join(dataDir, 'profiles.json'), 'utf8'));
-    return data.profiles.find((profile) => profile.clientId === 'kill-attacker')?.points ?? 0;
+    const database = new SqliteProfileDatabase(path.join(dataDir, 'profiles.sqlite'), { readOnly: true });
+    try {
+      const data = database.load();
+      return data.profiles.find((profile) => profile.clientIdHash === hashLegacyClientId('kill-attacker'))?.points ?? 0;
+    } finally {
+      database.close();
+    }
   } catch {
     return 0;
   }
@@ -147,11 +154,12 @@ try {
   sockets.clear();
   await server.stop();
 
-  const profilesFile = path.join(dataDir, 'profiles.json');
-  const stored = JSON.parse(await readFile(profilesFile, 'utf8'));
-  const template = stored.profiles.find((profile) => profile.clientId === attacker.clientId);
+  const profilesFile = path.join(dataDir, 'profiles.sqlite');
+  const database = new SqliteProfileDatabase(profilesFile);
+  const stored = database.load();
+  const template = stored.profiles.find((profile) => profile.clientIdHash === hashLegacyClientId(attacker.clientId));
   const statsOnly = structuredClone(template);
-  statsOnly.clientId = 'legacy-stats-only';
+  statsOnly.clientIdHash = hashLegacyClientId('legacy-stats-only');
   statsOnly.profileId = stored.nextProfileId++;
   statsOnly.name = 'Legacy stats';
   statsOnly.points = 3;
@@ -161,7 +169,7 @@ try {
   statsOnly.stats.combat.deaths = 4;
   statsOnly.achievements = { unlocked: {} };
   const pointsOnly = structuredClone(template);
-  pointsOnly.clientId = 'legacy-points-only';
+  pointsOnly.clientIdHash = hashLegacyClientId('legacy-points-only');
   pointsOnly.profileId = stored.nextProfileId++;
   pointsOnly.name = 'Legacy points';
   pointsOnly.points = 5;
@@ -170,7 +178,8 @@ try {
   delete pointsOnly.stats;
   pointsOnly.achievements = { unlocked: {} };
   stored.profiles.push(statsOnly, pointsOnly);
-  await writeFile(profilesFile, `${JSON.stringify(stored, null, 2)}\n`, 'utf8');
+  database.replaceSnapshot(stored, { validate: true });
+  database.close();
 
   server = await startTestServer({ dataDir });
 
@@ -179,12 +188,12 @@ try {
   await restarted.ready;
   assertKillTotals(await profileSnapshot(restarted), 1, 'after server restart');
 
-  const legacyStats = connect(server.url, { name: statsOnly.name, clientId: statsOnly.clientId });
+  const legacyStats = connect(server.url, { name: statsOnly.name, clientId: 'legacy-stats-only' });
   sockets.add(legacyStats.ws);
   await legacyStats.ready;
   assertKillTotals(await profileSnapshot(legacyStats), 7, 'legacy combat stats', 4);
 
-  const legacyPoints = connect(server.url, { name: pointsOnly.name, clientId: pointsOnly.clientId });
+  const legacyPoints = connect(server.url, { name: pointsOnly.name, clientId: 'legacy-points-only' });
   sockets.add(legacyPoints.ws);
   await legacyPoints.ready;
   assertKillTotals(await profileSnapshot(legacyPoints), 5, 'legacy points');

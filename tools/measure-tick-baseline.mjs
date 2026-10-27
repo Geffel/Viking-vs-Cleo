@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { Game } from '../server/game.js';
-import { JsonProfileStore } from '../server/profile-store.js';
+import { SqliteProfileStore } from '../server/sqlite-profile-store.js';
 import { ProfileStatistics, freshProfileAchievements, freshProfileStats } from '../server/profile-statistics.js';
 import { TickMetrics } from '../server/tick-metrics.js';
 import { TICK_MS } from '../shared/constants.js';
@@ -43,7 +43,8 @@ async function measure({ save }) {
   }
 
   const tempDir = await mkdtemp(path.join(os.tmpdir(), 'vvc-tick-baseline-'));
-  const store = new JsonProfileStore({ dataDir: tempDir });
+  const store = save ? new SqliteProfileStore({ dataDir: tempDir }) : null;
+  await store?.open();
   const metrics = new TickMetrics({ sampleLimit: SAMPLE_TICKS });
   let writes = 0;
   try {
@@ -72,8 +73,10 @@ async function measure({ save }) {
       }
       if (tick >= 0) metrics.record(performance.now() - started);
     }
+    await store?.flush();
     return { ...metrics.snapshot(), writes };
   } finally {
+    await store?.close();
     await rm(tempDir, { recursive: true });
   }
 }
@@ -89,5 +92,5 @@ console.log(JSON.stringify({
   sampleTicks: SAMPLE_TICKS,
   players: 8,
   profiles: PROFILE_COUNT,
-  scenarios: { combat, combatAndSynchronousProfileSave: combatAndSave },
+  scenarios: { combat, combatAndQueuedSqliteSave: combatAndSave },
 }, null, 2));

@@ -60,11 +60,11 @@ Utvärdera achievements för berörda profiler och undvik upprepade fulla genomg
 
 **Klart när:**
 
-- [ ] Strid orsakar inga synkrona diskoperationer på speltråden.
-- [ ] Kö, felhantering och avstängning bevarar ordningen utan dubbelregistrering.
-- [ ] Tillåten förlust av ännu osparad statistik vid hård krasch är bestämd och testad.
-- [ ] Befintliga profiler kan migreras med verifierade totalsummor och återställningsmöjlighet om SQLite väljs.
-- [ ] Ticktidens p95/p99 och längsta paus har jämförts före/efter under strid och sparning.
+- [x] Strid orsakar inga synkrona diskoperationer på speltråden.
+- [x] Kö, felhantering och avstängning bevarar ordningen utan dubbelregistrering.
+- [x] Tillåten förlust av ännu osparad statistik vid hård krasch är bestämd och testad.
+- [x] Befintliga profiler kan migreras med verifierade totalsummor och återställningsmöjlighet om SQLite väljs.
+- [x] Ticktidens p95/p99 och längsta paus har jämförts före/efter under strid och sparning.
 
 ## IMP-02 – Träffkontroll mot faktiskt ritad bild
 
