@@ -5,6 +5,10 @@ alltid på servern — man skriver in namn, väljer lag och hoppar rakt in.
 
 ## Kom igång
 
+Spelet kräver exakt **Node.js 24.22.1**. Versionen är låst i `.nvmrc`; kontrollera
+installationen med `npm run check:runtime` innan första starten eller efter en
+Node-uppgradering.
+
 Dubbelklicka på **`start-game.bat`**. Den hämtar beroenden om det behövs, startar
 servern och öppnar webbläsaren. Fönstret som blir kvar *är* servern — låt det stå
 öppet så länge ni spelar.

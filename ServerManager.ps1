@@ -124,6 +124,11 @@ function Start-GameServer {
         throw "server\index.js was not found in $Root"
     }
 
+    & node (Join-Path $Root "tools\check-runtime.mjs")
+    if ($LASTEXITCODE -ne 0) {
+        throw "Unsupported Node.js runtime. Install or select the version in .nvmrc."
+    }
+
     if (-not (Test-Path -LiteralPath (Join-Path $Root "node_modules"))) {
         Write-Log "node_modules is missing. Running npm install..."
         & npm install
