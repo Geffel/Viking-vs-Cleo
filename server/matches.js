@@ -35,6 +35,7 @@ export class MatchRegistry {
       closed: false,
       statsEnabled: !training,
       hostId: host.sessionId,
+      roundId: 0,
       createdAt: now,
       updatedAt: now,
       players: new Map(),
@@ -292,6 +293,7 @@ export class MatchRegistry {
       if (missing.length) return { error: 'Everyone must pick a character before the match starts.' };
     }
 
+    match.roundId++;
     match.phase = MATCH_PHASES.mapVote;
     match.mapVotes.clear();
     for (const seat of match.localSeats.values()) {
@@ -495,6 +497,7 @@ function snapshot(match) {
   });
   return {
     id: match.id,
+    roundId: match.roundId,
     title: match.title,
     phase: match.phase,
     mode: match.mode ?? MATCH_MODES.online,

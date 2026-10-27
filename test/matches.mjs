@@ -16,7 +16,10 @@ const host = { sessionId: 1, name: 'Host', profileId: 11 };
 const guest = { sessionId: 2, name: 'Guest', profileId: 22 };
 
 const created = registry.create(host);
-check('ny match skapas i matchlobbyn', created.phase === MATCH_PHASES.matchLobby && created.hostId === host.sessionId);
+check(
+  'ny match skapas i matchlobbyn',
+  created.phase === MATCH_PHASES.matchLobby && created.hostId === host.sessionId && created.roundId === 0,
+);
 check('host laggs till som spelare', created.players.size === 1 && created.players.has(host.sessionId));
 check('ny match ar online och oppen', registry.snapshot(created.id).mode === MATCH_MODES.online && registry.snapshot(created.id).closed === false);
 
@@ -37,6 +40,7 @@ check('bara host kan starta', !!registry.start(created.id, guest.sessionId).erro
 
 const started = registry.start(created.id, host.sessionId).match;
 check('host startar kartrostning', started.phase === MATCH_PHASES.mapVote && started.voteEndsAt === clock + MAP_VOTE_MS);
+check('forsta ronden far egen identitet', started.roundId === 1 && registry.snapshot(created.id).roundId === 1);
 check('start nollstaller tidigare rostning/resultat', started.mapVotes.size === 0 && !started.selectedMap && !started.finalScore);
 check('ready stangs efter karaktarbyte under aktiv fas', registry.setCharacter(created.id, guest.sessionId, 'cleo').match.players.get(guest.sessionId).ready === false);
 registry.setCharacter(created.id, guest.sessionId, 'viking');
@@ -71,6 +75,10 @@ check('icke-host kan inte starta om fran resultat', !!registry.resetToLobby(crea
 registry.resetToLobby(created.id, removed.hostId);
 check('host kan starta ny rond fran resultat', created.phase === MATCH_PHASES.matchLobby && !created.selectedMap);
 check('ny rond rensar karaktarer och ready', [...created.players.values()].every((p) => !p.character && !p.ready));
+registry.setCharacter(created.id, removed.hostId, 'viking');
+registry.setCharacter(created.id, late.sessionId, 'cleo');
+registry.start(created.id, removed.hostId);
+check('ny rond far ny identitet i samma lobby', created.roundId === 2 && registry.snapshot(created.id).roundId === 2);
 
 const solo = registry.create({ sessionId: 9, name: 'Solo', profileId: 99 });
 registry.setCharacter(solo.id, 9, 'cleo');

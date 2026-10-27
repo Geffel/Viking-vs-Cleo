@@ -8,6 +8,7 @@ import { WebSocketServer } from 'ws';
 import { Game } from './game.js';
 import { MatchRegistry } from './matches.js';
 import { MAX_MESSAGE_BYTES, parseClientMessage } from './protocol.js';
+import { claimRoundRegistration, clearRoundRegistration } from './round-registration.js';
 import { ACHIEVEMENTS, achievementUnlockStats, evaluateAchievements, publicAchievements } from '../shared/achievements.js';
 import {
   TICK_MS,
@@ -381,6 +382,7 @@ function handleMessage(ws, msg) {
         send(ws, { t: 'appError', message: error });
         return;
       }
+      clearRecordedRound(match);
       clearGameSessions(match.id);
       broadcastLobby();
       sendMatch(match);
@@ -525,6 +527,7 @@ function leaveLobbyMatch(ws) {
   const oldMatch = matches.get(oldId);
   const match = matches.removePlayer(oldId, ws.sessionId);
   if (!match) {
+    clearRecordedRound(oldMatch);
     clearGameSessions(oldId);
     if (oldMatch) gameLog('MATCH', `Abandoned ${matchLabel(oldMatch)}; no players remain.`);
   } else {
@@ -1631,8 +1634,7 @@ function applyHarpoonPullStats(ev) {
 }
 
 function recordMapVoteStats(match) {
-  if (!match || recordedMapVoteStats.has(match.id)) return;
-  recordedMapVoteStats.add(match.id);
+  if (!claimRoundRegistration(recordedMapVoteStats, match)) return;
   if (match.statsEnabled === false) return;
 
   let dirty = false;
@@ -1658,8 +1660,7 @@ function recordMapVoteStats(match) {
 }
 
 function recordMatchResult(match, matchGame) {
-  if (!match || !matchGame || recordedMatchResults.has(match.id)) return;
-  recordedMatchResults.add(match.id);
+  if (!matchGame || !claimRoundRegistration(recordedMatchResults, match)) return;
   if (match.statsEnabled === false || match.resultCounts === false) {
     matchGame.feed = [];
     matchGame.events = [];
@@ -1708,6 +1709,11 @@ function recordMatchResult(match, matchGame) {
     dirty = unlockPendingAchievements({ notify: true }) || dirty;
     saveProfiles();
   }
+}
+
+function clearRecordedRound(match) {
+  clearRoundRegistration(recordedMapVoteStats, match);
+  clearRoundRegistration(recordedMatchResults, match);
 }
 
 function gameLog(category, message) {

@@ -14,6 +14,7 @@ const logicTests = [
   ['ability-layout', 'test/ability-layout.mjs'],
   ['netcode', 'test/netcode.mjs'],
   ['server-protocol', 'test/server-protocol.mjs'],
+  ['round-stats', 'test/round-stats.mjs'],
 ];
 
 const smokeScale = Number(process.env.SMOKE_TIME_SCALE || 10);
