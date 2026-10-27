@@ -246,7 +246,7 @@ tyst försvagas.
 ## Föreslagen arbetsordning
 
 - [x] Lås Node-version, säkerhetsregler och återställningsmodell.
-- [ ] Bryt ut lagrings- och statistikgränser samt mät nuvarande ticktider.
+- [x] Bryt ut lagrings- och statistikgränser samt mät nuvarande ticktider.
 - [ ] Implementera SQLite-schema, skrivkö och verifierbar import.
 - [ ] Implementera konto-, lösenords- och sessionslagret.
 - [ ] Implementera det obligatoriska migrationsflödet.

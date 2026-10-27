@@ -1,4 +1,3 @@
-import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
@@ -8,9 +7,20 @@ import { WebSocketServer } from 'ws';
 import { Game } from './game.js';
 import { MatchRegistry } from './matches.js';
 import { MAX_MESSAGE_BYTES, parseClientMessage } from './protocol.js';
-import { applyKillFeedToProfiles, resolveProfileReference } from './profile-ids.js';
 import { claimRoundRegistration, clearRoundRegistration } from './round-registration.js';
-import { ACHIEVEMENTS, achievementUnlockStats, evaluateAchievements, publicAchievements } from '../shared/achievements.js';
+import { JsonProfileStore } from './profile-store.js';
+import {
+  ProfileStatistics,
+  ensureProfileAchievements as ensureStoredAchievements,
+  freshProfileAchievements as makeProfileAchievements,
+  freshProfileStats as makeProfileStats,
+  sanitizeCounterMap as cleanCounterMap,
+  sanitizeFactionWins as cleanFactionWins,
+  sanitizeProfileAchievements as cleanProfileAchievements,
+  sanitizeProfileStats as cleanProfileStats,
+} from './profile-statistics.js';
+import { TickMetrics } from './tick-metrics.js';
+import { ACHIEVEMENTS, achievementUnlockStats, publicAchievements } from '../shared/achievements.js';
 import {
   TICK_MS,
   TEAM_IDS,
@@ -30,7 +40,6 @@ const ROOT = path.join(__dirname, '..');
 const PORT = Number(process.env.PORT ?? 3000);
 // Tests use a temporary data directory; normal launches keep the existing path.
 const DATA_DIR = path.resolve(process.env.VVC_DATA_DIR || path.join(ROOT, 'data'));
-const PROFILES_FILE = path.join(DATA_DIR, 'profiles.json');
 const GAME_TIME_SCALE = Math.max(0.01, Number(process.env.GAME_TIME_SCALE) || 1);
 const GAME_CLOCK_STARTED_REAL = Date.now();
 const GAME_CLOCK_STARTED = GAME_CLOCK_STARTED_REAL;
@@ -71,6 +80,9 @@ const game = new Game({ clock: gameNow });
 const matchGames = new Map();
 const matches = new MatchRegistry();
 const profiles = new Map();
+const profileStore = new JsonProfileStore({ dataDir: DATA_DIR });
+const profileStatistics = new ProfileStatistics({ getProfileById });
+const tickMetrics = new TickMetrics();
 const recordedMapVoteStats = new Set();
 const recordedMatchResults = new Set();
 const globalStats = {
@@ -1077,12 +1089,11 @@ function leaderboardSignature(payload) {
 
 function loadProfiles() {
   try {
-    if (!fs.existsSync(PROFILES_FILE)) return;
-
-    const raw = fs.readFileSync(PROFILES_FILE, 'utf8');
-    const data = migrateProfiles(JSON.parse(raw));
+    const stored = profileStore.load();
+    if (!stored) return;
+    const data = migrateProfiles(stored);
     nextProfileId = Math.max(1, Number(data.nextProfileId) || 1);
-    globalStats.factionWins = sanitizeFactionWins(data.globalStats?.factionWins);
+    globalStats.factionWins = cleanFactionWins(data.globalStats?.factionWins);
 
     for (const row of data.profiles ?? []) {
       const clientId = cleanClientId(row.clientId);
@@ -1094,15 +1105,15 @@ function loadProfiles() {
       profile.playMs = Math.max(0, Number(row.playMs) || 0);
       profile.seen = Math.max(0, Number(row.seen) || 0);
       profile.lastSeenAt = Math.max(0, Number(row.lastSeenAt) || 0);
-      profile.killsAgainst = sanitizeCounterMap(row.killsAgainst);
-      profile.deathsBy = sanitizeCounterMap(row.deathsBy);
+      profile.killsAgainst = cleanCounterMap(row.killsAgainst);
+      profile.deathsBy = cleanCounterMap(row.deathsBy);
       profile.teamPlayMs = {
         cleo: Math.max(0, Number(row.teamPlayMs?.cleo) || 0),
         viking: Math.max(0, Number(row.teamPlayMs?.viking) || 0),
       };
-      profile.stats = sanitizeProfileStats(row.stats);
-      profile.achievements = sanitizeProfileAchievements(row.achievements);
-      unlockProfileAchievements(profile, { notify: false });
+      profile.stats = cleanProfileStats(row.stats);
+      profile.achievements = cleanProfileAchievements(row.achievements);
+      profileStatistics.unlockAchievements(new Set([profile]));
       profiles.set(clientId, profile);
       nextProfileId = Math.max(nextProfileId, profileId + 1);
     }
@@ -1131,7 +1142,6 @@ function migrateProfiles(data) {
 
 function saveProfiles() {
   try {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
     const data = {
         version: SCHEMA_VERSION,
         nextProfileId,
@@ -1151,9 +1161,7 @@ function saveProfiles() {
         achievements: profile.achievements,
       })),
     };
-    const tmp = `${PROFILES_FILE}.tmp`;
-    fs.writeFileSync(tmp, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
-    fs.renameSync(tmp, PROFILES_FILE);
+    profileStore.save(data);
   } catch (err) {
     console.warn('Kunde inte spara profiler:', err.message);
   }
@@ -1166,6 +1174,14 @@ function shutdown() {
 
   for (const player of allPlayers()) finalizeProfile(player);
   saveProfiles();
+  const timing = tickMetrics.snapshot();
+  if (timing.ticks) {
+    gameLog(
+      'TICK',
+      `samples=${timing.sampledTicks}, p95=${timing.p95Ms.toFixed(3)} ms, ` +
+        `p99=${timing.p99Ms.toFixed(3)} ms, max=${timing.maxMs.toFixed(3)} ms.`,
+    );
+  }
 }
 
 function createProfile(profileId, name) {
@@ -1179,182 +1195,10 @@ function createProfile(profileId, name) {
     killsAgainst: {},
     deathsBy: {},
     teamPlayMs: { cleo: 0, viking: 0 },
-    stats: freshProfileStats(),
-    achievements: freshProfileAchievements(),
+    stats: makeProfileStats(),
+    achievements: makeProfileAchievements(),
     active: null,
   };
-}
-
-function freshProfileAchievements() {
-  return { unlocked: {} };
-}
-
-function freshProfileStats() {
-  return {
-    matches: {
-      played: 0,
-      wins: 0,
-      losses: 0,
-      draws: 0,
-      bestKills: 0,
-      bestCritHits: 0,
-      bestPowerups: 0,
-      flawless3KillMatches: 0,
-      byMap: {},
-      mapVotes: {},
-      unanimousMapVotes: 0,
-    },
-    combat: {
-      hits: 0,
-      critHits: 0,
-      backstabHits: 0,
-      protectedHits: 0,
-      kills: 0,
-      deaths: 0,
-      firstBloods: 0,
-      damageDealt: 0,
-      damageTaken: 0,
-      quickDamageHits: 0,
-      surviveUnder10Hp: 0,
-      lowHpKills: 0,
-      revengeKills: 0,
-      stunnedKills: 0,
-      ownStunKills: 0,
-      killsWhileKebab: 0,
-      killsWhileEnraged: 0,
-      killsWhileBerserk: 0,
-      deathsWhileBerserk: 0,
-      buffStackHits: 0,
-      killsByCause: {},
-      deathsByCause: {},
-    },
-    combos: {
-      finishers: 0,
-      exactFinishers: 0,
-      finisherKills: 0,
-      enrages: 0,
-      byId: {},
-      killsById: {},
-    },
-    powerups: {
-      total: 0,
-      byKind: {},
-      pizzaLowHp: 0,
-      centerPickups: 0,
-    },
-    abilities: {
-      used: {},
-      released: {},
-      hits: {},
-      kills: {},
-      longRangeHits: {},
-      fullChargeHits: {},
-      blinkLowHp: 0,
-      blinkThroughPlayer: 0,
-      shieldBlocks: 0,
-      fullShieldSets: 0,
-      harpoonPulls: 0,
-      harpoonSetupKills: 0,
-    },
-  };
-}
-
-function sanitizeProfileStats(raw) {
-  const stats = freshProfileStats();
-  mergeStats(stats, raw);
-  stats.matches.byMap = sanitizeMapStats(raw?.matches?.byMap);
-  stats.matches.mapVotes = sanitizePlainCounterMap(raw?.matches?.mapVotes);
-  stats.combat.killsByCause = sanitizePlainCounterMap(raw?.combat?.killsByCause);
-  stats.combat.deathsByCause = sanitizePlainCounterMap(raw?.combat?.deathsByCause);
-  stats.combos.byId = sanitizePlainCounterMap(raw?.combos?.byId);
-  stats.combos.killsById = sanitizePlainCounterMap(raw?.combos?.killsById);
-  stats.powerups.byKind = sanitizePlainCounterMap(raw?.powerups?.byKind);
-  stats.abilities.used = sanitizePlainCounterMap(raw?.abilities?.used);
-  stats.abilities.released = sanitizePlainCounterMap(raw?.abilities?.released);
-  stats.abilities.hits = sanitizePlainCounterMap(raw?.abilities?.hits);
-  stats.abilities.kills = sanitizePlainCounterMap(raw?.abilities?.kills);
-  stats.abilities.longRangeHits = sanitizePlainCounterMap(raw?.abilities?.longRangeHits);
-  stats.abilities.fullChargeHits = sanitizePlainCounterMap(raw?.abilities?.fullChargeHits);
-  return stats;
-}
-
-function sanitizeProfileAchievements(raw) {
-  const achievements = freshProfileAchievements();
-  const allowed = new Set(ACHIEVEMENTS.map((def) => def.id));
-  for (const [id, value] of Object.entries(raw?.unlocked ?? {})) {
-    const cleanId = String(id).replace(CONTROL_CHARS, '').trim().slice(0, 64);
-    const unlockedAt = Math.max(0, Number(value) || 0);
-    if (allowed.has(cleanId) && unlockedAt) achievements.unlocked[cleanId] = unlockedAt;
-  }
-  return achievements;
-}
-
-function mergeStats(target, raw) {
-  if (!raw || typeof raw !== 'object') return target;
-  for (const [key, value] of Object.entries(raw)) {
-    if (!(key in target)) continue;
-    if (typeof target[key] === 'number') {
-      target[key] = Math.max(0, Number(value) || 0);
-      continue;
-    }
-    if (target[key] && typeof target[key] === 'object' && value && typeof value === 'object' && !Array.isArray(value)) {
-      mergeStats(target[key], value);
-    }
-  }
-  return target;
-}
-
-function sanitizePlainCounterMap(raw) {
-  const out = {};
-  for (const [key, value] of Object.entries(raw ?? {})) {
-    const cleanKey = String(key).replace(CONTROL_CHARS, '').trim().slice(0, 48);
-    const count = Math.max(0, Number(value) || 0);
-    if (cleanKey && count) out[cleanKey] = count;
-  }
-  return out;
-}
-
-function sanitizeMapStats(raw) {
-  const out = {};
-  for (const [mapId, value] of Object.entries(raw ?? {})) {
-    const cleanId = String(mapId).replace(CONTROL_CHARS, '').trim().slice(0, 48);
-    if (!cleanId || !value || typeof value !== 'object') continue;
-    out[cleanId] = {
-      played: Math.max(0, Number(value.played) || 0),
-      wins: Math.max(0, Number(value.wins) || 0),
-      losses: Math.max(0, Number(value.losses) || 0),
-      draws: Math.max(0, Number(value.draws) || 0),
-    };
-  }
-  return out;
-}
-
-function sanitizeCounterMap(raw) {
-  const out = {};
-  for (const [key, value] of Object.entries(raw ?? {})) {
-    const id = Math.max(1, Number(key) || 0);
-    const count = Math.max(0, Number(value) || 0);
-    if (id && count) out[id] = count;
-  }
-  return out;
-}
-
-function sanitizeFactionWins(raw) {
-  return {
-    cleo: Math.max(0, Number(raw?.cleo) || 0),
-    viking: Math.max(0, Number(raw?.viking) || 0),
-  };
-}
-
-function ensureProfileStats(profile) {
-  if (!profile.stats) profile.stats = freshProfileStats();
-  return profile.stats;
-}
-
-function ensureProfileAchievements(profile) {
-  if (!profile.achievements) profile.achievements = freshProfileAchievements();
-  if (!profile.achievements.unlocked) profile.achievements.unlocked = {};
-  return profile.achievements;
 }
 
 function profileSnapshotFor(ws) {
@@ -1376,33 +1220,6 @@ function profileSnapshotFor(ws) {
   };
 }
 
-function unlockPendingAchievements({ notify = true } = {}) {
-  let dirty = false;
-  for (const profile of profiles.values()) {
-    const unlocked = unlockProfileAchievements(profile, { notify });
-    dirty = unlocked.length > 0 || dirty;
-  }
-  return dirty;
-}
-
-function unlockProfileAchievements(profile, { notify = true } = {}) {
-  if (!profile) return [];
-  const achievements = ensureProfileAchievements(profile);
-  const view = buildProfileView(profile);
-  const states = evaluateAchievements(view);
-  const now = Date.now();
-  const unlocked = [];
-
-  for (const state of states) {
-    if (!state.unlocked || achievements.unlocked[state.id]) continue;
-    achievements.unlocked[state.id] = now;
-    unlocked.push(state.id);
-  }
-
-  if (notify && unlocked.length) notifyAchievementUnlocks(profile, unlocked);
-  return unlocked;
-}
-
 function notifyAchievementUnlocks(profile, ids) {
   const defs = publicAchievements(ACHIEVEMENTS.filter((def) => ids.includes(def.id)));
   if (!defs.length) return;
@@ -1420,230 +1237,27 @@ function notifyAchievementUnlocks(profile, ids) {
   }
 }
 
-function inc(obj, key, amount = 1) {
-  const cleanKey = String(key ?? '').replace(CONTROL_CHARS, '').trim().slice(0, 48);
-  if (!cleanKey) return;
-  obj[cleanKey] = Math.max(0, Number(obj[cleanKey]) || 0) + amount;
-}
-
-function statProfile(ref) {
-  return resolveProfileReference(ref, getProfileById);
-}
-
-function mapStats(stats, mapId) {
-  const id = String(mapId || 'unknown');
-  stats.matches.byMap[id] ??= { played: 0, wins: 0, losses: 0, draws: 0 };
-  return stats.matches.byMap[id];
-}
-
 function processKillStats(feed) {
-  let dirty = applyKillFeedToProfiles(feed, getProfileById);
-  if (dirty) {
-    dirty = unlockPendingAchievements({ notify: true }) || dirty;
-    saveProfiles();
-  }
+  persistChangedProfiles(profileStatistics.applyKillFeed(feed));
 }
 
 function processStatEvents(events) {
-  let dirty = false;
-  for (const ev of events ?? []) {
-    dirty = applyStatEvent(ev) || dirty;
+  persistChangedProfiles(profileStatistics.applyEvents(events));
+}
+
+function persistChangedProfiles(changedProfiles, { notify = true, force = false } = {}) {
+  if (!changedProfiles?.size && !force) return false;
+  for (const { profile, ids } of profileStatistics.unlockAchievements(changedProfiles)) {
+    if (notify) notifyAchievementUnlocks(profile, ids);
   }
-  if (dirty) {
-    dirty = unlockPendingAchievements({ notify: true }) || dirty;
-    saveProfiles();
-  }
-}
-
-function applyStatEvent(ev) {
-  switch (ev?.k) {
-    case 'hit':
-      return applyHitStats(ev);
-    case 'kill':
-      return applyKillEventStats(ev);
-    case 'combo':
-      return applyComboStats(ev);
-    case 'enrage':
-      return applyEnrageStats(ev);
-    case 'powerup':
-      return applyPowerupStats(ev);
-    case 'ability_use':
-      return applyAbilityUseStats(ev);
-    case 'ability_release':
-      return applyAbilityReleaseStats(ev);
-    case 'shield_block':
-      return applyShieldBlockStats(ev);
-    case 'protected_hit':
-      return applyProtectedHitStats(ev);
-    case 'harpoon_pull':
-      return applyHarpoonPullStats(ev);
-    default:
-      return false;
-  }
-}
-
-function applyHitStats(ev) {
-  let dirty = false;
-  const source = statProfile(ev.player);
-  const target = statProfile(ev.target);
-
-  if (source) {
-    const stats = ensureProfileStats(source);
-    stats.combat.hits++;
-    stats.combat.damageDealt += Math.max(0, Number(ev.actualDamage) || 0);
-    if (ev.crit) stats.combat.critHits++;
-    if (ev.backstab) stats.combat.backstabHits++;
-    if (ev.quickDamage) stats.combat.quickDamageHits++;
-    if (ev.buffStack) stats.combat.buffStackHits++;
-
-    if (ev.abilityId) {
-      inc(stats.abilities.hits, ev.abilityId);
-      if (ev.longRange) inc(stats.abilities.longRangeHits, ev.abilityId);
-      if (ev.fullCharge) inc(stats.abilities.fullChargeHits, ev.abilityId);
-    }
-    dirty = true;
-  }
-
-  if (target) {
-    const stats = ensureProfileStats(target);
-    stats.combat.damageTaken += Math.max(0, Number(ev.actualDamage) || 0);
-    if (ev.surviveUnder10Hp) stats.combat.surviveUnder10Hp++;
-    dirty = true;
-  }
-
-  return dirty;
-}
-
-function applyKillEventStats(ev) {
-  let dirty = false;
-  const killer = ev.credited ? statProfile(ev.player) : null;
-  const victim = statProfile(ev.victim);
-
-  if (killer) {
-    const stats = ensureProfileStats(killer);
-    stats.combat.kills++;
-    inc(stats.combat.killsByCause, ev.cause || 'unknown');
-    if (ev.firstInMatch) stats.combat.firstBloods++;
-    if (ev.sourceHadKebab) stats.combat.killsWhileKebab++;
-    if (ev.sourceHadEnrage) stats.combat.killsWhileEnraged++;
-    if (ev.sourceHadBerserk) stats.combat.killsWhileBerserk++;
-    if (ev.retaliation) stats.combat.revengeKills++;
-    if (ev.lowHpKill) stats.combat.lowHpKills++;
-    if (ev.targetWasStunned) stats.combat.stunnedKills++;
-    if (ev.targetWasStunned && Number(ev.targetStunnedBy) === Number(ev.player?.playerId)) stats.combat.ownStunKills++;
-    if (ev.harpoonSetupKill) stats.abilities.harpoonSetupKills++;
-    if (ev.abilityId) inc(stats.abilities.kills, ev.abilityId);
-    dirty = true;
-  }
-
-  if (victim) {
-    const stats = ensureProfileStats(victim);
-    stats.combat.deaths++;
-    inc(stats.combat.deathsByCause, ev.cause || 'unknown');
-    if (ev.victimHadBerserk) stats.combat.deathsWhileBerserk++;
-    dirty = true;
-  }
-
-  return dirty;
-}
-
-function applyComboStats(ev) {
-  const profile = statProfile(ev.player);
-  if (!profile) return false;
-  const stats = ensureProfileStats(profile);
-  stats.combos.finishers++;
-  if (ev.exact) stats.combos.exactFinishers++;
-  if (ev.killed) {
-    stats.combos.finisherKills++;
-    inc(stats.combos.killsById, ev.comboId);
-  }
-  inc(stats.combos.byId, ev.comboId);
-  return true;
-}
-
-function applyEnrageStats(ev) {
-  const profile = statProfile(ev.player);
-  if (!profile) return false;
-  ensureProfileStats(profile).combos.enrages++;
-  return true;
-}
-
-function applyPowerupStats(ev) {
-  const profile = statProfile(ev.player);
-  if (!profile) return false;
-  const stats = ensureProfileStats(profile);
-  stats.powerups.total++;
-  inc(stats.powerups.byKind, ev.kind);
-  if (ev.kind === 'pizza' && ev.lowHp) stats.powerups.pizzaLowHp++;
-  if (ev.center) stats.powerups.centerPickups++;
-  return true;
-}
-
-function applyAbilityUseStats(ev) {
-  const profile = statProfile(ev.player);
-  if (!profile) return false;
-  const stats = ensureProfileStats(profile);
-  inc(stats.abilities.used, ev.abilityId);
-  if (ev.abilityId === 'blink' && ev.lowHp) stats.abilities.blinkLowHp++;
-  if (ev.abilityId === 'blink' && ev.throughPlayer) stats.abilities.blinkThroughPlayer++;
-  return true;
-}
-
-function applyAbilityReleaseStats(ev) {
-  const profile = statProfile(ev.player);
-  if (!profile) return false;
-  const stats = ensureProfileStats(profile);
-  inc(stats.abilities.released, ev.abilityId);
-  return true;
-}
-
-function applyShieldBlockStats(ev) {
-  const profile = statProfile(ev.player);
-  if (!profile) return false;
-  const stats = ensureProfileStats(profile);
-  stats.abilities.shieldBlocks++;
-  if (ev.fullSet) stats.abilities.fullShieldSets++;
-  return true;
-}
-
-function applyProtectedHitStats(ev) {
-  const profile = statProfile(ev.player);
-  if (!profile) return false;
-  ensureProfileStats(profile).combat.protectedHits++;
-  return true;
-}
-
-function applyHarpoonPullStats(ev) {
-  const profile = statProfile(ev.player);
-  if (!profile) return false;
-  ensureProfileStats(profile).abilities.harpoonPulls++;
+  saveProfiles();
   return true;
 }
 
 function recordMapVoteStats(match) {
   if (!claimRoundRegistration(recordedMapVoteStats, match)) return;
   if (match.statsEnabled === false) return;
-
-  let dirty = false;
-  const players = [...match.players.values()];
-  const selectedMap = match.selectedMap || MAPS[0]?.id || 'unknown';
-  const votedSelected = players.filter((player) => match.mapVotes.get(player.id) === selectedMap);
-  const unanimous = players.length > 0 && votedSelected.length === players.length;
-
-  for (const player of players) {
-    const profile = getProfileById(player.profileId);
-    if (!profile) continue;
-    const stats = ensureProfileStats(profile);
-    const vote = match.mapVotes.get(player.id);
-    if (vote) inc(stats.matches.mapVotes, vote);
-    if (unanimous) stats.matches.unanimousMapVotes++;
-    dirty = true;
-  }
-
-  if (dirty) {
-    dirty = unlockPendingAchievements({ notify: true }) || dirty;
-    saveProfiles();
-  }
+  persistChangedProfiles(profileStatistics.applyMapVote(match, MAPS[0]?.id || 'unknown'));
 }
 
 function recordMatchResult(match, matchGame) {
@@ -1659,43 +1273,9 @@ function recordMatchResult(match, matchGame) {
   processStatEvents(matchGame.events);
   matchGame.events = [];
 
-  const score = match.finalScore ?? matchGame.score ?? { cleo: 0, viking: 0 };
-  const winner = score.cleo === score.viking ? null : score.cleo > score.viking ? 'cleo' : 'viking';
+  const { changed, winner } = profileStatistics.applyMatchResult(match, matchGame);
   if (winner) globalStats.factionWins[winner]++;
-  const mapId = match.selectedMap || matchGame.mapId || 'unknown';
-  let dirty = !!winner;
-
-  for (const player of matchGame.players.values()) {
-    const profile = getProfileById(player.profileId);
-    if (!profile) continue;
-
-    const stats = ensureProfileStats(profile);
-    const map = mapStats(stats, mapId);
-    stats.matches.played++;
-    map.played++;
-
-    if (!winner) {
-      stats.matches.draws++;
-      map.draws++;
-    } else if (player.team === winner) {
-      stats.matches.wins++;
-      map.wins++;
-    } else {
-      stats.matches.losses++;
-      map.losses++;
-    }
-
-    stats.matches.bestKills = Math.max(stats.matches.bestKills, player.kills);
-    stats.matches.bestCritHits = Math.max(stats.matches.bestCritHits, player.stats?.critHits ?? 0);
-    stats.matches.bestPowerups = Math.max(stats.matches.bestPowerups, player.stats?.powerups ?? 0);
-    if (player.kills >= 3 && player.deaths === 0) stats.matches.flawless3KillMatches++;
-    dirty = true;
-  }
-
-  if (dirty) {
-    dirty = unlockPendingAchievements({ notify: true }) || dirty;
-    saveProfiles();
-  }
+  persistChangedProfiles(changed, { force: !!winner });
 }
 
 function clearRecordedRound(match) {
@@ -1782,7 +1362,7 @@ function buildProfileView(profile) {
     prey: describeMatchup(profile.killsAgainst),
     favoriteCharacter: favoriteCharacter(teamPlayMs),
     stats: profile.stats,
-    achievements: ensureProfileAchievements(profile),
+    achievements: ensureStoredAchievements(profile),
   };
 }
 
@@ -1873,6 +1453,7 @@ let snapshotAcc = SNAPSHOT_MS;
 let last = performance.now();
 
 setInterval(() => {
+  const tickStarted = performance.now();
   const nowMs = performance.now();
   const elapsed = nowMs - last;
   acc += elapsed;
@@ -1889,19 +1470,21 @@ setInterval(() => {
   }
   if (steps === 5) acc = 0;
 
-  if (snapshotAcc < SNAPSHOT_MS) return;
-  snapshotAcc %= SNAPSHOT_MS;
+  if (snapshotAcc >= SNAPSHOT_MS) {
+    snapshotAcc %= SNAPSHOT_MS;
 
-  sendGameSnapshot(game, (ws) => !ws.matchId && !!ws.playerId);
+    sendGameSnapshot(game, (ws) => !ws.matchId && !!ws.playerId);
 
-  for (const [matchId, matchGame] of matchGames) {
-    const match = matches.get(matchId);
-    if (!match || ![MATCH_PHASES.countdown, MATCH_PHASES.playing].includes(match.phase)) {
-      if (!match) matchGames.delete(matchId);
-      continue;
+    for (const [matchId, matchGame] of matchGames) {
+      const match = matches.get(matchId);
+      if (!match || ![MATCH_PHASES.countdown, MATCH_PHASES.playing].includes(match.phase)) {
+        if (!match) matchGames.delete(matchId);
+        continue;
+      }
+      sendGameSnapshot(matchGame, (ws) => ws.matchId === matchId, { statsEnabled: match.statsEnabled !== false });
     }
-    sendGameSnapshot(matchGame, (ws) => ws.matchId === matchId, { statsEnabled: match.statsEnabled !== false });
   }
+  tickMetrics.record(performance.now() - tickStarted);
 }, TICK_MS);
 
 // Pingar varje sekund. Ger bade en fardig rundtursstid at traffkontrollen och

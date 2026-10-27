@@ -19,6 +19,7 @@
     "test:layout": "node test/ability-layout.mjs",
     "test:powerup": "node test/powerup.mjs",
     "test:platforms": "node test/platforms.mjs",
+    "measure:ticks": "node tools/measure-tick-baseline.mjs",
     "peek": "node test/peek.mjs",
     "sprites": "node tools/prepare-sprites.mjs",
     "sprites:shield": "node tools/prepare-viking-shield.mjs",
