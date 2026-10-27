@@ -22,7 +22,6 @@ import {
   MELEE,
   MELEE_ATTACKS,
   MELEE_BINDS,
-  NAME_MAX,
   TEAMS,
   TRAINING,
   mapLayoutFor,
@@ -42,11 +41,8 @@ const input = initInput(net, (action) => {
   if (ACTION_SLOTS.includes(action)) hud.flash(action);
 });
 
-const intro = document.getElementById('intro');
-const introForm = document.getElementById('intro-form');
-const introName = document.getElementById('intro-name');
-const introError = document.getElementById('intro-error');
 const migrationGate = document.getElementById('legacy-migration');
+const migrationKicker = document.getElementById('migration-kicker');
 const migrationTitle = document.getElementById('migration-title');
 const migrationCopy = document.getElementById('migration-copy');
 const migrationClaim = document.getElementById('migration-claim');
@@ -54,18 +50,17 @@ const migrationForm = document.getElementById('migration-form');
 const migrationProfileName = document.getElementById('migration-profile-name');
 const migrationProfileStats = document.getElementById('migration-profile-stats');
 const migrationUsername = document.getElementById('migration-username');
+const migrationNameHelp = document.getElementById('migration-name-help');
 const migrationPassword = document.getElementById('migration-password');
 const migrationPasswordConfirm = document.getElementById('migration-password-confirm');
 const migrationUseLogin = document.getElementById('migration-use-login');
 const migrationLogin = document.getElementById('migration-login');
-const migrationLoginCopy = migrationLogin?.querySelector('p');
 const migrationLoginUsername = document.getElementById('migration-login-username');
 const migrationLoginPassword = document.getElementById('migration-login-password');
 const migrationBack = document.getElementById('migration-back');
 const migrationUseRegister = document.getElementById('migration-use-register');
 const migrationRegister = document.getElementById('migration-register');
-const migrationRegisterDisplayName = document.getElementById('migration-register-display-name');
-const migrationRegisterUsername = document.getElementById('migration-register-username');
+const migrationRegisterName = document.getElementById('migration-register-name');
 const migrationRegisterPassword = document.getElementById('migration-register-password');
 const migrationRegisterPasswordConfirm = document.getElementById('migration-register-password-confirm');
 const migrationRegisterBack = document.getElementById('migration-register-back');
@@ -182,7 +177,7 @@ const SHARED_WAKE_BUTTONS = new Set([SHARED_CONFIRM_BUTTON, SHARED_CANCEL_BUTTON
 
 const clientId = loadClientId();
 let currentName = localStorage.getItem('vvc.name') ?? '';
-let currentView = 'intro';
+let currentView = 'lobby';
 let leaderboardEntries = new Map();
 let hoverCardId = 0;
 let openProfileId = 0;
@@ -217,20 +212,14 @@ const achievementsUi = new AchievementsUi({
 const settingsUi = new SettingsUi({ audio, onBack: closeSettings });
 const gamepadCursor = initGamepadCursor();
 
-introName.value = currentName;
 initLobbyInfo();
 initPlayerCard();
 initInstructions();
 initAudioDebug();
 const netDebug = initNetDebug(NET_DEBUG);
 initMenuClicks();
-setView('intro');
+setView('lobby');
 syncMatchMusic(null);
-
-introForm.addEventListener('submit', (e) => {
-  e.preventDefault();
-  submitName();
-});
 
 migrationForm?.addEventListener('submit', submitLegacyMigration);
 migrationLogin?.addEventListener('submit', submitMigrationLogin);
@@ -379,7 +368,7 @@ net.on('match', (match) => {
 });
 
 net.on('appError', (msg) => {
-  const target = currentView === 'intro' ? introError : lobbyError;
+  const target = migrationGate && !migrationGate.hidden ? migrationError : lobbyError;
   target.textContent = msg.message ?? 'Something went wrong.';
 });
 
@@ -421,7 +410,7 @@ net.on('kill', (kill) => hud.addKill(kill));
 
 net.on('open', () => {
   connEl.hidden = true;
-  if (currentView !== 'intro' && currentName) net.identify(currentName, clientId);
+  if (currentName) net.identify(currentName, clientId);
 });
 
 net.on('close', () => {
@@ -500,19 +489,23 @@ async function initLegacyMigration() {
   try {
     const state = await authRequest('/api/auth/state', { clientId });
     if (state.authenticated) {
+      currentName = state.session.username;
+      localStorage.setItem('vvc.name', currentName);
       migrationGate.hidden = true;
+      setView('lobby');
       return true;
     }
     if (!state.migration) {
       pendingLegacyMigration = false;
-      migrationTitle.textContent = 'Sign in required';
-      migrationCopy.textContent = 'You need an account session before you can enter the lobby or start any game mode.';
-      if (migrationLoginCopy) migrationLoginCopy.textContent = 'Sign in with an existing account to continue.';
+      setMigrationPresentation(false);
+      migrationTitle.textContent = 'Sign in';
+      migrationCopy.textContent = '';
       showMigrationLogin(true);
       return false;
     }
     const profile = state.migration;
     pendingLegacyMigration = true;
+    setMigrationPresentation(true);
     migrationTitle.textContent = 'Protect your existing fighter';
     migrationCopy.textContent = 'This browser contains an older profile. Migration is required before that profile can be used again.';
     migrationProfileName.textContent = profile.displayName;
@@ -520,13 +513,20 @@ async function initLegacyMigration() {
       `${profile.points} points`, `${profile.kills} kills`, `${profile.deaths} deaths`,
       `${profile.matches} matches`, `${profile.achievements} achievements`, formatPlayTime(profile.playMs),
     ].join(' · ');
-    migrationUsername.value = suggestedUsername(profile.displayName);
+    migrationUsername.value = profile.displayName;
+    migrationUsername.readOnly = profile.nameAvailable;
+    migrationNameHelp.hidden = profile.nameAvailable;
+    migrationNameHelp.textContent = profile.nameIssue === 'taken'
+      ? 'Another account already uses this player name. Choose a new name to migrate this profile.'
+      : 'This old name cannot be used for sign-in. Choose a new player name to migrate this profile.';
     migrationClaim.hidden = false;
-    migrationUsername.focus();
+    (profile.nameAvailable ? migrationPassword : migrationUsername).focus();
     return false;
   } catch (error) {
+    setMigrationPresentation(false);
     migrationTitle.textContent = 'Profile check failed';
     migrationCopy.textContent = 'The server could not safely check your old profile. Reload the page to try again.';
+    migrationCopy.hidden = false;
     migrationError.textContent = error.message;
     return false;
   }
@@ -543,9 +543,9 @@ async function submitLegacyMigration(event) {
   setFormBusy(migrationForm, true);
   try {
     const result = await authRequest('/api/auth/migrate', {
-      clientId, username: migrationUsername.value, password: migrationPassword.value,
+      clientId, name: migrationUsername.value, password: migrationPassword.value,
     });
-    currentName = migrationProfileName.textContent;
+    currentName = migrationUsername.value;
     localStorage.setItem('vvc.name', currentName);
     migrationClaim.hidden = true;
     migrationLogin.hidden = true;
@@ -556,6 +556,12 @@ async function submitLegacyMigration(event) {
     migrationCopy.textContent = 'Your fighter is now connected to your new account.';
     migrationCopyCodes.focus();
   } catch (error) {
+    if (error.code === 'USERNAME_TAKEN') {
+      migrationUsername.readOnly = false;
+      migrationNameHelp.hidden = false;
+      migrationNameHelp.textContent = 'Another account just claimed this player name. Choose a new name to continue.';
+      migrationUsername.focus();
+    }
     migrationError.textContent = error.message;
   } finally {
     setFormBusy(migrationForm, false);
@@ -588,8 +594,7 @@ async function submitRegistration(event) {
   setFormBusy(migrationRegister, true);
   try {
     const result = await authRequest('/api/auth/register', {
-      displayName: migrationRegisterDisplayName.value,
-      username: migrationRegisterUsername.value,
+      name: migrationRegisterName.value,
       password: migrationRegisterPassword.value,
     });
     currentName = result.displayName;
@@ -620,11 +625,15 @@ function showMigrationLogin(show) {
   migrationLogin.hidden = !show;
   migrationRegister.hidden = true;
   migrationTitle.textContent = show
-    ? pendingLegacyMigration ? 'Sign in to another account' : 'Sign in required'
+    ? pendingLegacyMigration ? 'Sign in to another account' : 'Sign in'
     : 'Protect your existing fighter';
+  migrationCopy.hidden = !pendingLegacyMigration || show;
+  if (pendingLegacyMigration && show) {
+    migrationCopy.textContent = 'Your old profile will remain locked until you migrate it.';
+  }
   if (migrationBack) migrationBack.hidden = show && !pendingLegacyMigration;
   if (migrationUseRegister) migrationUseRegister.hidden = pendingLegacyMigration;
-  (show ? migrationLoginUsername : migrationUsername).focus();
+  (show ? migrationLoginUsername : migrationUsername.readOnly ? migrationPassword : migrationUsername).focus();
 }
 
 function showRegistration() {
@@ -633,9 +642,11 @@ function showRegistration() {
   migrationClaim.hidden = true;
   migrationLogin.hidden = true;
   migrationRegister.hidden = false;
+  setMigrationPresentation(false);
   migrationTitle.textContent = 'Create account';
-  migrationCopy.textContent = 'Choose a fighter name and sign-in details to enter the arena.';
-  migrationRegisterDisplayName.focus();
+  migrationCopy.textContent = '';
+  migrationCopy.hidden = true;
+  migrationRegisterName.focus();
 }
 
 function showRecoveryCodes(codes, title, copy) {
@@ -646,7 +657,13 @@ function showRecoveryCodes(codes, title, copy) {
   migrationRecovery.hidden = false;
   migrationTitle.textContent = title;
   migrationCopy.textContent = copy;
+  migrationCopy.hidden = false;
   migrationCopyCodes.focus();
+}
+
+function setMigrationPresentation(isMigration) {
+  migrationKicker.hidden = !isMigration;
+  migrationCopy.hidden = !isMigration;
 }
 
 async function authRequest(url, body) {
@@ -654,7 +671,11 @@ async function authRequest(url, body) {
     method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.message || 'The request failed.');
+  if (!response.ok) {
+    const error = new Error(data.message || 'The request failed.');
+    error.code = data.error;
+    throw error;
+  }
   return data;
 }
 
@@ -662,34 +683,11 @@ function setFormBusy(form, busy) {
   for (const control of form?.elements ?? []) control.disabled = busy;
 }
 
-function suggestedUsername(displayName) {
-  const candidate = String(displayName || '').trim().toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9._-]/g, '').slice(0, 32);
-  return /^[a-z0-9._-]{3,32}$/.test(candidate) ? candidate : '';
-}
-
-function submitName() {
-  const name = introName.value.trim().slice(0, NAME_MAX);
-  if (!name) {
-    introError.textContent = 'Enter a name.';
-    introName.focus();
-    return;
-  }
-  if (!net.connected) {
-    introError.textContent = 'Waiting for the server...';
-    return;
-  }
-
-  introError.textContent = '';
-  currentName = name;
-  net.identify(name, clientId);
-}
-
 function setView(view) {
   const changedView = currentView !== view;
   currentView = view;
 
-  intro.classList.toggle('hidden', view !== 'intro');
-  lobby.classList.toggle('hidden', view === 'intro' || view === 'game');
+  lobby.classList.toggle('hidden', view === 'game');
   globalLobby.hidden = view !== 'lobby';
   matchRoom.hidden = view !== 'matchRoom';
   if (achievementsView) achievementsView.hidden = view !== 'achievements';
@@ -708,10 +706,6 @@ function setView(view) {
     hud.hide();
     if (fightOverlay) fightOverlay.hidden = true;
     resetFightCopy();
-  }
-
-  if (view === 'intro') {
-    window.setTimeout(() => introName.focus(), 0);
   }
 
   if (view === 'lobby' || view === 'matchRoom' || view === 'achievements' || view === 'settings') {
@@ -977,7 +971,7 @@ function selectMatchWipe(match, previousPhase) {
   if (!currentName) return null;
 
   if (!match) {
-    if (currentView === 'intro' || currentView === 'matchRoom' || currentView === 'game') return WIPES.lobby;
+    if (currentView === 'matchRoom' || currentView === 'game') return WIPES.lobby;
     return null;
   }
 
@@ -988,7 +982,7 @@ function selectMatchWipe(match, previousPhase) {
   if (match.phase === MATCH_PHASES.mapVote && previousPhase !== MATCH_PHASES.mapVote) return WIPES.mapVote;
 
   if (match.phase === MATCH_PHASES.matchLobby) {
-    if (currentView === 'intro' || currentView === 'lobby' || previousPhase === MATCH_PHASES.results) return WIPES.matchRoom;
+    if (currentView === 'lobby' || previousPhase === MATCH_PHASES.results) return WIPES.matchRoom;
   }
 
   return null;
@@ -1076,9 +1070,7 @@ function playWipe(wipe, swap) {
 
 function markViewEntry(view) {
   const el =
-    view === 'intro'
-      ? intro
-      : view === 'lobby'
+    view === 'lobby'
         ? globalLobby
         : view === 'matchRoom'
           ? matchRoom

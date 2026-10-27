@@ -1,11 +1,14 @@
 import { DatabaseSync } from 'node:sqlite';
 import { PROFILE_DATABASE_VERSION, PROFILE_SCHEMA_SQL } from './profile-schema.js';
-import { authError, SESSION_ABSOLUTE_MS, SESSION_IDLE_MS, SESSION_TOUCH_INTERVAL_MS } from './auth-crypto.js';
+import {
+  authError, normalizeUsername, SESSION_ABSOLUTE_MS, SESSION_IDLE_MS, SESSION_TOUCH_INTERVAL_MS,
+} from './auth-crypto.js';
 
 export class AccountDatabase {
   constructor(filePath) {
     this.db = new DatabaseSync(filePath);
     this.db.exec(PROFILE_SCHEMA_SQL);
+    this.#synchronizeExistingAccountNames();
     this.db.prepare(`INSERT INTO schema_meta(key, value) VALUES ('schema_version', ?)
       ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run(String(PROFILE_DATABASE_VERSION));
   }
@@ -33,12 +36,20 @@ export class AccountDatabase {
     if (!row) return null;
     const stats = parseJson(row.stats_json);
     const achievements = parseJson(row.achievements_json);
+    let nameAvailable = false;
+    let nameIssue = 'invalid';
+    try {
+      const names = normalizeUsername(row.display_name);
+      nameAvailable = !this.findAccount(names.normalized);
+      nameIssue = nameAvailable ? null : 'taken';
+    } catch {}
     return {
       profileId: Number(row.profile_id), displayName: row.display_name,
       points: Number(row.points), playMs: Number(row.play_ms), seen: Number(row.seen),
       kills: Number(row.kills), deaths: Number(row.deaths),
       matches: Math.max(0, Number(stats?.matches?.played) || 0),
       achievements: Object.keys(achievements?.unlocked ?? {}).length,
+      nameAvailable, nameIssue,
     };
   }
 
@@ -46,19 +57,25 @@ export class AccountDatabase {
     recoveryCodeHashes, tokenHash, now }) {
     this.db.exec('BEGIN IMMEDIATE');
     try {
-      const claim = this.db.prepare(`SELECT c.profile_id FROM legacy_profile_claims c
+      const claim = this.db.prepare(`SELECT c.profile_id, p.display_name FROM legacy_profile_claims c
         JOIN profiles p USING(profile_id)
         WHERE c.client_id_hash = ? AND c.status = 'pending' AND p.account_id IS NULL`).get(clientIdHash);
       if (!claim) throw authError('LEGACY_PROFILE_UNAVAILABLE', 'Legacy profile is not available for migration');
-      if (this.findAccount(usernameNormalized)) throw authError('USERNAME_TAKEN', 'Username is already in use');
+      let legacyNames = null;
+      try { legacyNames = normalizeUsername(claim.display_name); } catch {}
+      const legacyNameTaken = !legacyNames || !!this.findAccount(legacyNames.normalized);
+      if (!legacyNameTaken && usernameDisplay !== claim.display_name) {
+        throw authError('LEGACY_NAME_LOCKED', 'The existing fighter name must be kept');
+      }
+      if (this.findAccount(usernameNormalized)) throw authError('USERNAME_TAKEN', 'Player name is already in use');
 
       const inserted = this.db.prepare(`INSERT INTO accounts
         (username_normalized, username_display, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`)
         .run(usernameNormalized, usernameDisplay, passwordHash, now, now);
       const accountId = Number(inserted.lastInsertRowid);
       const profileId = Number(claim.profile_id);
-      const linked = this.db.prepare(`UPDATE profiles SET account_id = ?, migrated_at = ?
-        WHERE profile_id = ? AND account_id IS NULL`).run(accountId, now, profileId);
+      const linked = this.db.prepare(`UPDATE profiles SET account_id = ?, display_name = ?, migrated_at = ?
+        WHERE profile_id = ? AND account_id IS NULL`).run(accountId, usernameDisplay, now, profileId);
       const claimed = this.db.prepare(`UPDATE legacy_profile_claims SET status = 'migrated', migrated_at = ?
         WHERE profile_id = ? AND status = 'pending'`).run(now, profileId);
       if (linked.changes !== 1 || claimed.changes !== 1) {
@@ -69,18 +86,19 @@ export class AccountDatabase {
       this.db.prepare(`INSERT INTO sessions(token_hash, account_id, created_at, last_used_at, expires_at)
         VALUES (?, ?, ?, ?, ?)`).run(tokenHash, accountId, now, now, now + SESSION_IDLE_MS);
       this.db.exec('COMMIT');
-      return { account: { accountId, username: usernameDisplay, status: 'active' }, profileId };
+      return { account: { accountId, username: usernameDisplay, status: 'active' },
+        profileId, displayName: usernameDisplay };
     } catch (error) {
       this.db.exec('ROLLBACK');
-      if (String(error.message).includes('accounts.username_normalized')) throw authError('USERNAME_TAKEN', 'Username is already in use');
+      if (String(error.message).includes('accounts.username_normalized')) throw authError('USERNAME_TAKEN', 'Player name is already in use');
       throw error;
     }
   }
 
-  createAccount({ usernameNormalized, usernameDisplay, displayName, passwordHash, recoveryCodeHashes, tokenHash, now }) {
+  createAccount({ usernameNormalized, usernameDisplay, passwordHash, recoveryCodeHashes, tokenHash, now }) {
     this.db.exec('BEGIN IMMEDIATE');
     try {
-      if (this.findAccount(usernameNormalized)) throw authError('USERNAME_TAKEN', 'Username is already in use');
+      if (this.findAccount(usernameNormalized)) throw authError('USERNAME_TAKEN', 'Player name is already in use');
       const inserted = this.db.prepare(`INSERT INTO accounts
         (username_normalized, username_display, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`)
         .run(usernameNormalized, usernameDisplay, passwordHash, now, now);
@@ -92,7 +110,7 @@ export class AccountDatabase {
         profile_id, account_id, display_name, points, play_ms, seen, last_seen_at,
         cleo_play_ms, viking_play_ms, stats_json, achievements_json, created_at, migrated_at
       ) VALUES (?, ?, ?, 0, 0, 0, 0, 0, 0, '{}', '{"unlocked":{}}', ?, ?)`)
-        .run(profileId, accountId, displayName, now, now);
+        .run(profileId, accountId, usernameDisplay, now, now);
       this.db.prepare(`INSERT INTO schema_meta(key, value) VALUES ('next_profile_id', ?)
         ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run(String(profileId + 1));
       const addCode = this.db.prepare('INSERT INTO recovery_codes(account_id, code_hash, created_at) VALUES (?, ?, ?)');
@@ -101,10 +119,10 @@ export class AccountDatabase {
         VALUES (?, ?, ?, ?, ?)`).run(tokenHash, accountId, now, now, now + SESSION_IDLE_MS);
       this.db.exec('COMMIT');
       return { account: publicAccount({ account_id: accountId, username_display: usernameDisplay, status: 'active' }),
-        profileId, displayName };
+        profileId, displayName: usernameDisplay };
     } catch (error) {
       this.db.exec('ROLLBACK');
-      if (String(error.message).includes('accounts.username_normalized')) throw authError('USERNAME_TAKEN', 'Username is already in use');
+      if (String(error.message).includes('accounts.username_normalized')) throw authError('USERNAME_TAKEN', 'Player name is already in use');
       throw error;
     }
   }
@@ -187,6 +205,29 @@ export class AccountDatabase {
   cleanupSessions(now) {
     return Number(this.db.prepare(`DELETE FROM sessions WHERE revoked_at IS NOT NULL OR expires_at <= ? OR created_at + ? <= ?`)
       .run(now, SESSION_ABSOLUTE_MS, now).changes);
+  }
+
+  #synchronizeExistingAccountNames() {
+    const rows = this.db.prepare(`SELECT a.account_id, a.username_normalized, a.username_display,
+      p.display_name FROM accounts a JOIN profiles p USING(account_id) ORDER BY a.created_at, a.account_id`).all();
+    if (!rows.length) return;
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      for (const row of rows) {
+        const names = normalizeUsername(row.display_name);
+        const conflict = this.db.prepare(`SELECT account_id FROM accounts
+          WHERE username_normalized = ? AND account_id <> ?`).get(names.normalized, row.account_id);
+        if (conflict) {
+          throw new Error(`Existing player name conflict for profile name ${JSON.stringify(row.display_name)}`);
+        }
+        this.db.prepare(`UPDATE accounts SET username_normalized = ?, username_display = ?
+          WHERE account_id = ?`).run(names.normalized, names.display, row.account_id);
+      }
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
   }
 }
 

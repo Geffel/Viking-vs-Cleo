@@ -190,10 +190,10 @@ try {
   const accounts = new AccountService({ dataDir });
   await accounts.open();
   const legacyStatsLogin = await accounts.migrateLegacyProfile(
-    'legacy-stats-only', 'legacy.stats', 'legacy stats password',
+    'legacy-stats-only', 'Legacy stats', 'legacy stats password',
   );
   const legacyPointsLogin = await accounts.migrateLegacyProfile(
-    'legacy-points-only', 'legacy.points', 'legacy points password',
+    'legacy-points-only', 'Legacy points', 'legacy points password',
   );
   await accounts.close();
 

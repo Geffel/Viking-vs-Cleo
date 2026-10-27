@@ -11,7 +11,7 @@ implementerad.
 
 ## Mål
 
-- Varje beständig spelarprofil ägs av ett konto med användarnamn och lösenord.
+- Varje beständig spelarprofil ägs av ett konto med spelarnamn och lösenord.
 - Inloggning krävs för samtliga spellägen, inklusive träning och delad skärm.
 - Det finns inget gästläge och ingen möjlighet att spela vidare med en
   omigrerad äldre profil.
@@ -37,13 +37,15 @@ implementerad.
   statistik eller profiländringar blir tillgängliga.
 - Inloggningsförsök begränsas för att försvåra lösenordsgissning.
 
-### Användarnamn och visningsnamn
+### Gemensamt konto- och spelarnamn
 
-- Inloggningsnamn är unika efter normalisering och används endast för kontot.
-- Profilens visningsnamn bevaras separat. Det gör att äldre profiler med samma
-  eller liknande namn kan migreras utan att leaderboardhistorik skrivs om.
-- Vid migrering föreslås det befintliga visningsnamnet som inloggningsnamn. Om
-  det redan är upptaget måste användaren välja ett annat inloggningsnamn.
+- Ett enda spelarnamn används både för inloggning och som profilens namn i
+  spelet. Namnet är unikt efter normalisering, medan exakt skrivning med stora
+  och små bokstäver bevaras för presentation.
+- Vid migrering är det befintliga profilnamnet låst och måste behållas exakt om
+  det är ledigt. Om flera äldre profiler har samma normaliserade namn behåller
+  den först migrerade profilen namnet. Senare dubbletter får tydlig information
+  i migrationsvyn och måste välja ett nytt unikt spelarnamn.
 
 ### Obligatorisk migrering
 
@@ -84,8 +86,8 @@ ska hållas åtskilda:
 ### `accounts`
 
 - internt konto-ID
-- normaliserat, unikt inloggningsnamn
-- visningsform av inloggningsnamnet
+- normaliserat, unikt spelarnamn
+- exakt presentationsform av spelarnamnet
 - lösenordshash med algoritm och parametrar
 - skapad och senast uppdaterad tid
 - eventuell spärr-/statusinformation
@@ -94,7 +96,7 @@ ska hållas åtskilda:
 
 - befintligt och oförändrat profil-ID
 - konto-ID, tomt endast före migrering
-- visningsnamn
+- spelarnamn, identiskt med kontots presentationsform efter migrering
 - poäng, speltid och fraktionsspeltid
 - match-, förmåge-, powerup- och kartstatistik
 - achievementdata
@@ -180,7 +182,7 @@ ett konto först när den obligatoriska migreringen slutförs.
 
 ## Delarbete C – konto och session
 
-- Registrering med unikt inloggningsnamn och lösenord.
+- Registrering med ett unikt spelarnamn och lösenord; samma namn används i spelet.
 - Inloggning med ett generiskt fel för fel användarnamn eller lösenord.
 - Säker lösenordshashning och konstanttidsjämförelse där det är relevant.
 - Sessionsskapande, automatisk återanslutning, utgång och utloggning.
@@ -196,7 +198,8 @@ ett konto först när den obligatoriska migreringen slutförs.
 - Läs gammalt `clientId` enbart för att hitta en väntande migration.
 - Visa vilken profil och en begränsad statistiksammanfattning som hittats.
 - Förklara att migreringen är nödvändig för fortsatt åtkomst.
-- Låt användaren skapa inloggningsnamn och lösenord.
+- Lås det gamla profilnamnet och låt användaren skapa lösenord. Endast om namnet
+  redan tagits av en tidigare migrerad dubblett får användaren välja ett nytt.
 - Slutför konto, profilkoppling, migreringsstatus och första session i en enda
   transaktion.
 - Hantera samtidiga migrationsförsök så att exakt ett kan lyckas.
@@ -215,6 +218,9 @@ Föreslagen startordning:
 Klienten får inte öppna lobby, träning, matchskapande eller andra spelvyer före
 ett autentiserat serversvar. Att dölja knappar i klienten är endast presentation;
 servern måste upprätthålla spärren.
+
+Efter ett autentiserat serversvar öppnas den globala lobbyn direkt. Den äldre
+separata vyn för att skriva in fighter-namn används inte längre.
 
 ## Delarbete F – test och driftsättning
 

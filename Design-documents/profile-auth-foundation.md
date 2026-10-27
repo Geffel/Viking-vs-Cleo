@@ -18,11 +18,12 @@ tester.
   `npm run check:runtime`, och först därefter starta servern igen. En ny
   patchversion tas inte i drift automatiskt.
 
-## Inloggningsnamn och lösenord
+## Spelarnamn och lösenord
 
-- Inloggningsnamn är 3–32 ASCII-tecken och får innehålla `a-z`, `0-9`, punkt,
-  bindestreck och understreck. De trimmas och normaliseras till gemener före
-  unikhetskontroll. Den form användaren skrev sparas separat för presentation.
+- Kontot och profilen har ett gemensamt spelarnamn på 1–14 Unicode-tecken.
+  Namnet trimmas och kontrolltecken tas bort. Den skrivna formen, inklusive
+  stora och små bokstäver, sparas och visas i spelet. En NFKC-normaliserad form
+  i gemener används för unikhetskontroll och inloggning.
 - Lösenord är 12–128 Unicode-kodpunkter. De trimmas eller Unicode-normaliseras
   inte. Kontroll sker både före och efter UTF-8-avkodning; ogiltig text nekas.
 - Hashformatet är versionsmärkt och innehåller algoritm, parametrar och salt.
@@ -59,7 +60,8 @@ tester.
   Konto och profil hämtas från sessionen; klientinskickat konto-, profil- eller
   `clientId`-värde ger aldrig behörighet.
 - Alla spel-, profil- och statistikvägar kräver session. Publik leaderboard får
-  vara anonym och skrivskyddad, men får inte exponera inloggningsnamn.
+  vara anonym och skrivskyddad. Spelarnamnet är publikt och är även namnet som
+  används vid inloggning.
 
 ## Kontoåterställning och äldre profiler
 

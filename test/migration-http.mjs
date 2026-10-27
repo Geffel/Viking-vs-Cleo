@@ -10,11 +10,18 @@ const dataDir = await mkdtemp(path.join(os.tmpdir(), 'vvc-migration-http-'));
 const database = new SqliteProfileDatabase(path.join(dataDir, 'profiles.sqlite'));
 database.replaceSnapshot({
   version: 4, nextProfileId: 8,
-  profiles: [{
-    clientId: 'browser-legacy-id', profileId: 7, name: 'Old Fighter', points: 12, playMs: 5000, seen: 4,
-    killsAgainst: {}, deathsBy: {}, teamPlayMs: { cleo: 3000, viking: 2000 },
-    stats: { matches: { played: 2 } }, achievements: { unlocked: {} },
-  }],
+  profiles: [
+    {
+      clientId: 'browser-legacy-id', profileId: 7, name: 'Old Fighter', points: 12, playMs: 5000, seen: 4,
+      killsAgainst: {}, deathsBy: {}, teamPlayMs: { cleo: 3000, viking: 2000 },
+      stats: { matches: { played: 2 } }, achievements: { unlocked: {} },
+    },
+    {
+      clientId: 'duplicate-legacy-id', profileId: 8, name: 'Old Fighter', points: 3, playMs: 1000, seen: 1,
+      killsAgainst: {}, deathsBy: {}, teamPlayMs: { cleo: 1000, viking: 0 },
+      stats: { matches: { played: 1 } }, achievements: { unlocked: {} },
+    },
+  ],
 }, { validate: true });
 database.close();
 
@@ -27,15 +34,16 @@ try {
   assert.equal(pending.data.authenticated, false);
   assert.equal(pending.data.migration.profileId, 7);
   assert.equal(pending.data.migration.displayName, 'Old Fighter');
+  assert.equal(pending.data.migration.nameAvailable, true);
 
   const registeredOther = await post(httpUrl, '/api/auth/register', {
-    displayName: 'Other Fighter', username: 'other.fighter', password: 'other account password 123',
+    name: 'Other Fighter', password: 'other account password 123',
   });
   assert.equal(registeredOther.response.status, 201);
   assert.notEqual(registeredOther.data.profileId, 7);
 
   const loggedInOther = await post(httpUrl, '/api/auth/login', {
-    username: 'other.fighter', password: 'other account password 123',
+    username: 'other fighter', password: 'other account password 123',
   });
   assert.equal(loggedInOther.response.status, 200);
   const otherCookie = loggedInOther.response.headers.get('set-cookie').split(';', 1)[0];
@@ -56,7 +64,7 @@ try {
     'the pending legacy identity cannot bypass migration with an anonymous game connection');
 
   const migrated = await post(httpUrl, '/api/auth/migrate', {
-    clientId: 'browser-legacy-id', username: 'old.fighter', password: 'migration password 123',
+    clientId: 'browser-legacy-id', name: 'Old Fighter', password: 'migration password 123',
   });
   assert.equal(migrated.response.status, 201);
   assert.equal(migrated.data.profileId, 7);
@@ -74,7 +82,7 @@ try {
   assert.equal(authenticated.data.migration, null);
 
   const repeated = await post(httpUrl, '/api/auth/migrate', {
-    clientId: 'browser-legacy-id', username: 'profile.thief', password: 'another migration password',
+    clientId: 'browser-legacy-id', name: 'Profile Thief', password: 'another migration password',
   });
   assert.equal(repeated.response.status, 409);
   assert.equal(repeated.data.error, 'LEGACY_PROFILE_UNAVAILABLE');
@@ -86,10 +94,31 @@ try {
   assert.equal(identified.profileId, 7, 'the first session owns the unchanged profile ID');
   assert.equal(identified.name, 'Old Fighter', 'the account session keeps the profile display name');
 
+  const duplicatePending = await post(httpUrl, '/api/auth/state', { clientId: 'duplicate-legacy-id' });
+  assert.equal(duplicatePending.data.migration.displayName, 'Old Fighter');
+  assert.equal(duplicatePending.data.migration.nameAvailable, false,
+    'the later duplicate is told that it must choose a new player name');
+  assert.equal(duplicatePending.data.migration.nameIssue, 'taken');
+  const duplicateRejected = await post(httpUrl, '/api/auth/migrate', {
+    clientId: 'duplicate-legacy-id', name: 'Old Fighter', password: 'duplicate migration password',
+  });
+  assert.equal(duplicateRejected.response.status, 409);
+  assert.equal(duplicateRejected.data.error, 'USERNAME_TAKEN');
+  const duplicateMigrated = await post(httpUrl, '/api/auth/migrate', {
+    clientId: 'duplicate-legacy-id', name: 'New Fighter', password: 'duplicate migration password',
+  });
+  assert.equal(duplicateMigrated.response.status, 201);
+  const duplicateCookie = cookieFrom(duplicateMigrated.response);
+  assert.equal((await identifyWithCookie(server.url, server.origin, duplicateCookie)).name, 'New Fighter');
+
   console.log('MIGRATION HTTP TESTS OK: blocking lookup, alternate login, atomic claim, session cookie and profile ownership work end to end');
 } finally {
   await server?.stop();
   await rm(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+}
+
+function cookieFrom(response) {
+  return response.headers.get('set-cookie').split(';', 1)[0];
 }
 
 async function post(base, route, body, cookie = '') {

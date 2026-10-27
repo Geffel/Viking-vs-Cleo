@@ -12,10 +12,10 @@ let service = new AccountService({ dataDir, now: () => now });
 
 try {
   await service.open();
-  const registered = await service.register('  Test.Player  ', 'correct horse battery', 'Test Fighter');
+  const registered = await service.register('  Test.Player  ', 'correct horse battery');
   assert.deepEqual(registered.account, { accountId: 1, username: 'Test.Player', status: 'active' });
   assert.equal(registered.profileId, 1);
-  assert.equal(registered.displayName, 'Test Fighter');
+  assert.equal(registered.displayName, 'Test.Player');
   assert.match(registered.token, /^[A-Za-z0-9_-]{43}$/);
   assert.equal(registered.recoveryCodes.length, 10);
   assert.equal(new Set(registered.recoveryCodes).size, 10);
@@ -30,13 +30,14 @@ try {
   const storedProfile = db.prepare('SELECT profile_id, account_id, display_name FROM profiles').get();
   assert.equal(storedProfile.profile_id, 1);
   assert.equal(storedProfile.account_id, 1);
-  assert.equal(storedProfile.display_name, 'Test Fighter');
+  assert.equal(storedProfile.display_name, 'Test.Player');
   db.close();
 
   await assert.rejects(service.register('TEST.PLAYER', 'a different password'), hasCode('USERNAME_TAKEN'));
-  await assert.rejects(service.register('no spaces', 'a different password'), hasCode('INVALID_USERNAME'));
+  await assert.rejects(service.register('name that is far too long', 'a different password'), hasCode('INVALID_DISPLAY_NAME'));
   await assert.rejects(service.register('valid_name', 'too short'), hasCode('INVALID_PASSWORD'));
-  await assert.rejects(service.register('another.name', 'a different password', ''), hasCode('INVALID_DISPLAY_NAME'));
+  const spaced = await service.register('Player Two', 'a different password');
+  assert.equal(spaced.displayName, 'Player Two');
 
   await assert.rejects(service.login('test.player', 'this password is wrong', '10.0.0.1'), hasCode('INVALID_CREDENTIALS'));
   await assert.rejects(service.login('missing.player', 'this password is wrong', '10.0.0.1'), hasCode('INVALID_CREDENTIALS'));

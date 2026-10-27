@@ -122,6 +122,7 @@ installAuthRoutes(app, accountService, {
     if (profile) {
       profiles.delete(clientIdHash);
       profile.clientIdHash = '';
+      profile.name = result.displayName;
       profiles.set(`account:${result.profileId}`, profile);
     }
   },

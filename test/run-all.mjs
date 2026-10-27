@@ -12,6 +12,7 @@ const logicTests = [
   ['maps', 'test/maps.mjs'],
   ['matches', 'test/matches.mjs'],
   ['ability-layout', 'test/ability-layout.mjs'],
+  ['auth-ui', 'test/auth-ui.mjs'],
   ['netcode', 'test/netcode.mjs'],
   ['server-protocol', 'test/server-protocol.mjs'],
   ['round-stats', 'test/round-stats.mjs'],

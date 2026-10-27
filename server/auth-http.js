@@ -22,7 +22,7 @@ export function installAuthRoutes(app, accountService, {
   }));
 
   app.post('/api/auth/register', json, asyncRoute(async (req, res) => {
-    const result = await accountService.register(req.body?.username, req.body?.password, req.body?.displayName);
+    const result = await accountService.register(req.body?.name, req.body?.password);
     setSessionCookie(res, result.token, req.secure);
     onRegistered(result);
     res.status(201).json({ account: result.account, profileId: result.profileId,
@@ -41,11 +41,12 @@ export function installAuthRoutes(app, accountService, {
 
   app.post('/api/auth/migrate', json, asyncRoute(async (req, res) => {
     const result = await accountService.migrateLegacyProfile(
-      req.body?.clientId, req.body?.username, req.body?.password,
+      req.body?.clientId, req.body?.name, req.body?.password,
     );
     setSessionCookie(res, result.token, req.secure);
     onMigrated(req.body.clientId, result);
-    res.status(201).json({ account: result.account, profileId: result.profileId, recoveryCodes: result.recoveryCodes });
+    res.status(201).json({ account: result.account, profileId: result.profileId,
+      displayName: result.displayName, recoveryCodes: result.recoveryCodes });
   }));
 
   app.use('/api/auth', (error, _req, res, _next) => {
@@ -97,7 +98,8 @@ function asyncRoute(handler) {
 
 function statusFor(error) {
   if (error?.type === 'entity.parse.failed' || error?.type === 'entity.too.large') return 400;
-  if (error?.code === 'USERNAME_TAKEN' || error?.code === 'LEGACY_PROFILE_UNAVAILABLE') return 409;
+  if (error?.code === 'USERNAME_TAKEN' || error?.code === 'LEGACY_NAME_LOCKED'
+    || error?.code === 'LEGACY_PROFILE_UNAVAILABLE') return 409;
   if (error?.code === 'INVALID_CREDENTIALS') return 401;
   if (error?.code === 'LOGIN_RATE_LIMITED') return 429;
   if (String(error?.code || '').startsWith('INVALID_')) return 400;

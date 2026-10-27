@@ -61,10 +61,20 @@
     </div>
 
     <section id="legacy-migration" class="migration-gate" role="dialog" aria-modal="true" aria-labelledby="migration-title">
+      <img class="migration-sprite migration-sprite-cleo" src="/assets/cleo/idle.png" alt="" />
+      <div class="migration-sprite migration-sprite-viking" aria-hidden="true">
+        <img src="/assets/viking/idle.png" alt="" />
+      </div>
       <div class="migration-card">
-        <div class="migration-kicker">Profile upgrade</div>
-        <h1 id="migration-title">Checking your fighter...</h1>
-        <p id="migration-copy">Please wait while the server checks this browser.</p>
+        <div class="migration-arena-label">Enter the arena</div>
+        <div class="migration-wordmark" aria-hidden="true">
+          <span class="cleo-word">Cleo</span>
+          <span class="vs-word">VS</span>
+          <span class="viking-word">Viking</span>
+        </div>
+        <div id="migration-kicker" class="migration-kicker" hidden>Profile upgrade</div>
+        <h1 id="migration-title">Sign in</h1>
+        <p id="migration-copy" hidden></p>
 
         <div id="migration-claim" hidden>
           <div class="migration-profile">
@@ -73,7 +83,8 @@
           </div>
           <p>This profile must be moved to a password-protected account before it can be used again.</p>
           <form id="migration-form">
-            <label class="field"><span>Login name</span><input id="migration-username" type="text" minlength="3" maxlength="32" autocomplete="username" required /></label>
+            <label class="field"><span>Player name</span><input id="migration-username" type="text" maxlength="14" autocomplete="username" readonly required /></label>
+            <p id="migration-name-help" hidden></p>
             <label class="field"><span>Password</span><input id="migration-password" type="password" minlength="12" maxlength="128" autocomplete="new-password" required /></label>
             <label class="field"><span>Repeat password</span><input id="migration-password-confirm" type="password" minlength="12" maxlength="128" autocomplete="new-password" required /></label>
             <button class="migration-primary" type="submit">Migrate profile</button>
@@ -82,8 +93,7 @@
         </div>
 
         <form id="migration-login" hidden>
-          <p>Your old profile will remain locked until you migrate it. You can still sign in to another existing account on this computer.</p>
-          <label class="field"><span>Login name</span><input id="migration-login-username" type="text" autocomplete="username" required /></label>
+          <label class="field"><span>Player name</span><input id="migration-login-username" type="text" maxlength="14" autocomplete="username" required /></label>
           <label class="field"><span>Password</span><input id="migration-login-password" type="password" autocomplete="current-password" required /></label>
           <button class="migration-primary" type="submit">Sign in</button>
           <button id="migration-use-register" class="migration-link" type="button">Create account</button>
@@ -91,9 +101,7 @@
         </form>
 
         <form id="migration-register" hidden>
-          <p>Create a password-protected account and a new fighter profile.</p>
-          <label class="field"><span>Fighter name</span><input id="migration-register-display-name" type="text" minlength="1" maxlength="14" autocomplete="nickname" required /></label>
-          <label class="field"><span>Login name</span><input id="migration-register-username" type="text" minlength="3" maxlength="32" autocomplete="username" required /></label>
+          <label class="field"><span>Player name</span><input id="migration-register-name" type="text" minlength="1" maxlength="14" autocomplete="username" required /></label>
           <label class="field"><span>Password</span><input id="migration-register-password" type="password" minlength="12" maxlength="128" autocomplete="new-password" required /></label>
           <label class="field"><span>Repeat password</span><input id="migration-register-password-confirm" type="password" minlength="12" maxlength="128" autocomplete="new-password" required /></label>
           <button class="migration-primary" type="submit">Create account</button>
@@ -114,27 +122,6 @@
       </div>
     </section>
 
-    <div id="intro" class="app-view">
-      <img class="intro-sprite intro-sprite-cleo" src="/assets/cleo/idle.png" alt="" />
-      <div class="intro-sprite intro-sprite-viking">
-        <img src="/assets/viking/idle.png" alt="" />
-      </div>
-      <form class="identity-card" id="intro-form">
-        <div class="intro-kicker">Enter the arena</div>
-        <h1 class="intro-logo">
-          <span class="cleo-word">Cleo</span>
-          <span class="vs-word">VS</span>
-          <span class="viking-word">Viking</span>
-        </h1>
-        <label class="field">
-          <span>Fighter name</span>
-          <input id="intro-name" type="text" maxlength="14" autocomplete="off" spellcheck="false" placeholder="Your name" />
-        </label>
-        <button id="intro-enter" type="submit">Enter</button>
-        <p class="err" id="intro-error"></p>
-      </form>
-    </div>
-
     <div id="lobby" class="hidden app-view">
       <div class="panel">
         <section class="flow-screen" id="global-lobby" aria-labelledby="global-lobby-title">
@@ -149,14 +136,16 @@
               <div class="screen-step">Step 02</div>
               <div class="screen-title-row">
                 <h1 id="global-lobby-title">Lobby</h1>
-                <span class="online-pill"><span></span><b id="lobby-player-name">Global lobby</b></span>
+                <div class="account-controls">
+                  <span class="online-pill"><span></span><b id="lobby-player-name">Global lobby</b></span>
+                  <button id="logout" class="account-signout" type="button" aria-label="Sign out of your account">Sign out</button>
+                </div>
               </div>
             </div>
             <div class="screen-actions">
               <a class="screen-link" href="/leaderboard.html" target="_blank" rel="noopener">Leaderboard</a>
               <button id="open-achievements" type="button">Achievements</button>
               <button id="open-settings" type="button">Settings</button>
-              <button id="logout" type="button">Sign out</button>
               <button id="create-match" type="button">Create match</button>
               <button id="training-mode" type="button" title="Practice solo against a training dummy">Training mode</button>
             </div>

@@ -18,7 +18,7 @@ try {
   assert.equal(anonymous.data.migration, null);
 
   const registered = await post(httpUrl, '/api/auth/register', {
-    username: 'new.player', password: 'a secure new password', displayName: 'New Fighter',
+    name: 'New Fighter', password: 'a secure new password',
   });
   assert.equal(registered.response.status, 201);
   assert.equal(registered.data.profileId, 1);
@@ -42,7 +42,7 @@ try {
   assert.equal(await rejectedWebSocket(server.url, server.origin, firstCookie), 401);
 
   const loggedIn = await post(httpUrl, '/api/auth/login', {
-    username: 'NEW.PLAYER', password: 'a secure new password',
+    username: 'NEW FIGHTER', password: 'a secure new password',
   });
   assert.equal(loggedIn.response.status, 200);
   const reconnectCookie = cookieFrom(loggedIn.response);

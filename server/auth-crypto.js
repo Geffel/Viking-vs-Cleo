@@ -10,12 +10,8 @@ export const SESSION_ABSOLUTE_MS = 90 * 24 * 60 * 60 * 1000;
 export const SESSION_TOUCH_INTERVAL_MS = 5 * 60 * 1000;
 
 export function normalizeUsername(value) {
-  if (typeof value !== 'string') throw authError('INVALID_USERNAME', 'Username must be a string');
-  const display = value.trim();
-  const normalized = display.toLowerCase();
-  if (!/^[a-z0-9._-]{3,32}$/.test(normalized)) {
-    throw authError('INVALID_USERNAME', 'Username must be 3-32 characters using letters, numbers, dot, dash or underscore');
-  }
+  const display = validateDisplayName(value);
+  const normalized = display.normalize('NFKC').toLowerCase();
   return { display, normalized };
 }
 

@@ -24,8 +24,8 @@ export class AccountService {
     });
   }
 
-  register(username, password, displayName = username) {
-    return this.#request('register', { username, password, displayName, now: this.now() });
+  register(name, password) {
+    return this.#request('register', { name, password, now: this.now() });
   }
   login(username, password, sourceIp) {
     const safeIp = typeof sourceIp === 'string' && sourceIp.length <= 64 ? sourceIp : 'unknown';
@@ -41,8 +41,8 @@ export class AccountService {
     return this.#request('regenerateRecoveryCodes', { accountId, currentPassword, now: this.now() });
   }
   findLegacyProfile(clientId) { return this.#request('findLegacyProfile', { clientId }); }
-  migrateLegacyProfile(clientId, username, password) {
-    return this.#request('migrateLegacyProfile', { clientId, username, password, now: this.now() });
+  migrateLegacyProfile(clientId, name, password) {
+    return this.#request('migrateLegacyProfile', { clientId, name, password, now: this.now() });
   }
   cleanupSessions() { return this.#request('cleanupSessions', { now: this.now() }); }
 

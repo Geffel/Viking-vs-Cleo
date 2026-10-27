@@ -2,7 +2,7 @@ import { parentPort, workerData } from 'node:worker_threads';
 import { AccountDatabase } from './account-database.js';
 import {
   accountLogKey, authError, generateRecoveryCodes, generateSessionToken, hashPassword,
-  hashRecoveryCode, hashSessionToken, normalizeUsername, validateDisplayName, validatePassword, verifyPassword,
+  hashRecoveryCode, hashSessionToken, normalizeUsername, validatePassword, verifyPassword,
 } from './auth-crypto.js';
 import { hashLegacyClientId } from './profile-snapshot.js';
 
@@ -41,9 +41,9 @@ function findLegacyProfile({ clientId }) {
   return database.findPendingLegacyProfile(hashLegacyClientId(clientId));
 }
 
-async function migrateLegacyProfile({ clientId, username, password, now }) {
+async function migrateLegacyProfile({ clientId, name, password, now }) {
   requireLegacyClientId(clientId);
-  const names = normalizeUsername(username);
+  const names = normalizeUsername(name);
   validatePassword(password);
   const recoveryCodes = generateRecoveryCodes();
   const token = generateSessionToken();
@@ -59,15 +59,14 @@ async function migrateLegacyProfile({ clientId, username, password, now }) {
   return { ...result, recoveryCodes, token };
 }
 
-async function register({ username, password, displayName, now }) {
-  const names = normalizeUsername(username);
+async function register({ name, password, now }) {
+  const names = normalizeUsername(name);
   validatePassword(password);
-  const safeDisplayName = validateDisplayName(displayName);
   const passwordHash = await hashPassword(password);
   const recoveryCodes = generateRecoveryCodes();
   const token = generateSessionToken();
   const result = database.createAccount({ usernameNormalized: names.normalized, usernameDisplay: names.display,
-    displayName: safeDisplayName, passwordHash, recoveryCodeHashes: recoveryCodes.map(hashRecoveryCode),
+    passwordHash, recoveryCodeHashes: recoveryCodes.map(hashRecoveryCode),
     tokenHash: hashSessionToken(token), now });
   return { ...result, recoveryCodes, token };
 }
