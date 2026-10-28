@@ -74,8 +74,9 @@ player.hp = PLAYER.maxHp;
 game.fx.length = 0;
 
 stepTo(clock + 16);
-check('full hp plockar inte upp pizza', game.powerups.some((p) => p.id === stillThere.id));
-check('ingen pizza-effekt vid full hp', !game.fx.some((fx) => fx.k === 'pizza'));
+check('full hp plockar upp pizza', !game.powerups.some((p) => p.id === stillThere.id));
+check('pizza vid full hp behaller full halsa', player.hp === PLAYER.maxHp, `hp ${player.hp}`);
+check('pizza skickar visuell effekt vid full hp', game.fx.some((fx) => fx.k === 'pizza' && fx.id === player.id));
 
 // ------------------------------------------------------------------- kebab
 

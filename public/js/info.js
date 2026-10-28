@@ -7,6 +7,8 @@ import {
   ABILITY_BINDS,
   ABILITY_TUNING,
   BACKSTAB,
+  CHILI_BUFF,
+  COLA_BUFF,
   COMBO,
   CRIT,
   DAMAGE_BUFF,
@@ -186,20 +188,7 @@ function gameplayHtml() {
 // ----------------------------------------------------------------- powerups
 
 function powerupsHtml() {
-  const items = [
-    {
-      kind: 'pizza',
-      name: 'Pizza',
-      effect: `Heals ${POWERUP.heal} health`,
-      text: `Tops you up to a maximum of ${PLAYER.maxHp}. Only picked up if you're below ${PLAYER.maxHp} - at full health you run straight past it.`,
-    },
-    {
-      kind: 'kebab',
-      name: 'Kebab',
-      effect: `Hit ${Math.round((DAMAGE_BUFF.mul - 1) * 100)} % harder for ${sec(DAMAGE_BUFF.durationMs)}`,
-      text: `Counts for your swing and both abilities. Grab another one to start the timer over. You lose it if you die.`,
-    },
-  ];
+  const items = powerupDetails();
 
   const cards = items
     .map(
@@ -224,6 +213,35 @@ function powerupsHtml() {
     </p>`;
 }
 
+export function powerupDetails() {
+  return [
+    {
+      kind: 'pizza',
+      name: 'Pizza',
+      effect: `Restores ${POWERUP.heal} health.`,
+      text: '',
+    },
+    {
+      kind: 'kebab',
+      name: 'Kebab',
+      effect: `Hit ${Math.round((DAMAGE_BUFF.mul - 1) * 100)} % harder for ${sec(DAMAGE_BUFF.durationMs)}`,
+      text: `Counts for your swing and both abilities. Grab another one to start the timer over. You lose it if you die.`,
+    },
+    {
+      kind: 'cola',
+      name: 'Cola',
+      effect: `Move ${Math.round((COLA_BUFF.mul - 1) * 100)} % faster for ${sec(COLA_BUFF.durationMs)}`,
+      text: `Boosts your movement acceleration, helping you chase an opponent or escape danger. Grab another one to restart the timer.`,
+    },
+    {
+      kind: 'chili',
+      name: 'Chili',
+      effect: `Your next hit ignites the enemy for ${CHILI_BUFF.totalDamage} damage`,
+      text: `The fire deals its damage over ${sec(CHILI_BUFF.durationMs)}. The chili stays ready until you land a hit, but is lost if you die.`,
+    },
+  ];
+}
+
 // ---------------------------------------------------------------- formagor
 
 // Langre beskrivningar med siffrorna hamtade ur ABILITY_TUNING. desc-falten i
@@ -239,7 +257,7 @@ export function abilityText(id) {
     case 'blink':
       return `Vanish and reappear ${reach(t.blink.distance)}, straight through walls and enemies. Does no damage - it's your escape hatch and your shortcut.`;
     case 'powerShield':
-      return `Summons ${t.powerShield.charges} orbiting shields around you. Each one blocks one incoming melee hit or enemy ability, and the set stays up until all ${t.powerShield.charges} are gone.`;
+      return `Summons ${t.powerShield.charges} orbiting shields around you. Each one blocks one incoming melee hit or enemy ability. The set disappears after ${t.powerShield.charges} blocks or ${sec(t.powerShield.durationMs)}, whichever comes first.`;
     case 'sunFire':
       return `Hold the key to channel a rotating sunfire ball for up to ${sec(t.sunFire.channelMaxMs)}. Release to launch it: longer channels make the projectile larger, faster and stronger, up to ${t.sunFire.damageMax} damage before bonuses.`;
     case 'chargedUppercut':
@@ -257,9 +275,9 @@ export function abilityText(id) {
         (t.mushrooms.takenMul - 1) * 100,
       )} % harder too. It ends early if you die.`;
     case 'lasso':
-      return `Hurls a harpoon ${reach(t.lasso.maxRange)}. It flies slower than the axe, so a sharp enemy can sidestep or jump it - but spear someone and they take ${t.lasso.damageMin}-${t.lasso.damageMax} damage and get reeled all the way back to you. Line them up for your team, or yank them clean off a ledge into the pit below.`;
+      return `Launch a harpoon that deals ${t.lasso.damageMin}-${t.lasso.damageMax} damage and drags the first enemy hit straight to you.`;
     case 'iceSpikes':
-      return `Raises ${t.iceSpikes.count} ice spikes in a growing line ${reach(t.iceSpikes.range)} ahead. Every enemy caught along the ground takes ${t.iceSpikes.damageMin}-${t.iceSpikes.damageMax} damage, is pushed lightly upward and moves ${Math.round((1 - t.iceSpikes.slowMul) * 100)} % slower for ${sec(t.iceSpikes.slowMs)}. The spikes remain for ${sec(t.iceSpikes.holdMs)} before sinking again.`;
+      return `Send ${t.iceSpikes.count} ice spikes across the ground, dealing ${t.iceSpikes.damageMin}-${t.iceSpikes.damageMax} damage, launching enemies upward and slowing them by ${Math.round((1 - t.iceSpikes.slowMul) * 100)}% for ${sec(t.iceSpikes.slowMs)}.`;
     default:
       return '';
   }

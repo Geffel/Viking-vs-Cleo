@@ -6,7 +6,7 @@ import { AchievementsUi } from '/js/achievements.js';
 import { SettingsUi } from '/js/settings.js';
 import { initInput } from '/js/input.js';
 import { initGamepadCursor } from '/js/gamepad-cursor.js';
-import { abilityText, initLobbyInfo } from '/js/info.js';
+import { abilityText, initLobbyInfo, powerupDetails } from '/js/info.js';
 import {
   ACTION_SLOTS,
   ABILITIES,
@@ -137,6 +137,7 @@ const instructionsSectionTabs = [...document.querySelectorAll('[data-help-sectio
 const instructionsPanels = [...document.querySelectorAll('.instructions-panel')];
 const instructionsBasics = document.getElementById('instructions-basics');
 const instructionsAbilities = document.getElementById('instructions-abilities');
+const instructionsPowerups = document.getElementById('instructions-powerups');
 const instructionsComboGuide = document.getElementById('instructions-combo-guide');
 const instructionsCombos = document.getElementById('instructions-combos');
 const instructionsVideo = document.querySelector('.instructions-video');
@@ -144,6 +145,8 @@ const instructionsVideo = document.querySelector('.instructions-video');
 const TRANSITION_MS = 620;
 const DEBUG_PARAMS = new URLSearchParams(location.search);
 const PERFORMANCE_PATH = location.pathname.replace(/\/+$/, '') === '/performance-test';
+// Only the dedicated, locally opened performance page exposes this control.
+if (performanceModeBtn) performanceModeBtn.hidden = !PERFORMANCE_PATH;
 const AUDIO_DEBUG = DEBUG_PARAMS.has('audioDebug');
 const NET_DEBUG = PERFORMANCE_PATH || DEBUG_PARAMS.has('netDebug') || localStorage.getItem('vvc.netDebug') === '1';
 const LOCAL_PERFORMANCE_TEST = (PERFORMANCE_PATH || DEBUG_PARAMS.has('performanceTest'))
@@ -904,7 +907,7 @@ function closeInstructions({ restoreFocus = true } = {}) {
 }
 
 function renderInstructions() {
-  if (!instructionsOverlay || !instructionsBasics || !instructionsAbilities || !instructionsCombos) return;
+  if (!instructionsOverlay || !instructionsBasics || !instructionsAbilities || !instructionsPowerups || !instructionsCombos) return;
 
   const team = instructionsTeam === 'viking' ? 'viking' : 'cleo';
   const accent = TEAMS[team]?.color ?? '#ff4d9d';
@@ -957,7 +960,21 @@ function renderInstructions() {
     </article>`;
   }).join('');
 
-  instructionsComboGuide.innerHTML = `<div class="instructions-guide-number">01</div><div><h3>How to land a combo</h3><p>Both fighters use the same combos. Hit an opponent with your two melee attacks in the exact order shown below. Every strike must connect within ${secondsText(COMBO.windowMs)} of the previous hit. A miss or a blocked hit resets the chain. The HUD shows your progress and the next button.</p></div>`;
+  instructionsPowerups.innerHTML = powerupDetails().map((powerup) => `
+    <article class="instructions-powerup-card" style="--powerup-color:${POWERUP_KINDS[powerup.kind].ring}">
+      <div class="instructions-powerup-art">
+        <span class="instructions-powerup-glow" aria-hidden="true"></span>
+        <img src="${POWERUP_KINDS[powerup.kind].sprite}" alt="${escapeHtml(powerup.name)}" />
+      </div>
+      <div class="instructions-powerup-copy">
+        <div class="instructions-powerup-label">Powerup</div>
+        <h3>${escapeHtml(powerup.name)}</h3>
+        <strong>${escapeHtml(powerup.effect)}</strong>
+        <p>${escapeHtml(powerup.text)}</p>
+      </div>
+    </article>`).join('');
+
+  instructionsComboGuide.innerHTML = `<div><h3>How to land a combo</h3><p>Both fighters use the same combos. Hit an opponent with your two melee attacks in the exact order shown below. Every strike must connect within ${secondsText(COMBO.windowMs)} of the previous hit. A miss or a blocked hit resets the chain. The HUD shows your progress and the next button.</p></div>`;
   instructionsCombos.innerHTML = COMBO.list.map((combo, index) => {
     const bonus = comboBonus(combo);
     return `
@@ -1776,9 +1793,9 @@ function renderRoundResults(match) {
   roundResults.style.setProperty('--winner-bg', winner ? `${winnerColor}0.14)` : 'rgba(255,209,102,0.14)');
   roundResults.style.setProperty('--winner-border', winner ? `${winnerColor}0.4)` : 'rgba(255,209,102,0.42)');
   roundResultScore.innerHTML = `
-    <span class="result-side cleo"><span>Cleo</span><strong>${cleo}</strong></span>
+    <span class="result-side cleo"><span>Team Cleo</span><strong>${cleo}</strong></span>
     <span class="result-vs"><span>VS</span></span>
-    <span class="result-side viking"><span>Viking</span><strong>${viking}</strong></span>`;
+    <span class="result-side viking"><span>Team Viking</span><strong>${viking}</strong></span>`;
   if (match.resultCounts === false) {
     roundResultNote.textContent = unrankedResultLabel(match.unrankedReason);
   } else {
@@ -2256,8 +2273,8 @@ function resultLabel(cleo, viking) {
 
 function unrankedResultLabel(reason) {
   if (reason === 'sharedScreen') return 'Shared screen - no stats recorded';
-  if (reason === 'soloTimeUp') return 'Unranked solo timeout - no win rate or faction points';
-  return 'Unranked round - no win rate or faction points';
+  if (reason === 'soloTimeUp') return 'Unranked solo timeout - no win rate or team points';
+  return 'Unranked round - no win rate or team points';
 }
 
 function phaseLabel(phase) {

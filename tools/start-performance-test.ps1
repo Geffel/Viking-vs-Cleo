@@ -19,7 +19,7 @@ function Test-PerformanceServer {
 if (-not (Test-PerformanceServer)) {
     Start-Process `
         -FilePath "powershell.exe" `
-        -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $Manager) `
+        -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $Manager, "-PerformanceEnabled") `
         -WorkingDirectory $ProjectRoot
 }
 

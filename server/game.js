@@ -426,7 +426,11 @@ export class Game {
     if (p.dead) return;
     if (kind === 'melee') kind = MELEE_SLOTS[0];
     const t = this.now();
-    if (t < p.stunnedUntil || t < p.uppercutLaunchUntil) return;
+    // Blink och Shield charge ar avsedda som utvagar ur stun. Ovriga actions
+    // (och en uppercut-lansering, som inte ar en stun) ar fortfarande lasta.
+    const actionAbility = ABILITY_SLOTS.includes(kind) ? ABILITIES[p.team][kind] : null;
+    const breaksStun = actionAbility?.id === 'blink' || actionAbility?.id === 'shieldCharge';
+    if ((t < p.stunnedUntil && !breaksStun) || t < p.uppercutLaunchUntil) return;
     if (kind === 'jump') {
       if (p.onGround) {
         p.vy = PLAYER.jumpVel;
@@ -567,6 +571,7 @@ export class Game {
         return { hpBefore, hpAfter: p.hp };
 
       case 'blink':
+        this.clearStun(p);
         return this.blink(p, cfg);
 
       case 'powerShield':
@@ -593,6 +598,7 @@ export class Game {
         return true;
 
       case 'shieldCharge':
+        this.clearStun(p);
         p.vx = p.facing * cfg.speed;
         p.chargeUntil = t + cfg.durationMs;
         p.chargeHits = new Set();
@@ -913,6 +919,12 @@ export class Game {
     target.channel = null;
   }
 
+  clearStun(p) {
+    p.stunnedUntil = 0;
+    p.stunnedBy = 0;
+    p.stunnedCause = '';
+  }
+
   /**
    * Harpunen kastas som en projektil rakt fram (kind 'harpoon'). Repet foljer
    * med ut, och forst nar harpunen traffar nagon satts kroken - da tar
@@ -1206,9 +1218,9 @@ export class Game {
     }
   }
 
-  /** Pizzan sparas at nagon skadad; ovriga powerups plockas alltid. */
+  /** Alla powerups kan plockas upp, aven Pizza vid full halsa. */
   wantsPowerup(p, pu) {
-    return pu.kind !== 'pizza' || p.hp < PLAYER.maxHp;
+    return true;
   }
 
   applyPowerup(p, pu, t) {

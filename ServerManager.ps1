@@ -1,5 +1,17 @@
-﻿Set-StrictMode -Version Latest
+﻿param(
+    [switch]$PerformanceEnabled
+)
+
+Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+# Performance is opt-in. The normal Start.bat launch deliberately leaves it off.
+if ($PerformanceEnabled) {
+    $env:VVC_PERFORMANCE_ENABLED = "1"
+}
+else {
+    Remove-Item Env:\VVC_PERFORMANCE_ENABLED -ErrorAction SilentlyContinue
+}
 
 $Port = 3000
 $RestartHour = 2

@@ -671,8 +671,8 @@ function labelFor(id) {
 }
 
 function characterName(team) {
-  if (team === 'cleo') return 'Cleo';
-  if (team === 'viking') return 'Viking';
+  if (team === 'cleo') return 'Team Cleo';
+  if (team === 'viking') return 'Team Viking';
   return 'Local';
 }
 

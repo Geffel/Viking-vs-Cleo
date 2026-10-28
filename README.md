@@ -15,6 +15,10 @@ Dubbelklicka på **`Start.bat`**. Den hämtar beroenden om det behövs, startar
 servern och öppnar webbläsaren. Fönstret som blir kvar *är* servern — låt det stå
 öppet så länge ni spelar.
 
+`Start.bat` kör utan performance-test: knappen, testvägen och testmatcher är då
+avstängda. Använd **`PerformanceTest.bat`** endast när du uttryckligen vill
+starta den lokala prestandatest-servern.
+
 Servern skriver ut två adresser. Den andra (`http://192.168.x.x:3000`) är den du
 skickar till alla andra på nätverket.
 
@@ -267,7 +271,7 @@ som renderaren gör är att lägga **rörelse ovanpå** den, och det ligger i
 | Fågelflockar | Över dalen |
 | Löv som blåser förbi | Framför spelarna, från lövträden i båda förgrundshörnen |
 | Pollen i motljuset | Framför spelarna |
-| **Nazgûl** | Sällsynt överflygning, ungefär varannan minut — samma upplägg som skogstrollet |
+| **Nazgûl** | Sällsynt överflygning, ungefär varannan minut |
 
 Siffrorna sitter i `IVORY` och `NAZGUL` överst i
 [`public/js/render.js`](public/js/render.js).
@@ -355,6 +359,23 @@ Tre förhandsvyer skrivs ut för ögongranskning:
 Attackanimationen spelar rutorna i ordning när man slår. Takten sitter i
 `SPRITE_ANIM.attackFrameMs` i [`shared/constants.js`](shared/constants.js) — 80 ms
 per ruta, alltså 240 ms för tre rutor, väl inom melee-cooldownen på 420 ms.
+
+Cleos åtta springrutor byggs separat eftersom pixelgrafiken har en annan
+upplösning än grundsetet:
+
+```bash
+npm run sprites:cleo-run
+```
+
+Originalen ligger som `source-images/cleo_run_01.png`–`08.png`. Verktyget
+linjerar marknivån och höften, skriver `run1.png`–`run8.png`, uppdaterar
+`manifest.run` och skapar `public/assets/cleo/_preview_run.png` för visuell
+kontroll. Springcykelns takt och minsta aktiveringsfart finns i `SPRITE_ANIM`.
+
+Vikings motsvarande original heter `viking_run_01.png`–`08.png` och byggs med
+`npm run sprites:viking-run`. `npm run sprites:run` bygger båda figurernas
+springanimationer. Båda använder
+[`tools/prepare-run-sprites.mjs`](tools/prepare-run-sprites.mjs).
 
 ### Egen animation per melee-plats
 

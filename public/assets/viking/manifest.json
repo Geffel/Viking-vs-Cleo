@@ -39,5 +39,22 @@
       "anchorY": 0.9938,
       "facing": "left"
     }
+  },
+  "run": {
+    "files": [
+      "run1.png",
+      "run2.png",
+      "run3.png",
+      "run4.png",
+      "run5.png",
+      "run6.png",
+      "run7.png",
+      "run8.png"
+    ],
+    "worldWidth": 46.48,
+    "worldHeight": 56,
+    "anchorX": 0.566,
+    "anchorY": 1,
+    "facing": "right"
   }
 }

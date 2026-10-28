@@ -18,9 +18,9 @@
         <button id="leave" type="button" hidden>Return to menu</button>
 
         <div id="scoreboard">
-          <div class="team cleo"><span class="label">Cleo</span><span class="pts" id="score-cleo">0</span></div>
+          <div class="team cleo"><span class="label">Team Cleo</span><span class="pts" id="score-cleo">0</span></div>
           <div class="match-clock" id="match-clock" aria-label="Match timer" hidden>6:00</div>
-          <div class="team viking"><span class="pts" id="score-viking">0</span><span class="label">Viking</span></div>
+          <div class="team viking"><span class="pts" id="score-viking">0</span><span class="label">Team Viking</span></div>
         </div>
 
         <div id="killfeed"></div>
@@ -148,7 +148,7 @@
               <button id="open-settings" type="button">Settings</button>
               <button id="create-match" type="button">Create match</button>
               <button id="training-mode" type="button" title="Practice solo against a training dummy">Training mode</button>
-              <button id="performance-mode" type="button" title="Run a visual bot and network load test">Performance test</button>
+              <button id="performance-mode" type="button" title="Run a visual bot and network load test" hidden>Performance test</button>
             </div>
           </div>
           <div class="lobby-grid">
@@ -413,6 +413,7 @@
 
       <div class="instructions-nav" role="tablist" aria-label="Instructions sections">
         <button id="instructions-tab-abilities" class="instructions-tab on" type="button" role="tab" aria-controls="instructions-panel-abilities" aria-selected="true" data-help-section="abilities">Abilities</button>
+        <button id="instructions-tab-powerups" class="instructions-tab" type="button" role="tab" aria-controls="instructions-panel-powerups" aria-selected="false" data-help-section="powerups">Powerups</button>
         <button id="instructions-tab-combos" class="instructions-tab" type="button" role="tab" aria-controls="instructions-panel-combos" aria-selected="false" data-help-section="combos">Combos</button>
         <button id="instructions-tab-rearrange" class="instructions-tab" type="button" role="tab" aria-controls="instructions-panel-rearrange" aria-selected="false" data-help-section="rearrange">Rearrange abilities</button>
       </div>
@@ -428,6 +429,12 @@
           </div>
           <div class="instructions-movement" id="instructions-basics"></div>
           <div class="instructions-ability-grid" id="instructions-abilities"></div>
+        </section>
+
+        <section id="instructions-panel-powerups" class="instructions-panel" role="tabpanel" aria-labelledby="instructions-tab-powerups" hidden>
+          <div class="instructions-panel-heading"><div><div class="instructions-eyebrow">Grab the advantage</div><h2>Powerups</h2></div></div>
+          <p class="instructions-powerups-intro">Run into a powerup in the arena to collect it. Each one gives you a different advantage.</p>
+          <div class="instructions-powerup-grid" id="instructions-powerups"></div>
         </section>
 
         <section id="instructions-panel-combos" class="instructions-panel" role="tabpanel" aria-labelledby="instructions-tab-combos" hidden>

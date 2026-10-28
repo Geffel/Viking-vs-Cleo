@@ -278,13 +278,13 @@ function renderFactionWar() {
   vikingBarEl.style.width = `${vikingPct}%`;
 
   if (cleoPct === vikingPct) {
-    leadEl.textContent = 'Factions are tied';
+    leadEl.textContent = 'Teams are tied';
     leadEl.style.color = '#ffd166';
   } else if (cleoPct > vikingPct) {
-    leadEl.textContent = 'Cleo dynasty leads the arena';
+    leadEl.textContent = 'Team Cleo leads the arena';
     leadEl.style.color = '#ff4d9d';
   } else {
-    leadEl.textContent = 'Viking clans lead the arena';
+    leadEl.textContent = 'Team Viking leads the arena';
     leadEl.style.color = '#4dc3ff';
   }
 }
@@ -375,7 +375,7 @@ function tickerItems() {
 
   for (const match of liveMatches.slice(0, 4)) {
     const score = match.liveScore ?? match.finalScore ?? {};
-    items.push(`${match.title ?? `Match ${match.id}`} is ${phaseLabel(match.phase)} / Cleo ${score.cleo ?? 0} - ${score.viking ?? 0} Viking`);
+    items.push(`${match.title ?? `Match ${match.id}`} is ${phaseLabel(match.phase)} / Team Cleo ${score.cleo ?? 0} - ${score.viking ?? 0} Team Viking`);
   }
 
   for (const entry of state.rows.slice(0, 5)) {

@@ -29,5 +29,22 @@
       "kick2.png",
       "kick3.png"
     ]
+  },
+  "run": {
+    "files": [
+      "run1.png",
+      "run2.png",
+      "run3.png",
+      "run4.png",
+      "run5.png",
+      "run6.png",
+      "run7.png",
+      "run8.png"
+    ],
+    "worldWidth": 43.1,
+    "worldHeight": 56,
+    "anchorX": 0.5211,
+    "anchorY": 1,
+    "facing": "right"
   }
 }

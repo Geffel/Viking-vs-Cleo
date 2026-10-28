@@ -8414,20 +8414,106 @@ body > .instructions-overlay.in-game {
   font-size: 14px;
 }
 
+.instructions-powerups-intro {
+  max-width: 720px;
+  margin: -3px 0 18px;
+  color: rgba(242, 245, 255, 0.7);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.instructions-powerup-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.instructions-powerup-card {
+  display: grid;
+  grid-template-columns: 128px minmax(0, 1fr);
+  gap: 18px;
+  min-height: 178px;
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--powerup-color) 35%, rgba(255, 255, 255, 0.08));
+  border-left: 3px solid var(--powerup-color);
+  background: linear-gradient(125deg, color-mix(in srgb, var(--powerup-color) 10%, transparent), rgba(255, 255, 255, 0.025));
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%);
+}
+
+.instructions-powerup-art {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 140px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--powerup-color) 25%, transparent);
+  background: radial-gradient(circle, color-mix(in srgb, var(--powerup-color) 13%, transparent), rgba(3, 5, 12, 0.65) 70%);
+}
+
+.instructions-powerup-glow {
+  position: absolute;
+  width: 82px;
+  height: 82px;
+  border: 2px solid color-mix(in srgb, var(--powerup-color) 65%, transparent);
+  border-radius: 50%;
+  box-shadow: 0 0 25px color-mix(in srgb, var(--powerup-color) 32%, transparent), inset 0 0 18px color-mix(in srgb, var(--powerup-color) 16%, transparent);
+}
+
+.instructions-powerup-art img {
+  position: relative;
+  z-index: 1;
+  max-width: 105px;
+  max-height: 105px;
+  object-fit: contain;
+  filter: drop-shadow(0 8px 9px rgba(0, 0, 0, 0.45));
+}
+
+.instructions-powerup-copy {
+  align-self: center;
+  min-width: 0;
+}
+
+.instructions-powerup-label {
+  color: var(--powerup-color);
+  font-family: "Oswald", sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.instructions-powerup-copy h3 {
+  margin: 2px 0 7px;
+  font-family: "Anton", sans-serif;
+  font-size: 25px;
+  font-weight: 400;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.instructions-powerup-copy strong {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--powerup-color);
+  font-family: "Oswald", sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.instructions-powerup-copy p {
+  margin: 0;
+  color: rgba(242, 245, 255, 0.66);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .instructions-combo-guide {
   display: flex;
-  gap: 18px;
   padding: 18px 20px;
   margin-bottom: 18px;
   border: 1px solid rgba(255, 209, 102, 0.32);
   background: rgba(255, 209, 102, 0.07);
-}
-
-.instructions-guide-number {
-  color: var(--gold);
-  font-family: "Anton", sans-serif;
-  font-size: 34px;
-  line-height: 1;
 }
 
 .instructions-combo-guide h3 {
@@ -8515,8 +8601,17 @@ body > .instructions-overlay.in-game {
   }
 
   .instructions-ability-grid,
+  .instructions-powerup-grid,
   .instructions-combos {
     grid-template-columns: 1fr;
+  }
+
+  .instructions-powerup-card {
+    grid-template-columns: 104px minmax(0, 1fr);
+  }
+
+  .instructions-powerup-art {
+    min-height: 120px;
   }
 }
 

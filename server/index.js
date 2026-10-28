@@ -44,6 +44,8 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
 const PORT = Number(process.env.PORT ?? 3000);
+// The load-test endpoint is deliberately unavailable from a normal game start.
+const PERFORMANCE_ENABLED = process.env.VVC_PERFORMANCE_ENABLED === '1';
 // Tests use a temporary data directory; normal launches keep the existing path.
 const DATA_DIR = path.resolve(process.env.VVC_DATA_DIR || path.join(ROOT, 'data'));
 const GAME_TIME_SCALE = Math.max(0.01, Number(process.env.GAME_TIME_SCALE) || 1);
@@ -70,7 +72,8 @@ const app = express();
 app.use(
   express.static(path.join(ROOT, 'public'), {
     setHeaders(res, filePath) {
-      if (filePath.endsWith('.ogg')) res.type('audio/ogg');
+      if (filePath.endsWith('index.html')) res.set('Cache-Control', 'no-store');
+      else if (filePath.endsWith('.ogg')) res.type('audio/ogg');
       else if (filePath.endsWith('.mp3')) res.type('audio/mpeg');
       else if (filePath.endsWith('.wav')) res.type('audio/wav');
     },
@@ -78,10 +81,12 @@ app.use(
 );
 app.use('/shared', express.static(path.join(ROOT, 'shared')));
 app.get('/performance-test', (_req, res) => {
+  if (!PERFORMANCE_ENABLED) return res.sendStatus(404);
   res.set('Cache-Control', 'no-store');
   res.sendFile(path.join(ROOT, 'public', 'index.html'));
 });
 app.get('/api/performance-test', (_req, res) => {
+  if (!PERFORMANCE_ENABLED) return res.sendStatus(404);
   res.json({ ready: true, featureVersion: 3, localObserver: true, dedicatedPage: true,
     minBots: PERFORMANCE_TEST.minBots, maxBots: PERFORMANCE_TEST.maxBots });
 });
@@ -257,6 +262,10 @@ function handleMessage(ws, msg) {
     }
     case 'createMatch': {
       if (!requireIdentity(ws)) return;
+      if (msg.mode === MATCH_MODES.performance && !PERFORMANCE_ENABLED) {
+        send(ws, { t: 'appError', code: 'PERFORMANCE_DISABLED', message: 'Performance tests are disabled on this server.' });
+        return;
+      }
       if (ws.performanceGuest && msg.mode !== MATCH_MODES.performance) {
         send(ws, { t: 'appError', code: 'PERFORMANCE_ONLY', message: 'Local test observers can only create performance tests.' });
         return;
@@ -1451,11 +1460,11 @@ function logMatchFinished(match) {
   match.loggedFinishedAt = match.finishedAt;
 
   const score = match.finalScore ?? { cleo: 0, viking: 0 };
-  const winner = score.cleo === score.viking ? 'draw' : score.cleo > score.viking ? 'Cleo' : 'Viking';
+  const winner = score.cleo === score.viking ? 'draw' : score.cleo > score.viking ? 'Team Cleo' : 'Team Viking';
   const ranking = match.resultCounts === false ? `, unranked: ${match.unrankedReason ?? 'yes'}` : '';
   gameLog(
     'MATCH',
-    `Finished ${matchLabel(match)}, map: ${match.selectedMap || 'unknown map'}, score: Viking ${score.viking}–${score.cleo} Cleo, winner: ${winner}${ranking}.`,
+    `Finished ${matchLabel(match)}, map: ${match.selectedMap || 'unknown map'}, score: Team Viking ${score.viking}–${score.cleo} Team Cleo, winner: ${winner}${ranking}.`,
   );
 }
 
@@ -1560,6 +1569,7 @@ function isAllowedWebSocketOrigin(request) {
 }
 
 function isLocalPerformanceRequest(request) {
+  if (!PERFORMANCE_ENABLED) return false;
   const remote = String(request.socket?.remoteAddress ?? '').toLowerCase();
   const loopback = remote === '127.0.0.1' || remote === '::1' || remote === '::ffff:127.0.0.1';
   if (!loopback) return false;
@@ -1715,9 +1725,9 @@ setInterval(() => {
 server.listen(PORT, '0.0.0.0', () => {
   const port = server.address().port;
   gameLog('SERVER', `Started on port ${port}.`);
-  console.log('\n  Viking vs Cleo kör!\n');
-  console.log(`  Här på datorn:  http://localhost:${port}`);
-  for (const url of lanUrls(port)) console.log(`  På nätverket:   ${url}`);
+  console.log('\n  Viking vs Cleo is running!\n');
+  console.log(`  On this computer:  http://localhost:${port}`);
+  for (const url of lanUrls(port)) console.log(`  On the network:    ${url}`);
   console.log('');
 });
 

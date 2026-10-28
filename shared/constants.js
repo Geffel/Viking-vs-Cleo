@@ -25,8 +25,8 @@ export const PLAYER = {
 };
 
 export const TEAMS = {
-  cleo: { id: 'cleo', name: 'Cleo', color: '#ff4d9d', dark: '#7a1746', accent: '#ffd166' },
-  viking: { id: 'viking', name: 'Viking', color: '#4dc3ff', dark: '#123f63', accent: '#e8f6ff' },
+  cleo: { id: 'cleo', name: 'Team Cleo', color: '#ff4d9d', dark: '#7a1746', accent: '#ffd166' },
+  viking: { id: 'viking', name: 'Team Viking', color: '#4dc3ff', dark: '#123f63', accent: '#e8f6ff' },
 };
 
 export const TEAM_IDS = ['cleo', 'viking'];
@@ -252,7 +252,7 @@ export const ABILITIES = {
       name: 'Power shield',
       icon: '🛡️',
       cooldown: 60000,
-      desc: 'Summons shields that block the next 3 incoming attacks made against you, for up to 20 seconds.',
+      desc: 'Summons 3 shields that block incoming melee hits and enemy abilities. They disappear after 3 blocks or 20 seconds, whichever comes first.',
     },
     a4: {
       id: 'sunFire',
@@ -829,4 +829,6 @@ export const NAME_MAX = 14;
 
 export const SPRITE_ANIM = {
   attackFrameMs: 80,
+  runFrameMs: 85,
+  runMinSpeed: 0.35,
 };

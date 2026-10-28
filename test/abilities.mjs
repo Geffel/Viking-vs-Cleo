@@ -97,6 +97,16 @@ const hasEvent = (g, kind, pred = () => true) => g.events.some((ev) => ev.k === 
   check('blink rapporterar throughPlayer for statistik', hasEvent(g, 'ability_use', (ev) => ev.abilityId === 'blink' && ev.throughPlayer));
 }
 
+{
+  const g = scenario();
+  const cleo = add(g, 'Stunnad Cleo', 'cleo', 400, 1);
+  g.stun(cleo, 2000, clock, { cause: 'sandBlast' });
+
+  g.action(cleo, 'a2');
+  check('blink kan anvandas under stun', cleo.cd.a2 === clock + ABILITIES.cleo.a2.cooldown);
+  check('blink bryter stun', cleo.stunnedUntil === 0 && cleo.stunnedBy === 0 && cleo.stunnedCause === '');
+}
+
 // --------------------------------------------------------------- shield charge
 
 {
@@ -115,6 +125,16 @@ const hasEvent = (g, kind, pred = () => true) => g.events.some((ev) => ev.k === 
   );
   check('shield charge stunnar offret', target.stunnedUntil > clock);
   check('shield charge stannar efter traff', viking.chargeHits === null && viking.chargeType === null);
+}
+
+{
+  const g = scenario();
+  const viking = add(g, 'Stunnad Viking', 'viking', 400, 1);
+  g.stun(viking, 2000, clock, { cause: 'sandBlast' });
+
+  g.action(viking, 'a2');
+  check('shield charge kan anvandas under stun', viking.cd.a2 === clock + ABILITIES.viking.a2.cooldown);
+  check('shield charge bryter stun', viking.stunnedUntil === 0 && viking.stunnedBy === 0 && viking.stunnedCause === '');
 }
 
 // ------------------------------------------------------------------- axe throw

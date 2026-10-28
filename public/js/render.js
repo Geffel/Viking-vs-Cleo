@@ -190,24 +190,6 @@ const FOREST_VINES = [
   { x: 1358, y: 300, len: 160, phase: 2.2 },
 ];
 
-const FOREST_TROLL = {
-  sprite: '/assets/deep_forest_troll_walk_8.png',
-  columns: 4,
-  rows: 2,
-  frameSequence: [0, 1, 2, 3, 4, 5, 6, 7],
-  frameMs: 160,
-  firstDelayMs: 55000,
-  firstJitterMs: 35000,
-  intervalMs: 5 * 60 * 1000,
-  intervalJitterMs: 45000,
-  durationMs: 42000,
-  scaleMin: 0.43,
-  scaleJitter: 0.04,
-  leftRoute: { startX: -290, endX: WORLD.w + 290 },
-  rightRoute: { startX: WORLD.w + 290, endX: -290 },
-  groundY: 876,
-};
-
 // ------------------------------------------------------------ Ivory city
 // Kartan ar en malning (arena_ivory_city.png). Allt harinne ar bara det som
 // ror sig OVANPA den, och det maste sitta dar bilden sager: solen uppe till
@@ -225,11 +207,8 @@ const IVORY = {
   ],
 };
 
-// Nazgul: en sallsynt overflygning, samma upplagg som skogstrollet. Den ska
-// komma sa sallan att den fortfarande kanns nar den kommer.
-
-// Nazgul: en sallsynt overflygning, samma upplagg som skogstrollet. Den ska
-// komma sa sallan att den fortfarande kanns nar den kommer.
+// Nazgul: en sallsynt overflygning. Den ska komma sa sallan att den fortfarande
+// kanns nar den kommer.
 const NAZGUL = {
   firstDelayMs: 70000,
   firstJitterMs: 40000,
@@ -265,7 +244,6 @@ export class Renderer {
       fog: makeForestFog(11),
       fireflies: makeFireflies(75),
       leaves: makeLeaves(42),
-      troll: { img: null, active: null, nextAt: Infinity },
     };
     this.city = {
       mist: makeIvoryMist(7),
@@ -340,28 +318,22 @@ export class Renderer {
     loadImage('/assets/mushroom.png')
       .then((img) => (this.mushroom = img))
       .catch((err) => console.warn('Kunde inte ladda flugsvamp:', err.message));
-    loadImage(FOREST_TROLL.sprite)
-      .then((img) => (this.forest.troll.img = img))
-      .catch((err) => console.warn('Kunde inte ladda skogstroll:', err.message));
   }
 
   /**
    * Kartans bakgrund. `asset` ar bilden (tom strang for kartor som ritar hela
    * bakgrunden sjalva) och `theme` avgor vilka levande lager som laggs pa -
-   * snon i fjorden, trollet i skogen, faglarna over Ivory city. Anropas varje
+   * snon i fjorden, eldflugorna i skogen, faglarna over Ivory city. Anropas varje
    * bildruta, sa allt arbete ligger bakom en jamforelse.
    */
   setArena(asset = DEFAULT_ARENA_ASSET, theme = 'nordic') {
     if (asset === this.arenaAsset && theme === this.theme) return;
-    const wasForest = this.isForestArena();
     const wasIvoryCity = this.isIvoryCityArena();
     const loadId = ++this.arenaLoadId;
     this.arenaAsset = asset;
     this.theme = theme;
     this.arena = null;
 
-    if (this.isForestArena()) this.primeForestTroll(performance.now(), wasForest);
-    else this.forest.troll.active = null;
     if (this.isIvoryCityArena()) this.primeNazgul(performance.now(), wasIvoryCity);
     else this.city.nazgul.active = null;
 
@@ -396,25 +368,6 @@ export class Renderer {
     if (this.isNordicArena()) return '210,245,255';
     if (this.isIvoryCityArena()) return '255,226,158'; // guld mot vit sten
     return GUIDE.light;
-  }
-
-  primeForestTroll(now, alreadyForest = false) {
-    if (alreadyForest) return;
-    this.forest.troll.active = null;
-    this.forest.troll.nextAt = now + FOREST_TROLL.firstDelayMs + Math.random() * FOREST_TROLL.firstJitterMs;
-  }
-
-  spawnForestTroll(now = performance.now()) {
-    const fromLeft = Math.random() < 0.5;
-    this.forest.troll.active = {
-      started: now,
-      fromLeft,
-      route: fromLeft ? FOREST_TROLL.leftRoute : FOREST_TROLL.rightRoute,
-      groundY: FOREST_TROLL.groundY + (Math.random() * 2 - 1) * 12,
-      scale: FOREST_TROLL.scaleMin + Math.random() * FOREST_TROLL.scaleJitter,
-      phase: Math.random() * Math.PI * 2,
-    };
-    this.forest.troll.nextAt = Infinity;
   }
 
   /**
@@ -458,7 +411,10 @@ export class Renderer {
         const attackEntries = (Array.isArray(attackSpec) ? [['default', attackSpec]] : Object.entries(attackSpec ?? {})).map(
           ([slot, spec]) => [slot, Array.isArray(spec) ? { files: spec, meta: null } : { files: spec.files, meta: spec }],
         );
-        const [idle, attackSets, stunned, stunnedAboveHead, shieldCharge] = await Promise.all([
+        const runSpec = manifest.run;
+        const runFiles = Array.isArray(runSpec) ? runSpec : runSpec?.files;
+        const runMeta = Array.isArray(runSpec) ? null : runSpec;
+        const [idle, attackSets, runFrames, stunned, stunnedAboveHead, shieldCharge] = await Promise.all([
           loadImage(`${dir}/${manifest.idle}`),
           Promise.all(
             attackEntries.map(async ([slot, { files, meta }]) => [
@@ -466,11 +422,20 @@ export class Renderer {
               { frames: await Promise.all(files.map((f) => loadImage(`${dir}/${f}`))), meta },
             ]),
           ),
+          runFiles?.length ? Promise.all(runFiles.map((file) => loadImage(`${dir}/${file}`))) : Promise.resolve([]),
           manifest.stunned ? loadImage(`${dir}/${manifest.stunned.file}`) : Promise.resolve(null),
           manifest.stunnedAboveHead ? loadImage(`${dir}/${manifest.stunnedAboveHead}`) : Promise.resolve(null),
           manifest.shieldCharge ? loadImage(`${dir}/${manifest.shieldCharge.file}`) : Promise.resolve(null),
         ]);
-        this.sprites[team] = { manifest, idle, attackSets: Object.fromEntries(attackSets), stunned, stunnedAboveHead, shieldCharge };
+        this.sprites[team] = {
+          manifest,
+          idle,
+          attackSets: Object.fromEntries(attackSets),
+          run: { frames: runFrames, meta: runMeta },
+          stunned,
+          stunnedAboveHead,
+          shieldCharge,
+        };
       } catch (err) {
         // Utan sprites faller laget tillbaka pa den ritade figuren.
         console.warn(`Kunde inte ladda sprites for ${team}:`, err.message);
@@ -862,7 +827,7 @@ export class Renderer {
           y: fx.y - 12,
           born: t,
           life: 700,
-          text: 'skyddad',
+          text: 'BLOCKED',
           size: 15,
           color: '#cbd5e1',
         });
@@ -912,7 +877,7 @@ export class Renderer {
           y: fx.y - 10,
           born: t,
           life: 900,
-          text: `+${Math.round((DAMAGE_BUFF.mul - 1) * 100)}% SKADA`,
+          text: `+${Math.round((DAMAGE_BUFF.mul - 1) * 100)}% DAMAGE`,
           size: 20,
           color: '#ff9f43',
         });
@@ -922,20 +887,20 @@ export class Renderer {
         this.effects.push({ kind: 'ring', x: fx.x, y: fx.y, born: t, life: 420, r0: 8, r1: 54, color: '#ff4d4d' });
         this.burst(fx.x, fx.y, 20, '#ff4d4d', 4.4, 0, -2.2);
         this.burst(fx.x, fx.y, 9, '#ffffff', 3.1, 0, -3);
-        this.effects.push({ kind: 'float', x: fx.x, y: fx.y - 10, born: t, life: 900, text: `+${Math.round((COLA_BUFF.mul - 1) * 100)}% FART`, size: 20, color: '#ff6b6b' });
+        this.effects.push({ kind: 'float', x: fx.x, y: fx.y - 10, born: t, life: 900, text: `+${Math.round((COLA_BUFF.mul - 1) * 100)}% SPEED`, size: 20, color: '#ff6b6b' });
         break;
       case 'chili':
         if (fx.id) this.buffs.set(fx.id, t);
         this.effects.push({ kind: 'ring', x: fx.x, y: fx.y, born: t, life: 440, r0: 8, r1: 58, color: '#ff5b26' });
         this.burst(fx.x, fx.y, 20, '#ff5b26', 4.2, 0, -2.2);
         this.burst(fx.x, fx.y, 10, '#ffd166', 3.2, 0, -3);
-        this.effects.push({ kind: 'float', x: fx.x, y: fx.y - 10, born: t, life: 950, text: 'NÄSTA TRÄFF: ELD!', size: 18, color: '#ff7a26' });
+        this.effects.push({ kind: 'float', x: fx.x, y: fx.y - 10, born: t, life: 950, text: 'NEXT HIT: FIRE!', size: 18, color: '#ff7a26' });
         break;
       case 'burn':
         this.effects.push({ kind: 'ring', x: fx.x, y: fx.y, born: t, life: 460, r0: 10, r1: 54, color: '#ff4b16' });
         this.burst(fx.x, fx.y, 22, '#ff4b16', 4.7, 0, -2.4);
         this.burst(fx.x, fx.y, 12, '#ffd166', 3.4, 0, -3.2);
-        this.effects.push({ kind: 'float', x: fx.x, y: fx.y - 24, born: t, life: 820, text: 'BRINNER!', size: 20, color: '#ff5b26', pop: true });
+        this.effects.push({ kind: 'float', x: fx.x, y: fx.y - 24, born: t, life: 820, text: 'BURNING!', size: 20, color: '#ff5b26', pop: true });
         break;
       case 'enrage': {
         // Combo-dodsstot: angriparen gar in i ursinne. Eld slar ut ur figuren
@@ -1183,7 +1148,6 @@ export class Renderer {
 
   drawForestDepth(ctx, t) {
     this.drawMoonbeamPulse(ctx, t);
-    this.drawForestTroll(ctx, t);
     this.drawForestMist(ctx, t);
     this.drawForestGlows(ctx, t);
     this.drawFireflies(ctx, t, 0.48);
@@ -1194,77 +1158,6 @@ export class Renderer {
     this.drawLeafDrift(ctx, t);
     this.drawFireflies(ctx, t, 0.82);
     this.drawVines(ctx, t, 0.22);
-  }
-
-  drawForestTroll(ctx, t) {
-    const troll = this.forest.troll;
-    if (!troll.img) return;
-    if (!troll.active && t >= troll.nextAt) this.spawnForestTroll(t);
-    if (!troll.active) return;
-
-    const age = t - troll.active.started;
-    if (age > FOREST_TROLL.durationMs) {
-      const jitter = (Math.random() * 2 - 1) * FOREST_TROLL.intervalJitterMs;
-      troll.active = null;
-      troll.nextAt = t + FOREST_TROLL.intervalMs + jitter;
-      return;
-    }
-
-    const p = clamp(age / FOREST_TROLL.durationMs, 0, 1);
-    const move = p * p * (3 - 2 * p);
-    const fade = clamp(Math.min(p / 0.12, (1 - p) / 0.18), 0, 1);
-    const route = troll.active.route;
-    const x = lerp(route.startX, route.endX, move);
-    const cycleMs = FOREST_TROLL.frameMs * FOREST_TROLL.frameSequence.length;
-    const step = Math.sin((age / cycleMs) * Math.PI * 4 + troll.active.phase);
-    const y = troll.active.groundY + step * 7;
-    const facing = troll.active.fromLeft ? 1 : -1;
-    const img = troll.img;
-    const frameW = img.width / FOREST_TROLL.columns;
-    const frameH = img.height / FOREST_TROLL.rows;
-    const frame = FOREST_TROLL.frameSequence[Math.floor(age / FOREST_TROLL.frameMs) % FOREST_TROLL.frameSequence.length];
-    const sx = (frame % FOREST_TROLL.columns) * frameW;
-    const sy = Math.floor(frame / FOREST_TROLL.columns) * frameH;
-    const shade = this.silhouette(img, 'rgba(4,12,8,0.92)');
-
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(step * 0.012 * facing);
-    ctx.scale(troll.active.scale * facing, troll.active.scale);
-
-    ctx.globalAlpha = 0.4 * fade;
-    ctx.drawImage(shade, sx, sy, frameW, frameH, -frameW * 0.5, -frameH, frameW, frameH);
-
-    ctx.globalAlpha = 0.16 * fade;
-    ctx.drawImage(img, sx, sy, frameW, frameH, -frameW * 0.5, -frameH, frameW, frameH);
-
-    const eyeX = frameW * 0.2;
-    const eyeY = -frameH + frameH * 0.25;
-    const pulse = 0.75 + Math.sin(t * 0.006 + troll.active.phase) * 0.25;
-    ctx.globalCompositeOperation = 'screen';
-    ctx.globalAlpha = 0.44 * fade * pulse;
-    const glow = ctx.createRadialGradient(eyeX, eyeY, 0, eyeX, eyeY, 34);
-    glow.addColorStop(0, 'rgba(183,255,134,0.95)');
-    glow.addColorStop(0.38, 'rgba(96,255,128,0.32)');
-    glow.addColorStop(1, 'rgba(96,255,128,0)');
-    ctx.fillStyle = glow;
-    ctx.beginPath();
-    ctx.arc(eyeX, eyeY, 34, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-
-    ctx.save();
-    ctx.globalCompositeOperation = 'screen';
-    ctx.globalAlpha = 0.12 * fade;
-    const mist = ctx.createLinearGradient(x - 190, y - 18, x + 190, y - 18);
-    mist.addColorStop(0, 'rgba(170,230,202,0)');
-    mist.addColorStop(0.5, 'rgba(170,230,202,0.55)');
-    mist.addColorStop(1, 'rgba(170,230,202,0)');
-    ctx.fillStyle = mist;
-    ctx.beginPath();
-    ctx.ellipse(x, y - 18, 190, 18, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
   }
 
   drawMoonbeamPulse(ctx, t) {
@@ -1761,8 +1654,8 @@ export class Renderer {
   }
 
   /**
-   * Nazgulen. Sallsynt overflygning, samma monster som skogstrollet: den ska
-   * hinna glommas bort mellan gangerna sa att den fortfarande skrammer.
+   * Nazgulen. Sallsynt overflygning: den ska hinna glommas bort mellan gangerna
+   * sa att den fortfarande skrammer.
    */
   drawNazgul(ctx, t) {
     const nz = this.city.nazgul;
@@ -2908,6 +2801,14 @@ export class Renderer {
         // Har slaget en egen duk gar dess matt fore lagets - resten arvs.
         if (set.meta) frameMeta = set.meta;
       } else this.attackAnims.delete(p.i);
+    } else if (p.g && Math.abs(p.vx ?? 0) >= SPRITE_ANIM.runMinSpeed && sprite.run?.frames.length) {
+      // Spelaren saknar en separat inputflagga i ogonblicksbilden, sa fart plus
+      // markkontakt ar den stabila signalen for spring. Id-offseten hindrar ett
+      // helt lag fran att springa i perfekt synk.
+      const frameMs = sprite.run.meta?.frameMs ?? SPRITE_ANIM.runFrameMs;
+      const frame = (Math.floor(performance.now() / frameMs) + p.i * 2) % sprite.run.frames.length;
+      img = sprite.run.frames[frame];
+      if (sprite.run.meta) frameMeta = sprite.run.meta;
     }
 
     const dw = frameMeta.worldWidth ?? m.worldWidth;
