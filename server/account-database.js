@@ -138,6 +138,25 @@ export class AccountDatabase {
     this.db.prepare('INSERT INTO login_failures(account_key, source_ip, attempted_at) VALUES (?, ?, ?)').run(accountKey, sourceIp, now);
   }
 
+  recoveryLimit({ accountKey, sourceIp, cutoff, accountMax, ipMax }) {
+    this.db.prepare('DELETE FROM recovery_failures WHERE attempted_at < ?').run(cutoff);
+    const account = Number(this.db.prepare(`SELECT count(*) AS count FROM recovery_failures
+      WHERE account_key = ? AND attempted_at >= ?`).get(accountKey, cutoff).count);
+    const ip = Number(this.db.prepare(`SELECT count(*) AS count FROM recovery_failures
+      WHERE source_ip = ? AND attempted_at >= ?`).get(sourceIp, cutoff).count);
+    return { limited: account >= accountMax || ip >= ipMax, accountFailures: account, ipFailures: ip };
+  }
+
+  recordRecoveryFailure({ accountKey, sourceIp, now }) {
+    this.db.prepare(`INSERT INTO recovery_failures(account_key, source_ip, attempted_at)
+      VALUES (?, ?, ?)`).run(accountKey, sourceIp, now);
+  }
+
+  hasUnusedRecoveryCode(accountId, codeHash) {
+    return !!this.db.prepare(`SELECT 1 FROM recovery_codes
+      WHERE account_id = ? AND code_hash = ? AND used_at IS NULL`).get(accountId, codeHash);
+  }
+
   completeLogin({ account, accountKey, passwordHash, tokenHash, now }) {
     this.db.exec('BEGIN IMMEDIATE');
     try {
@@ -190,7 +209,7 @@ export class AccountDatabase {
     } catch (error) { this.db.exec('ROLLBACK'); throw error; }
   }
 
-  resetPassword({ accountId, codeHash, passwordHash, now }) {
+  resetPassword({ accountId, accountKey, codeHash, passwordHash, now }) {
     this.db.exec('BEGIN IMMEDIATE');
     try {
       const used = this.db.prepare(`UPDATE recovery_codes SET used_at = ?
@@ -198,6 +217,10 @@ export class AccountDatabase {
       if (!used.changes) throw authError('INVALID_RECOVERY', 'Invalid username or recovery code');
       this.db.prepare('UPDATE accounts SET password_hash = ?, updated_at = ? WHERE account_id = ?').run(passwordHash, now, accountId);
       this.db.prepare('UPDATE sessions SET revoked_at = ? WHERE account_id = ? AND revoked_at IS NULL').run(now, accountId);
+      // A successful recovery resets the account window while retaining each
+      // row under its source IP for broad attack detection.
+      this.db.prepare(`UPDATE recovery_failures SET account_key = account_key || ':' || failure_id
+        WHERE account_key = ?`).run(accountKey);
       this.db.exec('COMMIT');
     } catch (error) { this.db.exec('ROLLBACK'); throw error; }
   }

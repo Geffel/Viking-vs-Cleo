@@ -7,7 +7,11 @@ import {
 import { hashLegacyClientId } from './profile-snapshot.js';
 
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const RECOVERY_WINDOW_MS = 15 * 60 * 1000;
+const RECOVERY_ACCOUNT_MAX = 5;
+const RECOVERY_IP_MAX = 25;
 const GENERIC_LOGIN_MESSAGE = 'Fel anvandarnamn eller losenord';
+const GENERIC_RECOVERY_MESSAGE = 'Invalid username or recovery code';
 const database = new AccountDatabase(workerData.filePath);
 let queue = Promise.resolve();
 
@@ -94,13 +98,29 @@ async function login({ username, password, sourceIp, now }) {
   return { account: publicAccount, token };
 }
 
-async function resetPassword({ username, recoveryCode, newPassword, now }) {
-  const names = normalizeUsername(username);
+async function resetPassword({ username, recoveryCode, newPassword, sourceIp, now }) {
+  let names;
+  try { names = normalizeUsername(username); } catch {
+    names = { normalized: String(username || '').trim().normalize('NFKC').toLowerCase() };
+  }
   validatePassword(newPassword);
+  const accountKey = accountLogKey(names.normalized);
+  const limit = database.recoveryLimit({
+    accountKey, sourceIp, cutoff: now - RECOVERY_WINDOW_MS,
+    accountMax: RECOVERY_ACCOUNT_MAX, ipMax: RECOVERY_IP_MAX,
+  });
+  if (limit.limited) throw authError('RECOVERY_RATE_LIMITED', GENERIC_RECOVERY_MESSAGE);
   const account = database.findAccount(names.normalized);
   const codeHash = hashRecoveryCode(recoveryCode);
-  if (!account || !codeHash) throw authError('INVALID_RECOVERY', 'Invalid username or recovery code');
-  database.resetPassword({ accountId: Number(account.account_id), codeHash, passwordHash: await hashPassword(newPassword), now });
+  if (!account || account.status !== 'active' || !codeHash
+    || !database.hasUnusedRecoveryCode(Number(account.account_id), codeHash)) {
+    database.recordRecoveryFailure({ accountKey, sourceIp, now });
+    throw authError('INVALID_RECOVERY', GENERIC_RECOVERY_MESSAGE);
+  }
+  database.resetPassword({
+    accountId: Number(account.account_id), accountKey, codeHash,
+    passwordHash: await hashPassword(newPassword), now,
+  });
   return { accountId: Number(account.account_id) };
 }
 

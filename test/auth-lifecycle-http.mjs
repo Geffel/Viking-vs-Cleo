@@ -79,6 +79,19 @@ try {
   });
   assert.equal(reusedCode.response.status, 400, 'a recovery code can only be used once');
   assert.equal(reusedCode.data.error, 'INVALID_RECOVERY');
+  for (let attempt = 1; attempt < 5; attempt++) {
+    const invalidRecovery = await post(restartedHttpUrl, '/api/auth/reset-password', {
+      username: 'New Fighter', recoveryCode: registered.data.recoveryCodes[0], newPassword: 'another secure password',
+    });
+    assert.equal(invalidRecovery.response.status, 400);
+    assert.equal(invalidRecovery.data.message, reusedCode.data.message, 'recovery failures use one generic message');
+  }
+  const limitedRecovery = await post(restartedHttpUrl, '/api/auth/reset-password', {
+    username: 'New Fighter', recoveryCode: registered.data.recoveryCodes[1], newPassword: 'another secure password',
+  });
+  assert.equal(limitedRecovery.response.status, 429, 'recovery attempts are limited per account and source IP');
+  assert.equal(limitedRecovery.data.error, 'RECOVERY_RATE_LIMITED');
+  assert.equal(limitedRecovery.data.message, reusedCode.data.message, 'rate limiting does not reveal account details');
   const afterPasswordReset = await post(restartedHttpUrl, '/api/auth/login', {
     username: 'New Fighter', password: 'a replaced secure password',
   });

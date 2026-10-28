@@ -41,7 +41,7 @@ export function installAuthRoutes(app, accountService, {
 
   app.post('/api/auth/reset-password', json, asyncRoute(async (req, res) => {
     const result = await accountService.resetPassword(
-      req.body?.username, req.body?.recoveryCode, req.body?.newPassword,
+      req.body?.username, req.body?.recoveryCode, req.body?.newPassword, sourceIp(req),
     );
     onPasswordReset(result.accountId);
     clearSessionCookie(res, req.secure);
@@ -111,6 +111,7 @@ function statusFor(error) {
     || error?.code === 'LEGACY_PROFILE_UNAVAILABLE') return 409;
   if (error?.code === 'INVALID_CREDENTIALS') return 401;
   if (error?.code === 'LOGIN_RATE_LIMITED') return 429;
+  if (error?.code === 'RECOVERY_RATE_LIMITED') return 429;
   if (String(error?.code || '').startsWith('INVALID_')) return 400;
   return 500;
 }

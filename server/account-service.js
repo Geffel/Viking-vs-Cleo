@@ -34,8 +34,9 @@ export class AccountService {
   verifySession(token) { return this.#request('verifySession', { token, now: this.now() }); }
   logout(token) { return this.#request('logout', { token, now: this.now() }); }
   logoutAll(accountId) { return this.#request('logoutAll', { accountId, now: this.now() }); }
-  resetPassword(username, recoveryCode, newPassword) {
-    return this.#request('resetPassword', { username, recoveryCode, newPassword, now: this.now() });
+  resetPassword(username, recoveryCode, newPassword, sourceIp) {
+    const safeIp = typeof sourceIp === 'string' && sourceIp.length <= 64 ? sourceIp : 'unknown';
+    return this.#request('resetPassword', { username, recoveryCode, newPassword, sourceIp: safeIp, now: this.now() });
   }
   regenerateRecoveryCodes(accountId, currentPassword) {
     return this.#request('regenerateRecoveryCodes', { accountId, currentPassword, now: this.now() });

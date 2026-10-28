@@ -69,17 +69,45 @@ try {
   assert.equal(await service.verifySession(allDeviceB.token), null);
 
   const resetSession = await service.login('test.player', 'correct horse battery', '10.0.0.4');
-  await service.resetPassword('test.player', registered.recoveryCodes[0], 'a brand new password');
+  for (let attempt = 0; attempt < 5; attempt++) {
+    await assert.rejects(
+      service.resetPassword('test.player', '0'.repeat(32), 'a brand new password', `10.0.1.${attempt}`),
+      hasCode('INVALID_RECOVERY'),
+    );
+  }
+  await assert.rejects(
+    service.resetPassword('test.player', registered.recoveryCodes[0], 'a brand new password', '10.0.1.10'),
+    hasCode('RECOVERY_RATE_LIMITED'),
+  );
+  now += 15 * 60 * 1000 + 1;
+  await service.resetPassword('test.player', registered.recoveryCodes[0], 'a brand new password', '10.0.1.10');
   assert.equal(await service.verifySession(resetSession.token), null, 'password reset revokes every session');
-  await assert.rejects(service.resetPassword('test.player', registered.recoveryCodes[0], 'another secure password'), hasCode('INVALID_RECOVERY'));
+  await assert.rejects(
+    service.resetPassword('test.player', registered.recoveryCodes[0], 'another secure password', '10.0.1.10'),
+    hasCode('INVALID_RECOVERY'),
+  );
   await assert.rejects(service.login('test.player', 'correct horse battery', '10.0.0.4'), hasCode('INVALID_CREDENTIALS'));
   const afterReset = await service.login('test.player', 'a brand new password', '10.0.0.4');
 
   const replacementCodes = await service.regenerateRecoveryCodes(1, 'a brand new password');
   assert.equal(replacementCodes.length, 10);
-  await assert.rejects(service.resetPassword('test.player', registered.recoveryCodes[1], 'unused but obsolete pass'), hasCode('INVALID_RECOVERY'));
+  await assert.rejects(
+    service.resetPassword('test.player', registered.recoveryCodes[1], 'unused but obsolete pass', '10.0.1.10'),
+    hasCode('INVALID_RECOVERY'),
+  );
   assert.equal(await service.logout(afterReset.token), true);
   assert.equal(await service.verifySession(afterReset.token), null);
+
+  for (let attempt = 0; attempt < 25; attempt++) {
+    await assert.rejects(
+      service.resetPassword(`missing-${attempt}`, '0'.repeat(32), 'a valid replacement password', '10.0.2.1'),
+      hasCode('INVALID_RECOVERY'),
+    );
+  }
+  await assert.rejects(
+    service.resetPassword('another-missing', '0'.repeat(32), 'a valid replacement password', '10.0.2.1'),
+    hasCode('RECOVERY_RATE_LIMITED'),
+  );
 
   now += 20 * 60 * 1000;
   for (let attempt = 0; attempt < 5; attempt++) {

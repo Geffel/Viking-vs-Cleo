@@ -1,4 +1,4 @@
-export const PROFILE_DATABASE_VERSION = 1;
+export const PROFILE_DATABASE_VERSION = 2;
 
 export const PROFILE_SCHEMA_SQL = `
   PRAGMA foreign_keys = ON;
@@ -82,6 +82,18 @@ export const PROFILE_SCHEMA_SQL = `
     ON login_failures(account_key, attempted_at);
   CREATE INDEX IF NOT EXISTS login_failures_ip_time
     ON login_failures(source_ip, attempted_at);
+
+  CREATE TABLE IF NOT EXISTS recovery_failures (
+    failure_id INTEGER PRIMARY KEY,
+    account_key TEXT NOT NULL,
+    source_ip TEXT NOT NULL,
+    attempted_at INTEGER NOT NULL
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS recovery_failures_account_time
+    ON recovery_failures(account_key, attempted_at);
+  CREATE INDEX IF NOT EXISTS recovery_failures_ip_time
+    ON recovery_failures(source_ip, attempted_at);
   CREATE INDEX IF NOT EXISTS sessions_account
     ON sessions(account_id);
   CREATE INDEX IF NOT EXISTS sessions_expiry

@@ -41,6 +41,10 @@ tester.
   misslyckanden per normaliserat konto och högst 25 per käll-IP. Därefter nekas
   försök i 15 minuter. En lyckad inloggning nollställer kontots räknare, inte
   IP-räknaren.
+- Lösenordsåterställning använder separata rullande 15-minutersfönster med samma
+  gränser: högst fem misslyckanden per normaliserat konto och högst 25 per
+  käll-IP. Begränsning och kodkontroll sker före dyr lösenordshashning. En
+  lyckad återställning nollställer kontots räknare, inte IP-räknaren.
 - Begränsningsstatus lagras på servern så att en omstart inte kringgår den.
 - Loggen får innehålla tid, resultat, käll-IP i strukturerad form och en envägs-
   identifierare för kontot. Lösenord, rå sessionstoken, legacy-`clientId`,
