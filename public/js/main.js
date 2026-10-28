@@ -224,6 +224,7 @@ const sharedSeatInput = {
 const achievementsUi = new AchievementsUi({
   playerName: () => currentName,
   onBack: closeAchievements,
+  onViewAll: openAchievements,
 });
 
 const settingsUi = new SettingsUi({ audio, onBack: closeSettings });

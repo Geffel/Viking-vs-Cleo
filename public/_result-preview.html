@@ -4,6 +4,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Result screen preview</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Anton&family=Oswald:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/css/style.css" />
     <style>
       body {
@@ -22,8 +25,24 @@
         z-index: 20;
         top: 14px;
         right: 14px;
+        display: grid;
+        gap: 8px;
+        justify-items: end;
+      }
+
+      .preview-control-row {
         display: flex;
         gap: 8px;
+        align-items: center;
+      }
+
+      .preview-control-row > span {
+        width: 92px;
+        color: rgba(242, 245, 255, 0.48);
+        font: 700 9px "Oswald", sans-serif;
+        letter-spacing: 0.16em;
+        text-align: right;
+        text-transform: uppercase;
       }
 
       .preview-controls button {
@@ -53,7 +72,7 @@
       }
 
       .podium-header .screen-step {
-        margin-bottom: 8px;
+        margin-bottom: clamp(14px, 1.6vh, 20px);
       }
 
       .preview-score {
@@ -375,15 +394,25 @@
     </style>
   </head>
   <body>
-    <nav class="preview-controls" aria-label="Preview result">
-      <button type="button" data-result="viking">Viking wins</button>
-      <button type="button" data-result="cleo">Cleo wins</button>
-      <button type="button" data-result="draw">Draw</button>
-      <button type="button" data-result="unranked">Unranked</button>
-    </nav>
+    <aside class="preview-controls" aria-label="Result preview controls">
+      <nav class="preview-control-row" aria-label="Result type">
+        <span>Result</span>
+        <button type="button" data-result="viking">Viking wins</button>
+        <button type="button" data-result="cleo">Cleo wins</button>
+        <button type="button" data-result="draw">Draw</button>
+        <button type="button" data-result="unranked">Unranked</button>
+      </nav>
+      <nav class="preview-control-row" aria-label="Achievements earned">
+        <span>Achievements</span>
+        <button type="button" data-achievements="0">None</button>
+        <button type="button" data-achievements="1">1 earned</button>
+        <button type="button" data-achievements="5">5 earned</button>
+        <button type="button" data-achievements="8">8 earned</button>
+      </nav>
+    </aside>
 
     <main class="round-results" id="round-results" data-winner="viking">
-      <div class="result-wrap podium-preview">
+      <div class="result-wrap podium-results podium-preview">
         <header class="podium-header">
           <div class="screen-step">Round complete</div>
           <div id="round-result-score" class="preview-score"></div>
@@ -394,6 +423,8 @@
         </header>
 
         <section id="podium-grid" class="podium-grid" aria-label="Top three fighters"></section>
+
+        <div id="preview-achievements" class="match-achievements-summary" hidden></div>
 
         <div class="round-actions podium-actions">
           <button id="leave-match" type="button">Finish match</button>
@@ -456,8 +487,22 @@
       const title = document.getElementById('round-result-title');
       const score = document.getElementById('round-result-score');
       const podium = document.getElementById('podium-grid');
+      const achievementSummary = document.getElementById('preview-achievements');
       const unrankedNote = document.getElementById('unranked-note');
-      const buttons = [...document.querySelectorAll('[data-result]')];
+      const resultButtons = [...document.querySelectorAll('[data-result]')];
+      const achievementButtons = [...document.querySelectorAll('[data-achievements]')];
+      const previewAchievements = [
+        { title: 'Five Seconds of Fury', rarity: 'Epic', pts: 35, tone: '#ff4d9d', icon: '/assets/chili.png' },
+        { title: 'Lord of the Nile Delta', rarity: 'Epic', pts: 20, tone: '#ff4d9d', icon: '/assets/arena_01.png' },
+        { title: 'Long Distance Delivery', rarity: 'Legendary', pts: 40, tone: '#ffd166', icon: '/assets/viking/axe_throw.png' },
+        { title: 'Not Today', rarity: 'Rare', pts: 20, tone: '#4dc3ff', icon: '/assets/viking_shield_icon.png' },
+        { title: 'Quick Snack', rarity: 'Common', pts: 15, tone: '#7cf5b0', icon: '/assets/pizza.png' },
+        { title: 'First Blood', rarity: 'Common', pts: 10, tone: '#7cf5b0', icon: '/assets/cleo/punch1.png' },
+        { title: 'Sun Worshipper', rarity: 'Rare', pts: 25, tone: '#4dc3ff', icon: '/assets/cleo/sun_fire_ball.png' },
+        { title: 'Shield Wall', rarity: 'Epic', pts: 30, tone: '#ff4d9d', icon: '/assets/cleo_shield_icon.png' },
+      ];
+      let activeResult = 'viking';
+      let activeAchievementCount = 8;
 
       function podiumCard(player) {
         const label = player.rank === 1 ? 'MVP' : player.rank === 2 ? 'Runner up' : 'Third place';
@@ -478,7 +523,14 @@
           </article>`;
       }
 
-      function show(result) {
+      function syncUrl() {
+        const params = new URLSearchParams();
+        params.set('winner', activeResult);
+        params.set('achievements', String(activeAchievementCount));
+        history.replaceState(null, '', `?${params}`);
+      }
+
+      function showResult(result) {
         const key = rows[result] ? result : 'viking';
         const row = rows[key];
         const winner = row.winner;
@@ -499,12 +551,46 @@
           <i>VS</i>
           <strong class="viking-score">${row.viking}</strong><span>Team Viking</span>`;
         podium.innerHTML = visualOrder.map(podiumCard).join('');
-        for (const button of buttons) button.setAttribute('aria-pressed', String(button.dataset.result === key));
-        history.replaceState(null, '', `?winner=${key}`);
+        activeResult = key;
+        for (const button of resultButtons) button.setAttribute('aria-pressed', String(button.dataset.result === key));
+        syncUrl();
       }
 
-      for (const button of buttons) button.addEventListener('click', () => show(button.dataset.result));
-      show(new URLSearchParams(location.search).get('winner'));
+      function achievementSlot(item, index) {
+        const label = `${item.title} - ${item.rarity}, ${item.pts} glory`;
+        return `
+          <div class="ma-summary-slot" style="--rarity-tone:${item.tone};--delay:${(index * 0.07).toFixed(2)}s" aria-label="${label}" title="${label}">
+            <span class="ma-summary-icon"><img src="${item.icon}" alt="" /></span>
+            <span class="ma-summary-points">+${item.pts}</span>
+          </div>`;
+      }
+
+      function showAchievements(count) {
+        const parsed = Number(count);
+        const value = count !== null && [0, 1, 5, 8].includes(parsed) ? parsed : 8;
+        const earned = previewAchievements.slice(0, value);
+        const visible = earned.slice(0, 5);
+        const remaining = earned.length - visible.length;
+        activeAchievementCount = value;
+        achievementSummary.hidden = value === 0;
+        achievementSummary.innerHTML = value === 0 ? '' : `
+          <div class="ma-summary-head">
+            <div><div class="ma-kicker">Match rewards</div><b>${earned.length} new achievement${earned.length === 1 ? '' : 's'} earned</b></div>
+            <span>+${earned.reduce((sum, item) => sum + item.pts, 0)}<small>glory</small></span>
+          </div>
+          <div class="ma-summary-list">${visible.map(achievementSlot).join('')}</div>
+          <button class="ma-summary-more" type="button">Show more${remaining ? `<span>+${remaining}</span>` : ''}</button>`;
+        for (const button of achievementButtons) {
+          button.setAttribute('aria-pressed', String(Number(button.dataset.achievements) === value));
+        }
+        syncUrl();
+      }
+
+      for (const button of resultButtons) button.addEventListener('click', () => showResult(button.dataset.result));
+      for (const button of achievementButtons) button.addEventListener('click', () => showAchievements(button.dataset.achievements));
+      const params = new URLSearchParams(location.search);
+      showResult(params.get('winner'));
+      showAchievements(params.get('achievements'));
     </script>
   </body>
 </html>

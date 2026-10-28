@@ -14,12 +14,14 @@ const STATUS_FILTERS = [
 ];
 const TOAST_MS = 4600;
 const TOAST_OUT_MS = 420;
+const MATCH_SUMMARY_SLOT_LIMIT = 5;
 const DATE_FMT = new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short' });
 
 export class AchievementsUi {
-  constructor({ playerName = () => '', onBack = () => {} } = {}) {
+  constructor({ playerName = () => '', onBack = () => {}, onViewAll = () => {} } = {}) {
     this.playerName = playerName;
     this.onBack = onBack;
+    this.onViewAll = onViewAll;
     this.profile = null;
     this.achievementStats = null;
     this.cat = 'all';
@@ -56,6 +58,9 @@ export class AchievementsUi {
       this.renderPage();
     });
 
+    this.summary?.addEventListener('click', (e) => {
+      if (e.target.closest('[data-achievements-more]')) this.onViewAll();
+    });
     this.back?.addEventListener('click', () => this.onBack());
     this.renderPage();
   }
@@ -99,6 +104,8 @@ export class AchievementsUi {
     }
 
     const earned = this.matchEarned;
+    const visible = earned.slice(0, MATCH_SUMMARY_SLOT_LIMIT);
+    const remaining = Math.max(0, earned.length - visible.length);
     const totalPts = earned.reduce((sum, a) => sum + a.pts, 0);
     this.summary.hidden = false;
     this.summary.innerHTML = `
@@ -110,8 +117,11 @@ export class AchievementsUi {
         <span>+${totalPts}<small>glory</small></span>
       </div>
       <div class="ma-summary-list">
-        ${earned.map((a, index) => summaryRow(a, index)).join('')}
-      </div>`;
+        ${visible.map((a, index) => summarySlot(a, index)).join('')}
+      </div>
+      <button class="ma-summary-more" type="button" data-achievements-more>
+        Show more${remaining ? `<span>+${remaining}</span>` : ''}
+      </button>`;
   }
 
   renderPage() {
@@ -297,16 +307,11 @@ function achievementCard(a, index) {
     </article>`;
 }
 
-function summaryRow(a, index) {
-  const globalW = Math.max(4, Math.round(Math.sqrt((Number(a.pct) || 0) / 100) * 100));
+function summarySlot(a, index) {
+  const label = `${a.title} - ${a.rarity}, ${a.pts} glory. ${a.desc}`;
   return `
-    <div class="ma-summary-row" style="--rarity-tone:${a.rarityTone};--global:${globalW}%;--delay:${(index * 0.09).toFixed(2)}s">
+    <div class="ma-summary-slot" style="--rarity-tone:${a.rarityTone};--delay:${(index * 0.07).toFixed(2)}s" aria-label="${escapeAttr(label)}" title="${escapeAttr(label)}">
       <span class="ma-summary-icon"><img src="${escapeAttr(a.icon)}" alt="" /></span>
-      <span class="ma-summary-copy">
-        <span><b>${escapeHtml(a.title)}</b><em>${escapeHtml(a.rarity)}</em></span>
-        <small>${escapeHtml(a.desc)}</small>
-        <i><b></b><span><strong>${a.pct}%</strong> of fighters</span></i>
-      </span>
       <span class="ma-summary-points">+${a.pts}</span>
     </div>`;
 }

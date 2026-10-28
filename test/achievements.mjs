@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { achievementUnlockStats } from '../shared/achievements.js';
 
 const fails = [];
@@ -29,6 +30,17 @@ check('achievements utan upplasning blir 0%', stats.pcts.team_player === 0, Stri
 const emptyStats = achievementUnlockStats([]);
 check('tom profillista ger 0 profiler', emptyStats.totalProfiles === 0, String(emptyStats.totalProfiles));
 check('tom profillista ger 0%', emptyStats.pcts.first_blood === 0, String(emptyStats.pcts.first_blood));
+
+const achievementsUi = await readFile(new URL('../public/js/achievements.js', import.meta.url), 'utf8');
+const resultPreview = await readFile(new URL('../public/_result-preview.html', import.meta.url), 'utf8');
+check('matchresultatet visar hogst fem achievement-slots',
+  /MATCH_SUMMARY_SLOT_LIMIT\s*=\s*5/.test(achievementsUi)
+    && /earned\.slice\(0, MATCH_SUMMARY_SLOT_LIMIT\)/.test(achievementsUi));
+check('Show more oppnar hela achievements-vyn',
+  /data-achievements-more/.test(achievementsUi)
+    && /this\.onViewAll\(\)/.test(achievementsUi));
+check('resultat-previewn kan visa alla viktiga achievements-lagen',
+  ['0', '1', '5', '8'].every((count) => resultPreview.includes(`data-achievements="${count}"`)));
 
 console.log('');
 console.log(fails.length ? `${fails.length} TEST MISSLYCKADES: ${fails.join(', ')}` : 'ALLA TESTER OK');
