@@ -1,4 +1,4 @@
-import { ACTION_SLOTS, LOCAL_SEAT_IDS, MAPS, TEAM_IDS } from '../shared/constants.js';
+import { ACTION_SLOTS, LOCAL_SEAT_IDS, MAPS, PERFORMANCE_TEST, TEAM_IDS } from '../shared/constants.js';
 import { validView } from '../shared/netcode.js';
 
 export const MAX_MESSAGE_BYTES = 4096;
@@ -18,7 +18,9 @@ const validators = {
   clientPing: (m) => Number.isSafeInteger(m.id) && m.id >= 0,
   identify: identity,
   join: (m) => identity(m) && optional(m, 'team', character),
-  createMatch: (m) => optional(m, 'mode', (mode) => ['online', 'training'].includes(mode)),
+  createMatch: (m) => optional(m, 'mode', (mode) => ['online', 'training', 'performance'].includes(mode))
+    && optional(m, 'maxBots', (count) => Number.isInteger(count)
+      && count >= PERFORMANCE_TEST.minBots && count <= PERFORMANCE_TEST.maxBots),
   joinMatch: (m) => text(m.id) && m.id.length > 0,
   setSharedScreenMode: (m) => typeof m.enabled === 'boolean',
   wakeLocalSeat: (m) => device(m.inputDevice),

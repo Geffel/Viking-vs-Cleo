@@ -22,6 +22,8 @@ import {
   MELEE,
   MELEE_ATTACKS,
   MELEE_BINDS,
+  PERFORMANCE_TEST,
+  POWERUP_KINDS,
   TEAMS,
   TRAINING,
   mapLayoutFor,
@@ -76,6 +78,11 @@ const globalLobby = document.getElementById('global-lobby');
 const matchList = document.getElementById('match-list');
 const createMatchBtn = document.getElementById('create-match');
 const trainingModeBtn = document.getElementById('training-mode');
+const performanceModeBtn = document.getElementById('performance-mode');
+const performanceSetup = document.getElementById('performance-setup');
+const performanceForm = document.getElementById('performance-form');
+const performanceClose = document.getElementById('performance-close');
+const performanceMaxBots = document.getElementById('performance-max-bots');
 const openAchievementsBtn = document.getElementById('open-achievements');
 const achievementsView = document.getElementById('achievements-view');
 const openSettingsBtn = document.getElementById('open-settings');
@@ -136,11 +143,16 @@ const instructionsVideo = document.querySelector('.instructions-video');
 
 const TRANSITION_MS = 620;
 const DEBUG_PARAMS = new URLSearchParams(location.search);
+const PERFORMANCE_PATH = location.pathname.replace(/\/+$/, '') === '/performance-test';
 const AUDIO_DEBUG = DEBUG_PARAMS.has('audioDebug');
-const NET_DEBUG = DEBUG_PARAMS.has('netDebug') || localStorage.getItem('vvc.netDebug') === '1';
+const NET_DEBUG = PERFORMANCE_PATH || DEBUG_PARAMS.has('netDebug') || localStorage.getItem('vvc.netDebug') === '1';
+const LOCAL_PERFORMANCE_TEST = (PERFORMANCE_PATH || DEBUG_PARAMS.has('performanceTest'))
+  && ['localhost', '127.0.0.1', '::1'].includes(location.hostname);
 const NET_LOG_SAMPLE_MS = 1000;
 const NET_LOG_MAX_ROWS = 3600;
 const NET_LOG_VERSION = 1;
+const renderFrameSamples = [];
+let performanceSetupAutoOpened = false;
 const ROW_ACCENTS = ['#ff4d9d', '#4dc3ff', '#ffd166', '#ff86bf'];
 const MAP_TONES = {
   arena_01: '#ffd166',
@@ -244,6 +256,47 @@ trainingModeBtn?.addEventListener('click', () => {
   lobbyError.textContent = '';
   net.createMatch({ training: true });
 });
+
+performanceModeBtn?.addEventListener('click', openPerformanceSetup);
+performanceClose?.addEventListener('click', closePerformanceSetup);
+performanceSetup?.addEventListener('click', (event) => {
+  if (event.target === performanceSetup) closePerformanceSetup();
+});
+performanceForm?.addEventListener('submit', (event) => {
+  event.preventDefault();
+  const maxBots = Math.max(
+    PERFORMANCE_TEST.minBots,
+    Math.min(PERFORMANCE_TEST.maxBots, Math.round(Number(performanceMaxBots?.value) || PERFORMANCE_TEST.defaultBots)),
+  );
+  if (performanceMaxBots) performanceMaxBots.value = String(maxBots);
+  lobbyError.textContent = '';
+  closePerformanceSetup();
+  net.createMatch({ performance: true, maxBots });
+});
+
+function openPerformanceSetup() {
+  if (!performanceSetup) return;
+  performanceSetup.hidden = false;
+  const saved = Number(localStorage.getItem('vvc.performanceBots'));
+  const value = Number.isInteger(saved) ? saved : PERFORMANCE_TEST.defaultBots;
+  if (performanceMaxBots) {
+    performanceMaxBots.value = String(Math.max(PERFORMANCE_TEST.minBots, Math.min(PERFORMANCE_TEST.maxBots, value)));
+    window.setTimeout(() => performanceMaxBots.focus(), 0);
+  }
+}
+
+function closePerformanceSetup() {
+  if (!performanceSetup) return;
+  performanceSetup.hidden = true;
+  const value = Math.round(Number(performanceMaxBots?.value));
+  if (Number.isInteger(value)) localStorage.setItem('vvc.performanceBots', String(value));
+}
+
+function maybeOpenPerformanceSetup() {
+  if (performanceSetupAutoOpened || !DEBUG_PARAMS.has('performanceTest') || net.match) return;
+  performanceSetupAutoOpened = true;
+  openPerformanceSetup();
+}
 
 trainingSwitch?.addEventListener('click', (e) => {
   const btn = e.target.closest('[data-training-character]');
@@ -351,6 +404,7 @@ net.on('identified', (msg) => {
   localStorage.setItem('vvc.name', currentName);
   renderMatches(msg.matches ?? []);
   applyMatchUpdate(msg.match ?? null);
+  maybeOpenPerformanceSetup();
 });
 
 net.on('lobby', (msg) => {
@@ -457,6 +511,7 @@ function frame(now) {
   }
   const dt = Math.min(now - lastFrame, 100);
   lastFrame = now;
+  noteRenderFrame(now, dt);
 
   const players = net.sample();
   audio.sync(players);
@@ -482,10 +537,35 @@ function frame(now) {
 }
 requestAnimationFrame(frame);
 
+function noteRenderFrame(now, durationMs) {
+  renderFrameSamples.push({ t: now, value: durationMs });
+  while (renderFrameSamples.length && now - renderFrameSamples[0].t > 5000) renderFrameSamples.shift();
+}
+
+function clientMetricsSnapshot(now = performance.now()) {
+  while (renderFrameSamples.length && now - renderFrameSamples[0].t > 5000) renderFrameSamples.shift();
+  const durations = renderFrameSamples.map((sample) => sample.value).sort((a, b) => a - b);
+  const average = durations.length ? durations.reduce((sum, value) => sum + value, 0) / durations.length : 0;
+  const p95Index = Math.max(0, Math.ceil(durations.length * 0.95) - 1);
+  return {
+    ...net.metricsSnapshot(),
+    fps: average > 0 ? 1000 / average : 0,
+    frameMsAvg: average,
+    frameMsP95: durations[p95Index] ?? 0,
+    frameSamples: durations.length,
+  };
+}
+
 // ------------------------------------------------------------------ vyer
 
 async function initLegacyMigration() {
   if (!migrationGate) return false;
+  if (LOCAL_PERFORMANCE_TEST) {
+    currentName = 'Performance observer';
+    migrationGate.hidden = true;
+    setView('lobby');
+    return true;
+  }
   try {
     const state = await authRequest('/api/auth/state', { clientId });
     if (state.authenticated) {
@@ -976,7 +1056,7 @@ function selectMatchWipe(match, previousPhase) {
   }
 
   if (previousPhase === MATCH_PHASES.mapVote && match.phase === MATCH_PHASES.countdown) {
-    return isTrainingMatch(match) ? null : WIPES.countdown;
+    return isSoloTestMatch(match) ? null : WIPES.countdown;
   }
   if (match.phase === MATCH_PHASES.results && previousPhase !== MATCH_PHASES.results) return WIPES.results;
   if (match.phase === MATCH_PHASES.mapVote && previousPhase !== MATCH_PHASES.mapVote) return WIPES.mapVote;
@@ -1147,6 +1227,8 @@ function renderMatchRoom(match) {
   const inMatchLobby = match.phase === MATCH_PHASES.matchLobby;
   const sharedScreen = isSharedScreenMatch(match);
   const training = isTrainingMatch(match);
+  const performanceTest = isPerformanceTestMatch(match);
+  const soloTest = training || performanceTest;
   const localSeats = sharedScreen ? sharedSeatsFor(match) : [];
   const hostSeat = sharedScreen ? localSeatById(match, HOST_SEAT_ID) : null;
   const inResults = match.phase === MATCH_PHASES.results;
@@ -1156,7 +1238,9 @@ function renderMatchRoom(match) {
   const joiningLive = preGame && !!me && !me.character && !net.selfId;
   const canPick = sharedScreen ? inMatchLobby && isHost : inMatchLobby || joiningLive;
   matchRoom.dataset.phase = match.phase;
-  matchRoom.dataset.mode = training ? MATCH_MODES.training : sharedScreen ? MATCH_MODES.sharedScreen : MATCH_MODES.online;
+  matchRoom.dataset.mode = performanceTest
+    ? MATCH_MODES.performance
+    : training ? MATCH_MODES.training : sharedScreen ? MATCH_MODES.sharedScreen : MATCH_MODES.online;
   matchRoomTitle.textContent = match.title;
   const selectedMap = mapName(match, match.selectedMap);
   const modeLabel = sharedScreen ? 'Shared screen - ' : '';
@@ -1164,8 +1248,10 @@ function renderMatchRoom(match) {
   const visiblePlayerCount = sharedScreen ? match.localSeatCount ?? localSeats.length : match.playerCount;
   const visiblePickedCount = sharedScreen ? match.localCharactersChosenCount ?? localSeats.filter((seat) => seat.character).length : 0;
   const progressLabel = sharedScreen ? `Picked ${visiblePickedCount}/${visiblePlayerCount}` : `Ready ${visibleReadyCount}/${visiblePlayerCount}`;
-  matchRoomPhase.textContent = training
-    ? 'Solo practice against a training dummy' + (selectedMap ? ` - Map: ${selectedMap}` : '')
+  matchRoomPhase.textContent = performanceTest
+    ? `Visual load test with ${match.maxBots} bots` + (selectedMap ? ` - Map: ${selectedMap}` : '')
+    : training
+      ? 'Solo practice against a training dummy' + (selectedMap ? ` - Map: ${selectedMap}` : '')
     : joiningLive
       ? 'Pick a character to jump into the match' + (selectedMap ? ` - Map: ${selectedMap}` : '')
       : `${modeLabel}${phaseLabel(match.phase)} - Host ${match.hostName} - ${progressLabel}` +
@@ -1182,14 +1268,14 @@ function renderMatchRoom(match) {
   renderCharacterSeatMarkers(match);
   syncSharedSeatScanner(match);
 
-  readyToggle.hidden = !inMatchLobby || sharedScreen || training;
+  readyToggle.hidden = !inMatchLobby || sharedScreen || soloTest;
   const readySource = sharedScreen ? hostSeat : me;
   readyToggle.textContent = readySource?.ready ? 'Ready' : 'Ready up';
   readyToggle.classList.toggle('on', !!readySource?.ready);
-  readyToggle.disabled = !inMatchLobby || sharedScreen || training || !readySource?.character;
+  readyToggle.disabled = !inMatchLobby || sharedScreen || soloTest || !readySource?.character;
 
   if (sharedScreenToggle) {
-    const canToggleSharedScreen = isHost && inMatchLobby && !training;
+    const canToggleSharedScreen = isHost && inMatchLobby && !soloTest;
     const blockedByGuests = canToggleSharedScreen && !sharedScreen && match.playerCount > 1;
     sharedScreenToggle.hidden = !canToggleSharedScreen;
     sharedScreenToggle.disabled = blockedByGuests;
@@ -1200,7 +1286,7 @@ function renderMatchRoom(match) {
   }
 
   const canStartMatch = sharedScreen ? sharedCanStartMatch(match, localSeats) : match.allCharactersChosen;
-  startMatchBtn.hidden = !isHost || !inMatchLobby || training;
+  startMatchBtn.hidden = !isHost || !inMatchLobby || soloTest;
   startMatchBtn.disabled = !canStartMatch;
   startMatchBtn.title = sharedScreen
     ? sharedStartTitle(match, localSeats)
@@ -1618,12 +1704,18 @@ function renderMapVote(match) {
   }
 
   const training = isTrainingMatch(match);
-  mapVote.dataset.mode = training ? MATCH_MODES.training : '';
-  if (mapVoteClock) mapVoteClock.hidden = training;
-  if (mapVoteFoot) mapVoteFoot.hidden = training;
-  if (mapVoteStep) mapVoteStep.textContent = training ? 'Training - pick a map' : 'Step 05 - Vote now';
-  if (mapVoteTitle) mapVoteTitle.textContent = training ? 'Choose your practice arena' : 'Choose the arena';
-  if (!training) updateMapVoteTimer(match);
+  const performanceTest = isPerformanceTestMatch(match);
+  const soloTest = training || performanceTest;
+  mapVote.dataset.mode = performanceTest ? MATCH_MODES.performance : training ? MATCH_MODES.training : '';
+  if (mapVoteClock) mapVoteClock.hidden = soloTest;
+  if (mapVoteFoot) mapVoteFoot.hidden = soloTest;
+  if (mapVoteStep) mapVoteStep.textContent = performanceTest
+    ? `Performance test - ${match.maxBots} bots`
+    : training ? 'Training - pick a map' : 'Step 05 - Vote now';
+  if (mapVoteTitle) mapVoteTitle.textContent = performanceTest
+    ? 'Choose the test arena'
+    : training ? 'Choose your practice arena' : 'Choose the arena';
+  if (!soloTest) updateMapVoteTimer(match);
   const maps = match.mapVotes?.length ? match.mapVotes : match.maps ?? [];
   const sharedScreen = isSharedScreenMatch(match);
   const seats = sharedScreen ? sharedSeatsFor(match) : [];
@@ -1701,7 +1793,7 @@ function renderRoundResults(match) {
 
 function updatePhaseTimers() {
   const match = net.match;
-  if (match?.phase === MATCH_PHASES.mapVote && !isTrainingMatch(match)) updateMapVoteTimer(match);
+  if (match?.phase === MATCH_PHASES.mapVote && !isSoloTestMatch(match)) updateMapVoteTimer(match);
   updateMatchClock(match);
   if (currentView === 'game') updateFightOverlay(match);
 }
@@ -1716,7 +1808,7 @@ function updateMapVoteTimer(match) {
 function updateFightOverlay(match = net.match) {
   if (!fightOverlay || !fightCopy) return;
 
-  if (match?.phase === MATCH_PHASES.countdown && !isTrainingMatch(match)) {
+  if (match?.phase === MATCH_PHASES.countdown && !isSoloTestMatch(match)) {
     fightOverlay.hidden = false;
     fightOverlay.classList.add('countdown-mode');
     fightOverlay.classList.remove('fight-mode');
@@ -1741,7 +1833,7 @@ function updateMatchClock(match = net.match) {
   if (!matchClock) return;
 
   const live =
-    (match?.phase === MATCH_PHASES.countdown || match?.phase === MATCH_PHASES.playing) && !isTrainingMatch(match);
+    (match?.phase === MATCH_PHASES.countdown || match?.phase === MATCH_PHASES.playing) && !isSoloTestMatch(match);
   matchClock.hidden = !live;
   if (!live) {
     matchClock.textContent = formatClock(MATCH_DURATION_MS);
@@ -1851,7 +1943,7 @@ function initNetDebug(enabled = false) {
       this.set(!this.enabled);
     },
     sample(now = performance.now()) {
-      const metrics = net.metricsSnapshot();
+      const metrics = clientMetricsSnapshot(now);
       this.lastLogAt = now;
       this.append({
         type: 'sample',
@@ -1912,7 +2004,7 @@ function initNetDebug(enabled = false) {
       if (this.enabled && now - this.lastLogAt >= NET_LOG_SAMPLE_MS) this.sample(now);
       if (!this.enabled || (!force && now - this.lastUpdate < 250)) return;
       this.lastUpdate = now;
-      renderNetDebug(el, net.metricsSnapshot(), this);
+      renderNetDebug(el, clientMetricsSnapshot(now), this);
     },
   };
 
@@ -1937,6 +2029,7 @@ function renderNetDebug(el, m, log) {
       <b class="${m.connected ? 'ok' : 'bad'}">${m.connected ? 'online' : 'offline'}</b>
     </div>
     <div class="net-debug-grid">
+      <span>FPS</span><b>${m.fps.toFixed(1)} <small>p95 ${fmtMs(m.frameMsP95)}</small></b>
       <span>RTT</span><b>${fmtMs(m.rttMs)} <small>last ${fmtMs(m.rttLastMs)}</small></b>
       <span>jitter</span><b>${fmtMs(m.rttJitterMs)}</b>
       <span>state</span><b>${fmtHz(m.stateHz)} <small>${fmtMs(m.stateIntervalMs)} gap</small></b>
@@ -1966,6 +2059,10 @@ function netLogMatchContext() {
 function netLogMetrics(m) {
   return {
     connected: m.connected,
+    fps: roundMetric(m.fps),
+    frameMsAvg: roundMetric(m.frameMsAvg),
+    frameMsP95: roundMetric(m.frameMsP95),
+    frameSamples: m.frameSamples,
     interpMs: roundMetric(m.interpMs),
     serverOffsetMs: roundMetric(m.serverOffsetMs),
     rttMs: roundMetric(m.rttMs),
@@ -2092,6 +2189,14 @@ function localSeatForGamepad(match, index) {
 
 function isTrainingMatch(match) {
   return match?.mode === MATCH_MODES.training;
+}
+
+function isPerformanceTestMatch(match) {
+  return match?.mode === MATCH_MODES.performance;
+}
+
+function isSoloTestMatch(match) {
+  return isTrainingMatch(match) || isPerformanceTestMatch(match);
 }
 
 function isSharedScreenMatch(match) {

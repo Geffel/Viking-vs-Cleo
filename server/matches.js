@@ -6,6 +6,7 @@ import {
   MATCH_DURATION_MS,
   MATCH_MODES,
   MATCH_PHASES,
+  PERFORMANCE_TEST,
   SHARED_SCREEN_MAX_SEATS,
   TEAM_IDS,
 } from '../shared/constants.js';
@@ -21,19 +22,24 @@ export class MatchRegistry {
     this.nextId = 1;
   }
 
-  create(host, { training = false } = {}) {
+  create(host, { training = false, performance = false, maxBots = PERFORMANCE_TEST.defaultBots } = {}) {
     const id = String(this.nextId++);
     const now = this.clock();
+    const mode = performance ? MATCH_MODES.performance : training ? MATCH_MODES.training : MATCH_MODES.online;
+    const privateTest = mode === MATCH_MODES.training || mode === MATCH_MODES.performance;
     const match = {
       id,
-      title: training ? `Training ${id}` : `Match ${id}`,
+      title: performance ? `Performance test ${id}` : training ? `Training ${id}` : `Match ${id}`,
       phase: MATCH_PHASES.matchLobby,
-      mode: training ? MATCH_MODES.training : MATCH_MODES.online,
+      mode,
+      maxBots: performance
+        ? Math.max(PERFORMANCE_TEST.minBots, Math.min(PERFORMANCE_TEST.maxBots, Math.round(Number(maxBots) || PERFORMANCE_TEST.defaultBots)))
+        : 0,
       // Traningen ar orankad: ingenting som hander dar far rora profilerna.
       // Stangningen satts forst efter addPlayer nedan - en stangd match slapper
       // inte in nagon, inte ens sin egen vard.
       closed: false,
-      statsEnabled: !training,
+      statsEnabled: !privateTest,
       hostId: host.sessionId,
       roundId: 0,
       createdAt: now,
@@ -53,8 +59,8 @@ export class MatchRegistry {
     };
     this.matches.set(id, match);
     this.addPlayer(id, host);
-    // Traningen ar privat: ingen annan far joina.
-    match.closed = training;
+    // Traning och prestandatest ar privata: ingen annan far joina.
+    match.closed = privateTest;
     return match;
   }
 
@@ -306,7 +312,7 @@ export class MatchRegistry {
     match.resultCounts = true;
     match.unrankedReason = null;
     match.finishedAt = 0;
-    match.voteEndsAt = isTraining(match) ? 0 : this.clock() + MAP_VOTE_MS;
+    match.voteEndsAt = isSoloTest(match) ? 0 : this.clock() + MAP_VOTE_MS;
     match.countdownEndsAt = 0;
     match.matchEndsAt = 0;
     match.updatedAt = this.clock();
@@ -340,7 +346,7 @@ export class MatchRegistry {
       match.voteEndsAt = 0;
       // Traningen raknar inte ned - fasen passeras direkt, men behovs anda for
       // att arenan ska hinna byggas innan spelet borjar.
-      match.countdownEndsAt = isTraining(match) ? now : now + MATCH_COUNTDOWN_MS;
+      match.countdownEndsAt = isSoloTest(match) ? now : now + MATCH_COUNTDOWN_MS;
       match.matchEndsAt = 0;
       match.updatedAt = now;
       return { match, change: { match, from: MATCH_PHASES.mapVote, to: MATCH_PHASES.countdown } };
@@ -380,7 +386,7 @@ export class MatchRegistry {
       if (match.phase === MATCH_PHASES.mapVote && match.voteEndsAt && now >= match.voteEndsAt) {
         match.selectedMap = resolveSelectedMap(match);
         match.phase = MATCH_PHASES.countdown;
-        match.countdownEndsAt = isTraining(match) ? now : now + MATCH_COUNTDOWN_MS;
+        match.countdownEndsAt = isSoloTest(match) ? now : now + MATCH_COUNTDOWN_MS;
         match.matchEndsAt = 0;
         match.updatedAt = now;
         changes.push({ match, from: MATCH_PHASES.mapVote, to: MATCH_PHASES.countdown });
@@ -390,7 +396,7 @@ export class MatchRegistry {
       if (match.phase === MATCH_PHASES.countdown && now >= match.countdownEndsAt) {
         match.phase = MATCH_PHASES.playing;
         // Traningen har ingen klocka: 0 gor att tidsuttaget nedan aldrig slar till.
-        match.matchEndsAt = isTraining(match) ? 0 : now + MATCH_DURATION_MS;
+        match.matchEndsAt = isSoloTest(match) ? 0 : now + MATCH_DURATION_MS;
         match.updatedAt = now;
         changes.push({ match, from: MATCH_PHASES.countdown, to: MATCH_PHASES.playing });
         continue;
@@ -420,8 +426,8 @@ export class MatchRegistry {
   }
 
   list() {
-    // Traningsmatcher ar privata - de hor inte hemma i lobbyns matchlista.
-    return [...this.matches.values()].filter((match) => !isTraining(match)).map(snapshot);
+    // Privata testmatcher hor inte hemma i lobbyns matchlista.
+    return [...this.matches.values()].filter((match) => !isSoloTest(match)).map(snapshot);
   }
 }
 
@@ -503,6 +509,8 @@ function snapshot(match) {
     mode: match.mode ?? MATCH_MODES.online,
     sharedScreen,
     training: isTraining(match),
+    performance: isPerformanceTest(match),
+    maxBots: isPerformanceTest(match) ? match.maxBots : 0,
     closed: !!match.closed,
     statsEnabled: match.statsEnabled !== false,
     hostId: match.hostId,
@@ -568,6 +576,14 @@ function isSharedScreen(match) {
 
 function isTraining(match) {
   return match?.mode === MATCH_MODES.training;
+}
+
+function isPerformanceTest(match) {
+  return match?.mode === MATCH_MODES.performance;
+}
+
+function isSoloTest(match) {
+  return isTraining(match) || isPerformanceTest(match);
 }
 
 function ensureHostSeat(match) {
@@ -672,7 +688,9 @@ function resultOptionsFor(match) {
 }
 
 function unrankedReasonFor(match) {
-  return isTraining(match) ? 'training' : 'sharedScreen';
+  if (isTraining(match)) return 'training';
+  if (isPerformanceTest(match)) return 'performance';
+  return 'sharedScreen';
 }
 
 function completeMatch(match, finalScore, now, { resultCounts = true, unrankedReason = null } = {}) {

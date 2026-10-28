@@ -1,7 +1,7 @@
 // Matchflodet: lobby -> kartrostning -> countdown -> spel -> resultat.
 
 import { MatchRegistry } from '../server/matches.js';
-import { MAPS, MAP_VOTE_MS, MATCH_COUNTDOWN_MS, MATCH_DURATION_MS, MATCH_MODES, MATCH_PHASES } from '../shared/constants.js';
+import { MAPS, MAP_VOTE_MS, MATCH_COUNTDOWN_MS, MATCH_DURATION_MS, MATCH_MODES, MATCH_PHASES, PERFORMANCE_TEST } from '../shared/constants.js';
 
 let clock = 100000;
 const fails = [];
@@ -93,6 +93,19 @@ check('ensam time-out blir orankad', solo.phase === MATCH_PHASES.results && solo
 
 registry.removePlayer(solo.id, 9);
 check('tom match tas bort', registry.get(solo.id) === null);
+
+const perf = registry.create({ sessionId: 10, name: 'Perf host', profileId: 100 }, { performance: true, maxBots: 12 });
+const perfSnap = registry.snapshot(perf.id);
+check('prestandatest ar privat och orankat', perfSnap.mode === MATCH_MODES.performance && perfSnap.closed && !perfSnap.statsEnabled);
+check('prestandatest sparar max antal bottar', perfSnap.maxBots === 12 && perfSnap.performance === true);
+check('prestandatest visas inte i publika matchlistan', !registry.list().some((match) => match.id === perf.id));
+registry.setCharacter(perf.id, 10, 'cleo');
+registry.start(perf.id, 10);
+check('prestandatest har inget kartrostningsur', perf.phase === MATCH_PHASES.mapVote && perf.voteEndsAt === 0);
+check(
+  'prestandatest klampar botantal till saker grans',
+  registry.create({ sessionId: 11, name: 'Perf max', profileId: 101 }, { performance: true, maxBots: 999 }).maxBots === PERFORMANCE_TEST.maxBots,
+);
 
 const sharedHost = { sessionId: 20, name: 'Couch Host', profileId: 200 };
 const sharedGuest = { sessionId: 21, name: 'Remote Guest', profileId: 210 };

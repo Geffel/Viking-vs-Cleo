@@ -148,6 +148,7 @@
               <button id="open-settings" type="button">Settings</button>
               <button id="create-match" type="button">Create match</button>
               <button id="training-mode" type="button" title="Practice solo against a training dummy">Training mode</button>
+              <button id="performance-mode" type="button" title="Run a visual bot and network load test">Performance test</button>
             </div>
           </div>
           <div class="lobby-grid">
@@ -386,6 +387,21 @@
       </div>
     </div>
 
+    <section class="performance-setup" id="performance-setup" role="dialog" aria-modal="true" aria-labelledby="performance-title" hidden>
+      <form class="performance-card" id="performance-form">
+        <button id="performance-close" class="performance-close" type="button" aria-label="Close">&times;</button>
+        <div class="screen-step">Visual load test</div>
+        <h1 id="performance-title">Performance test</h1>
+        <p>Server-controlled fighters are rendered in the real arena and attack each other while FPS and network traffic are measured.</p>
+        <label class="performance-count" for="performance-max-bots">
+          <span>Max bots</span>
+          <input id="performance-max-bots" type="number" min="2" max="50" step="1" value="10" inputmode="numeric" required />
+          <small>2–50 bots. Higher values increase simulation, rendering and snapshot traffic.</small>
+        </label>
+        <button id="performance-start" type="submit">Continue to test</button>
+      </form>
+    </section>
+
     <section class="instructions-overlay" id="instructions-overlay" role="dialog" aria-modal="true" aria-labelledby="instructions-title" hidden>
       <div class="instructions-head">
         <button id="instructions-close" class="instructions-back" type="button">Back</button>
@@ -438,6 +454,6 @@
 
     <div id="conn" hidden>Connecting...</div>
 
-    <script type="module" src="/js/main.js"></script>
+    <script type="module" src="/js/main.js?v=4"></script>
   </body>
 </html>

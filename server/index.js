@@ -27,6 +27,7 @@ import { TickMetrics } from './tick-metrics.js';
 import { ACHIEVEMENTS, achievementUnlockStats, publicAchievements } from '../shared/achievements.js';
 import {
   TICK_MS,
+  WORLD,
   TEAM_IDS,
   NAME_MAX,
   LAGCOMP,
@@ -35,6 +36,7 @@ import {
   MATCH_PHASES,
   PLAYER,
   MAPS,
+  PERFORMANCE_TEST,
   TRAINING,
   mapLayoutFor,
 } from '../shared/constants.js';
@@ -75,6 +77,14 @@ app.use(
   }),
 );
 app.use('/shared', express.static(path.join(ROOT, 'shared')));
+app.get('/performance-test', (_req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.sendFile(path.join(ROOT, 'public', 'index.html'));
+});
+app.get('/api/performance-test', (_req, res) => {
+  res.json({ ready: true, featureVersion: 3, localObserver: true, dedicatedPage: true,
+    minBots: PERFORMANCE_TEST.minBots, maxBots: PERFORMANCE_TEST.maxBots });
+});
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE_BYTES });
@@ -141,25 +151,27 @@ server.on('upgrade', async (request, socket, head) => {
   }
 
   const sessionToken = readSessionCookie(request);
+  const performanceGuest = isLocalPerformanceRequest(request);
   let authSession = null;
   if (sessionToken) {
     try { authSession = await accountService.verifySession(sessionToken); } catch { authSession = null; }
   }
-  if (!authSession?.accountId || !authSession?.profileId || !getProfileById(authSession.profileId)) {
+  if (!performanceGuest && (!authSession?.accountId || !authSession?.profileId || !getProfileById(authSession.profileId))) {
     rejectWebSocketUpgrade(socket, 401, 'Authentication required');
     return;
   }
 
   wss.handleUpgrade(request, socket, head, (ws) => {
-    wss.emit('connection', ws, request, authSession, sessionToken);
+    wss.emit('connection', ws, request, authSession, sessionToken, performanceGuest);
   });
 });
 
-wss.on('connection', (ws, _request, authSession, sessionToken) => {
+wss.on('connection', (ws, _request, authSession, sessionToken, performanceGuest = false) => {
   ws.sessionId = nextSessionId++;
   ws.sessionToken = sessionToken;
-  ws.accountId = authSession.accountId;
-  ws.authProfileId = authSession.profileId;
+  ws.performanceGuest = !!performanceGuest;
+  ws.accountId = authSession?.accountId ?? 0;
+  ws.authProfileId = authSession?.profileId ?? 0;
   ws.name = '';
   ws.hasLoggedJoin = false;
   ws.clientId = null;
@@ -217,7 +229,7 @@ wss.on('connection', (ws, _request, authSession, sessionToken) => {
 });
 
 function handleMessage(ws, msg) {
-  if (!ws.accountId || !ws.authProfileId) {
+  if ((!ws.accountId || !ws.authProfileId) && !ws.performanceGuest) {
     send(ws, { t: 'appError', code: 'AUTH_REQUIRED', message: 'Authentication required.' });
     ws.close(1008, 'Authentication required');
     return;
@@ -245,9 +257,17 @@ function handleMessage(ws, msg) {
     }
     case 'createMatch': {
       if (!requireIdentity(ws)) return;
+      if (ws.performanceGuest && msg.mode !== MATCH_MODES.performance) {
+        send(ws, { t: 'appError', code: 'PERFORMANCE_ONLY', message: 'Local test observers can only create performance tests.' });
+        return;
+      }
       if (ws.playerId) removePlayerSession(ws);
       if (ws.matchId) leaveLobbyMatch(ws);
-      const match = matches.create(sessionPlayer(ws), { training: msg.mode === MATCH_MODES.training });
+      const match = matches.create(sessionPlayer(ws), {
+        training: msg.mode === MATCH_MODES.training,
+        performance: msg.mode === MATCH_MODES.performance,
+        maxBots: msg.maxBots,
+      });
       ws.matchId = match.id;
       gameLog('MATCH', `Created ${matchLabel(match)} by ${playerLabel(ws)}.`);
       broadcastLobby();
@@ -263,8 +283,8 @@ function handleMessage(ws, msg) {
         send(ws, { t: 'appError', message: 'That match no longer exists.' });
         return;
       }
-      if (match.mode === MATCH_MODES.training) {
-        send(ws, { t: 'appError', message: 'That is a private training session.' });
+      if (isSoloTestMatch(match)) {
+        send(ws, { t: 'appError', message: 'That is a private test session.' });
         return;
       }
       if (match.closed || match.mode === MATCH_MODES.sharedScreen) {
@@ -385,8 +405,8 @@ function handleMessage(ws, msg) {
         send(ws, { t: 'appError', message: error });
         return;
       }
-      // Traningen har ingen att vanta pa: valt fighter tar en direkt till kartvalet.
-      if (isTrainingMatch(match) && match.phase === MATCH_PHASES.matchLobby) {
+      // Privata solotest har ingen att vanta pa: valt fighter tar en direkt till kartvalet.
+      if (isSoloTestMatch(match) && match.phase === MATCH_PHASES.matchLobby) {
         const started = matches.start(match.id, ws.sessionId);
         sendMatch(started.match ?? match);
         break;
@@ -532,6 +552,12 @@ function closeUnauthenticatedSocket(ws, reason = 'Authentication required') {
 }
 
 function identifySocket(ws) {
+  if (ws.performanceGuest) {
+    ws.name = 'Performance observer';
+    ws.clientId = null;
+    ws.profileId = 0;
+    return;
+  }
   const accountProfile = getProfileById(ws.authProfileId);
   const identity = identityForSocket(ws);
   ws.name = accountProfile.name;
@@ -559,6 +585,11 @@ function identityForSocket(ws) {
 }
 
 function requireIdentity(ws) {
+  if (ws.performanceGuest) {
+    if (ws.name) return true;
+    send(ws, { t: 'appError', message: 'Identify the local test observer first.' });
+    return false;
+  }
   if (!ws.accountId || !ws.authProfileId || !getProfileById(ws.authProfileId)) {
     send(ws, { t: 'appError', code: 'AUTH_REQUIRED', message: 'Authentication required.' });
     return false;
@@ -665,11 +696,14 @@ function prepareGameForMatch(match) {
   recordMapVoteStats(match);
   clearGameSessions(match.id);
   const training = isTrainingMatch(match);
+  const performanceTest = isPerformanceTestMatch(match);
   const matchGame = new Game({
     clock: gameNow,
     layout: mapLayoutFor(match.selectedMap),
     mapId: match.selectedMap,
-    abilityCooldownCap: training ? TRAINING.abilityCooldownMs : 0,
+    abilityCooldownCap: training
+      ? TRAINING.abilityCooldownMs
+      : performanceTest ? PERFORMANCE_TEST.abilityCooldownMs : 0,
   });
   matchGames.set(match.id, matchGame);
 
@@ -722,7 +756,7 @@ function prepareGameForMatch(match) {
     p.invulnUntil = Math.max(p.invulnUntil, match.countdownEndsAt + PLAYER.spawnProtectionMs);
     ws.playerId = p.id;
     // Traningen ar orankad: speltid och kills far inte bokforas i profilen.
-    if (!training) activateProfile(p);
+    if (match.statsEnabled !== false) activateProfile(p);
 
     send(ws, {
       t: 'gameReady',
@@ -738,10 +772,42 @@ function prepareGameForMatch(match) {
   }
 
   if (training) syncTrainingBot(match, matchGame);
+  else if (performanceTest) syncPerformanceBots(match, matchGame);
 }
 
 function isTrainingMatch(match) {
   return match?.mode === MATCH_MODES.training;
+}
+
+function isPerformanceTestMatch(match) {
+  return match?.mode === MATCH_MODES.performance;
+}
+
+function isSoloTestMatch(match) {
+  return isTrainingMatch(match) || isPerformanceTestMatch(match);
+}
+
+/** Skapar den valda maxlasten och fordelar lagen och startpositionerna. */
+function syncPerformanceBots(match, matchGame = matchGames.get(match.id)) {
+  if (!matchGame) return [];
+  for (const other of [...matchGame.players.values()]) {
+    if (other.bot) matchGame.removePlayer(other.id);
+  }
+
+  const count = Math.max(
+    PERFORMANCE_TEST.minBots,
+    Math.min(PERFORMANCE_TEST.maxBots, Math.round(Number(match.maxBots) || PERFORMANCE_TEST.defaultBots)),
+  );
+  const bots = [];
+  for (let index = 0; index < count; index++) {
+    const bot = matchGame.addBot(index % 2 ? 'viking' : 'cleo', { combat: true, index });
+    const fraction = count === 1 ? 0.5 : index / (count - 1);
+    bot.x = 80 + fraction * (WORLD.w - 160);
+    bot.y = 80 + (index % 3) * 65;
+    bot.history.length = 0;
+    bots.push(bot);
+  }
+  return bots;
 }
 
 /**
@@ -1368,7 +1434,11 @@ function playerLabel({ name, profileId }) {
 }
 
 function matchLabel(match) {
-  const mode = match.mode === MATCH_MODES.training ? 'training' : match.mode === MATCH_MODES.sharedScreen ? 'shared screen' : 'online';
+  const mode = match.mode === MATCH_MODES.training
+    ? 'training'
+    : match.mode === MATCH_MODES.performance
+      ? 'performance test'
+      : match.mode === MATCH_MODES.sharedScreen ? 'shared screen' : 'online';
   return `#${match.id} (${mode})`;
 }
 
@@ -1489,6 +1559,18 @@ function isAllowedWebSocketOrigin(request) {
   }
 }
 
+function isLocalPerformanceRequest(request) {
+  const remote = String(request.socket?.remoteAddress ?? '').toLowerCase();
+  const loopback = remote === '127.0.0.1' || remote === '::1' || remote === '::ffff:127.0.0.1';
+  if (!loopback) return false;
+  try {
+    const url = new URL(request.url ?? '/', 'http://localhost');
+    return url.pathname.replace(/\/+$/, '') === '/performance-test' || url.searchParams.get('performanceTest') === '1';
+  } catch {
+    return false;
+  }
+}
+
 function rejectWebSocketUpgrade(socket, status, message) {
   if (!socket.writable) return socket.destroy();
   const body = `${message}\n`;
@@ -1525,7 +1607,7 @@ setInterval(() => {
 // access from already connected game clients.
 setInterval(() => {
   for (const ws of wss.clients) {
-    if (ws.readyState !== ws.OPEN || ws.sessionCheckPending) continue;
+    if (ws.readyState !== ws.OPEN || ws.sessionCheckPending || ws.performanceGuest) continue;
     ws.sessionCheckPending = true;
     accountService.verifySession(ws.sessionToken)
       .then((session) => {

@@ -26,8 +26,13 @@ assert.equal(parseClientMessage('{'), null);
 assert.equal(parseClientMessage(' '.repeat(MAX_MESSAGE_BYTES + 1)), null);
 assert.equal(parseClientMessage(Buffer.from('{"t":"leave"}'), true), null);
 for (const value of [{ t: 'move', l: false, r: true }, { t: 'act', a: 'm1', seatId: 'P2' },
-  { t: 'join', name: 'Guest', team: 'cleo' }, { t: 'setReady', ready: false }]) {
+  { t: 'join', name: 'Guest', team: 'cleo' }, { t: 'setReady', ready: false },
+  { t: 'createMatch', mode: 'performance', maxBots: 10 }]) {
   assert.deepEqual(parseClientMessage(JSON.stringify(value)), value);
+}
+for (const value of [{ t: 'createMatch', mode: 'performance', maxBots: 1 },
+  { t: 'createMatch', mode: 'performance', maxBots: 51 }, { t: 'createMatch', mode: 'benchmark' }]) {
+  assert.equal(parseClientMessage(JSON.stringify(value)), null);
 }
 
 // Execute the real client sampler/sender and authoritative Game against a

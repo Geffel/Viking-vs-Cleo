@@ -22,5 +22,9 @@ assert.match(main, /currentName = state\.session\.username;[\s\S]*setView\('lobb
   'an authenticated session routes directly to the lobby');
 assert.doesNotMatch(main, /function submitName\(|setView\('intro'\)/,
   'the client no longer routes through Enter name');
+assert.ok(
+  main.indexOf('const renderFrameSamples = []') < main.indexOf('const netDebug = initNetDebug(NET_DEBUG)'),
+  'performance frame metrics exist before the eagerly enabled debug panel samples them',
+);
 
 console.log('AUTH UI TESTS OK: one player name, locked migration name and direct lobby routing');

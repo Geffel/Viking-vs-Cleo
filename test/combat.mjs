@@ -5,7 +5,7 @@
 // ar garanterad eller omojlig. Da gar varje siffra att rakna ut for hand.
 
 import { Game } from '../server/game.js';
-import { PLAYER, MELEE, TICK_MS, MAP, COMBO, CRIT, ENRAGE, DAMAGE_BUFF } from '../shared/constants.js';
+import { PLAYER, MELEE, TICK_MS, MAP, COMBO, CRIT, ENRAGE, DAMAGE_BUFF, PERFORMANCE_TEST } from '../shared/constants.js';
 
 const GROUND_Y = MAP.platforms.find((pl) => pl.ground).y - PLAYER.h;
 const CRUSHER = COMBO.list.find((c) => c.id === 'crusher');
@@ -420,6 +420,24 @@ for (const combo of COMBO.list) {
   advance(g, COMBO.windowMs + 100);
   const me = g.snapshot().players.find((p) => p.i === a.id);
   check('utrunnen kedja visas inte langre', me.cb === -1 && me.cs === 0, `cb ${me.cb}, cs ${me.cs}`);
+}
+
+// --------------------------------------------------------- prestandabotar
+
+{
+  clock = 100000;
+  const g = new Game({
+    clock: () => clock,
+    rng: () => 0.5,
+    abilityCooldownCap: PERFORMANCE_TEST.abilityCooldownMs,
+  });
+  const a = place(g.addBot('cleo', { combat: true, index: 0 }), 400);
+  const b = place(g.addBot('viking', { combat: true, index: 1 }), 440);
+  advance(g, 12000);
+  check('prestandabotar jagar och attackerar varandra', a.hp < PLAYER.maxHp || b.hp < PLAYER.maxHp);
+  const abilityUses = [a, b].flatMap((bot) => Object.entries(bot.stats.abilityUses));
+  check('prestandabotar anvander abilities under testet', abilityUses.reduce((sum, [, count]) => sum + count, 0) >= 4);
+  check('prestandabotar varierar abilities', new Set(abilityUses.map(([ability]) => ability)).size >= 3);
 }
 
 console.log('');

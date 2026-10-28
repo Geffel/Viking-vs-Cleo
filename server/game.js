@@ -22,6 +22,7 @@ import {
   CRIT,
   COMBO,
   COMBO_MAX_LEN,
+  PERFORMANCE_TEST,
   TRAINING,
 } from '../shared/constants.js';
 import { extrapolatePlayer, samplePlayer, validView } from '../shared/netcode.js';
@@ -166,7 +167,12 @@ export class Game {
       lastHitAt: 0,
       comboSeq: [], // melee-platser som traffat i rad, senaste sist
       comboAt: 0, // nar den senaste traffen i kedjan landade
-      bot: false, // traningsdockan: styrs av servern, slass aldrig tillbaka
+      bot: false, // serverstyrd traningsdocka eller prestandabot
+      botMode: 'patrol',
+      nextBotActionAt: 0,
+      nextBotAbilityAt: 0,
+      botAbilityIndex: 0,
+      botChannelReleaseAt: 0,
       patrol: null, // { minX, maxX, dir } - bandet boten gar fram och tillbaka i
       speedMul: 1, // permanent fartfaktor - traningsdockan gar i halvfart
       stats: freshMatchStats(),
@@ -192,11 +198,16 @@ export class Game {
    * Traningsdockan. Den slass aldrig tillbaka - servern satter bara gangriktning
    * varje tick sa att den vandrar fram och tillbaka i mitten av kartan.
    */
-  addBot(team, { widthFrac = TRAINING.patrolWidthFrac } = {}) {
-    const p = this.addPlayer(TRAINING_BOT_NAME, team, { clientId: null, profileId: 0 });
+  addBot(team, { widthFrac = TRAINING.patrolWidthFrac, combat = false, index = 0 } = {}) {
+    const name = combat ? `Perf Bot ${index + 1}` : TRAINING_BOT_NAME;
+    const p = this.addPlayer(name, team, { clientId: null, profileId: 0 });
     p.bot = true;
+    p.botMode = combat ? 'combat' : 'patrol';
+    p.nextBotActionAt = this.now() + this.botAttackDelay();
+    p.nextBotAbilityAt = this.now() + this.botAbilityDelay() + (index % 6) * 180;
+    p.botAbilityIndex = index;
     p.patrol = patrolBand(widthFrac);
-    p.speedMul = TRAINING.botSpeedMul;
+    p.speedMul = combat ? 1 : TRAINING.botSpeedMul;
     // Boten borjar mitt i bandet i stallet for pa lagets spawn, sa att den
     // syns direkt dar man ska ova.
     p.x = (p.patrol.minX + p.patrol.maxX) / 2;
@@ -206,6 +217,10 @@ export class Game {
 
   /** Gar mot bandets kant, vander, och gor ingenting annat. */
   driveBot(p, t) {
+    if (p.botMode === 'combat') {
+      this.driveCombatBot(p, t);
+      return;
+    }
     if (!p.patrol) return;
     if (t < p.stunnedUntil || t < p.pulledUntil) {
       p.input.left = false;
@@ -216,6 +231,94 @@ export class Game {
     else if (p.x >= p.patrol.maxX) p.patrol.dir = -1;
     p.input.left = p.patrol.dir < 0;
     p.input.right = p.patrol.dir > 0;
+  }
+
+  /** Enkel avsiktligt billig AI: jagar narmaste fiende och slar sporadiskt. */
+  driveCombatBot(p, t) {
+    if (t < p.stunnedUntil || t < p.pulledUntil || t < p.uppercutLaunchUntil) {
+      p.input.left = false;
+      p.input.right = false;
+      return;
+    }
+
+    let target = null;
+    let bestDistance = Infinity;
+    for (const other of this.players.values()) {
+      if (other.id === p.id || other.team === p.team || other.dead) continue;
+      const distance = Math.hypot(other.x - p.x, other.y - p.y);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        target = other;
+      }
+    }
+    if (!target) {
+      p.input.left = false;
+      p.input.right = false;
+      return;
+    }
+
+    const dx = target.x - p.x;
+    const closeEnough = Math.abs(dx) <= PERFORMANCE_TEST.engageDistance;
+    p.facing = dx < 0 ? -1 : 1;
+    p.input.left = !closeEnough && dx < 0;
+    p.input.right = !closeEnough && dx > 0;
+
+    // Sun fire ar en hold/release-formaga. Lat AI:n kanalisera olika lange sa
+    // bade den levande laddningseffekten och projektilvarianterna belastas.
+    if (p.channel?.id === 'sunFire') {
+      if (t >= p.botChannelReleaseAt) this.releaseAction(p, p.channel.slot);
+    } else if (t >= p.nextBotAbilityAt) {
+      this.useNextBotAbility(p, t);
+    }
+
+    // Hopp gor att bottarna sprider sig over plattformarna i stallet for att
+    // alltid bilda en enda klump pa marken.
+    if (p.onGround && (target.y < p.y - PLAYER.h || this.rng() < 0.003)) this.action(p, 'jump');
+
+    if (!p.channel && closeEnough && Math.abs(target.y - p.y) <= PLAYER.h * 1.35 && t >= p.nextBotActionAt) {
+      this.action(p, this.rng() < 0.5 ? MELEE_SLOTS[0] : MELEE_SLOTS[1]);
+      p.nextBotActionAt = t + this.botAttackDelay();
+    }
+  }
+
+  /** Roterar genom lagets formagor sa att aven dyra effekter alltid provas. */
+  useNextBotAbility(p, t) {
+    const slots = Object.keys(ABILITIES[p.team] ?? {});
+    if (!slots.length) return false;
+
+    for (let offset = 0; offset < slots.length; offset++) {
+      const index = (p.botAbilityIndex + offset) % slots.length;
+      const slot = slots[index];
+      if (t < p.cd[slot]) continue;
+
+      const ability = ABILITIES[p.team][slot];
+      const usesBefore = p.stats.abilityUses[ability.id] ?? 0;
+      this.action(p, slot);
+      const used = (p.stats.abilityUses[ability.id] ?? 0) > usesBefore;
+      if (!used) continue;
+
+      p.botAbilityIndex = (index + 1) % slots.length;
+      p.nextBotAbilityAt = t + this.botAbilityDelay();
+      if (p.channel?.id === 'sunFire') {
+        const range = PERFORMANCE_TEST.sunFireChargeMaxMs - PERFORMANCE_TEST.sunFireChargeMinMs;
+        p.botChannelReleaseAt = t + PERFORMANCE_TEST.sunFireChargeMinMs + this.rng() * range;
+      }
+      return true;
+    }
+
+    // Alla slots ar pa cooldown. Prova snart igen utan att spinna varje tick.
+    p.nextBotAbilityAt = t + 250;
+    return false;
+  }
+
+  botAttackDelay() {
+    const range = PERFORMANCE_TEST.attackDelayMaxMs - PERFORMANCE_TEST.attackDelayMinMs;
+    return PERFORMANCE_TEST.attackDelayMinMs + this.rng() * range;
+  }
+
+  botAbilityDelay() {
+    const range = PERFORMANCE_TEST.abilityDelayMaxMs - PERFORMANCE_TEST.abilityDelayMinMs;
+    return PERFORMANCE_TEST.abilityDelayMinMs + this.rng() * range;
   }
 
   stat(kind, data = {}) {

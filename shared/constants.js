@@ -45,6 +45,7 @@ export const MATCH_MODES = {
   online: 'online',
   sharedScreen: 'sharedScreen',
   training: 'training',
+  performance: 'performance',
 };
 
 // Traningslage: en ensam spelare mot en NPC som bara gar fram och tillbaka.
@@ -56,6 +57,24 @@ export const TRAINING = {
   patrolWidthFrac: 0.5,
   // NPC:n gar i halv fart mot en riktig spelare - lattare att ova traffar pa.
   botSpeedMul: 0.5,
+};
+
+// Visuellt lasttest. Bottarna kors pa den auktoritativa servern och skickas
+// genom samma snapshots/rendering som riktiga spelare.
+export const PERFORMANCE_TEST = {
+  minBots: 2,
+  defaultBots: 10,
+  maxBots: 50,
+  // Kapa de langsta cooldownerna sa att tunga effekter faktiskt aterkommer
+  // under ett kort lasttest. Kortare cooldowns behaller sina riktiga varden.
+  abilityCooldownMs: 4000,
+  attackDelayMinMs: 550,
+  attackDelayMaxMs: 1500,
+  abilityDelayMinMs: 900,
+  abilityDelayMaxMs: 2200,
+  sunFireChargeMinMs: 650,
+  sunFireChargeMaxMs: 2200,
+  engageDistance: 72,
 };
 export const LOCAL_SEAT_IDS = ['P1', 'P2', 'P3', 'P4'];
 export const SHARED_SCREEN_MAX_SEATS = LOCAL_SEAT_IDS.length;

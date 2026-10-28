@@ -77,7 +77,9 @@ export class Net {
 
   connect() {
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${proto}//${location.host}`);
+    const performancePage = location.pathname.replace(/\/+$/, '') === '/performance-test';
+    const performanceQuery = performancePage || new URLSearchParams(location.search).has('performanceTest') ? '?performanceTest=1' : '';
+    const ws = new WebSocket(`${proto}//${location.host}${performanceQuery}`);
     this.ws = ws;
 
     ws.onopen = () => {
@@ -188,8 +190,9 @@ export class Net {
     this.send({ t: 'identify', name, clientId });
   }
 
-  createMatch({ training = false } = {}) {
-    this.send({ t: 'createMatch', mode: training ? 'training' : 'online' });
+  createMatch({ training = false, performance = false, maxBots } = {}) {
+    const mode = performance ? 'performance' : training ? 'training' : 'online';
+    this.send({ t: 'createMatch', mode, ...(performance ? { maxBots } : {}) });
   }
 
   joinMatch(id) {
