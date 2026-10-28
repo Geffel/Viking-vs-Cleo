@@ -31,7 +31,11 @@ async function handle({ id, type, payload = {} }) {
     else if (type === 'regenerateRecoveryCodes') result = await regenerateRecoveryCodes(payload);
     else if (type === 'findLegacyProfile') result = findLegacyProfile(payload);
     else if (type === 'migrateLegacyProfile') result = await migrateLegacyProfile(payload);
-    else if (type === 'cleanupSessions') result = database.cleanupSessions(payload.now);
+    else if (type === 'cleanupAuthData') result = database.cleanupAuthData({
+      now: payload.now,
+      loginCutoff: payload.now - LOGIN_WINDOW_MS,
+      recoveryCutoff: payload.now - RECOVERY_WINDOW_MS,
+    });
     else if (type === 'close') { database.close(); result = true; }
     else throw authError('UNKNOWN_COMMAND', `Unknown account worker command: ${type}`);
     parentPort.postMessage({ id, result });

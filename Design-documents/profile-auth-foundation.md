@@ -46,6 +46,9 @@ tester.
   käll-IP. Begränsning och kodkontroll sker före dyr lösenordshashning. En
   lyckad återställning nollställer kontots räknare, inte IP-räknaren.
 - Begränsningsstatus lagras på servern så att en omstart inte kringgår den.
+- Vid serverstart och därefter varje timme tas utgångna eller återkallade
+  sessioner bort tillsammans med login- och återställningsfel som ligger utanför
+  respektive 15-minutersfönster. Aktiva sessioner påverkas inte.
 - Loggen får innehålla tid, resultat, käll-IP i strukturerad form och en envägs-
   identifierare för kontot. Lösenord, rå sessionstoken, legacy-`clientId`,
   återställningskod och fullständigt användarnamn får aldrig loggas.

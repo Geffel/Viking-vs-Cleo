@@ -122,7 +122,22 @@ try {
 
   now += SESSION_ABSOLUTE_MS;
   assert.equal(await service.verifySession(afterLimit.token), null, 'absolute lifetime is never extended by activity');
-  assert.ok(await service.cleanupSessions() > 0);
+  const activeAfterExpiry = await service.login('test.player', 'a brand new password', '10.0.9.1');
+  await assert.rejects(
+    service.login('cleanup-missing', 'a valid but wrong password', '10.0.9.2'),
+    hasCode('INVALID_CREDENTIALS'),
+  );
+  await assert.rejects(
+    service.resetPassword('cleanup-missing', '0'.repeat(32), 'a valid replacement password', '10.0.9.3'),
+    hasCode('INVALID_RECOVERY'),
+  );
+  now += 15 * 60 * 1000 + 1;
+  const cleaned = await service.cleanupAuthData();
+  assert.ok(cleaned.sessions > 0, 'expired and revoked sessions are deleted');
+  assert.ok(cleaned.loginFailures > 0, 'login IP rows outside the rate-limit window are deleted');
+  assert.ok(cleaned.recoveryFailures > 0, 'recovery IP rows outside the rate-limit window are deleted');
+  assert.equal(cleaned.total, cleaned.sessions + cleaned.loginFailures + cleaned.recoveryFailures);
+  assert.ok(await service.verifySession(activeAfterExpiry.token), 'cleanup preserves active sessions');
 
   console.log('ACCOUNT SERVICE TESTS OK: credentials, rate limits, recovery and session lifetimes are enforced');
 } finally {

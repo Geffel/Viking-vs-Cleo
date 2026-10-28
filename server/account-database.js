@@ -225,9 +225,22 @@ export class AccountDatabase {
     } catch (error) { this.db.exec('ROLLBACK'); throw error; }
   }
 
-  cleanupSessions(now) {
-    return Number(this.db.prepare(`DELETE FROM sessions WHERE revoked_at IS NOT NULL OR expires_at <= ? OR created_at + ? <= ?`)
-      .run(now, SESSION_ABSOLUTE_MS, now).changes);
+  cleanupAuthData({ now, loginCutoff, recoveryCutoff }) {
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const sessions = Number(this.db.prepare(`DELETE FROM sessions
+        WHERE revoked_at IS NOT NULL OR expires_at <= ? OR created_at + ? <= ?`)
+        .run(now, SESSION_ABSOLUTE_MS, now).changes);
+      const loginFailures = Number(this.db.prepare('DELETE FROM login_failures WHERE attempted_at < ?')
+        .run(loginCutoff).changes);
+      const recoveryFailures = Number(this.db.prepare('DELETE FROM recovery_failures WHERE attempted_at < ?')
+        .run(recoveryCutoff).changes);
+      this.db.exec('COMMIT');
+      return { sessions, loginFailures, recoveryFailures, total: sessions + loginFailures + recoveryFailures };
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
   }
 
   #synchronizeExistingAccountNames() {

@@ -63,6 +63,7 @@ const SCHEMA_VERSION = 4;
 const AUTOSAVE_MS = Math.max(100, Number(process.env.VVC_AUTOSAVE_MS) || 30000);
 const LEADERBOARD_BROADCAST_MS = 5000;
 const SESSION_REVALIDATE_MS = Math.max(1000, Number(process.env.VVC_SESSION_REVALIDATE_MS) || 60000);
+const AUTH_CLEANUP_MS = 60 * 60 * 1000;
 const SNAPSHOT_RATE_HZ = Math.max(10, Math.min(Math.round(1000 / TICK_MS), Number(process.env.NET_SNAPSHOT_HZ) || 30));
 const SNAPSHOT_MS = 1000 / SNAPSHOT_RATE_HZ;
 // Leaderboarden visar bara toppen: profiles vaxer, men listan stannar pa denna langd.
@@ -114,6 +115,7 @@ let nextProfileId = 1;
 let nextSessionId = 1;
 let shuttingDown = false;
 let lastLeaderboardBroadcastSig = '';
+let authCleanupTimer = null;
 
 // Deklareras fore loadProfiles() - den anropar cleanClientId/cleanName som
 // laser denna, och en const i temporal dead zone skulle annars krascha inlasningen.
@@ -124,6 +126,7 @@ if (existsSync(path.join(DATA_DIR, 'profiles.json')) && !existsSync(profileStore
 }
 await profileStore.open();
 await accountService.open();
+await accountService.cleanupAuthData();
 await loadProfiles();
 
 installAuthRoutes(app, accountService, {
@@ -1314,6 +1317,7 @@ function saveProfiles() {
 async function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
+  if (authCleanupTimer) clearInterval(authCleanupTimer);
   gameLog('SERVER', 'Shutting down gracefully.');
 
   for (const player of allPlayers()) finalizeProfile(player);
@@ -1618,6 +1622,15 @@ function sendGameSnapshot(targetGame, predicate, { statsEnabled = true } = {}) {
 setInterval(() => {
   broadcastLeaderboard();
 }, LEADERBOARD_BROADCAST_MS);
+
+// Security metadata has a short operational lifetime. Remove expired/revoked
+// sessions and rate-limit rows outside their active windows at startup (above)
+// and hourly thereafter, without logging account identifiers or source IPs.
+authCleanupTimer = setInterval(() => {
+  accountService.cleanupAuthData().catch((error) => {
+    console.warn('Kunde inte rensa utgangen auth-data:', error.message);
+  });
+}, AUTH_CLEANUP_MS);
 
 // A WebSocket may outlive the cookie that opened it. Revalidate active
 // sessions so expiry, password resets and server-side revocation also remove

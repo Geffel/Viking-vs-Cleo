@@ -45,7 +45,7 @@ export class AccountService {
   migrateLegacyProfile(clientId, name, password) {
     return this.#request('migrateLegacyProfile', { clientId, name, password, now: this.now() });
   }
-  cleanupSessions() { return this.#request('cleanupSessions', { now: this.now() }); }
+  cleanupAuthData() { return this.#request('cleanupAuthData', { now: this.now() }); }
 
   async close() {
     if (this.closed) return;
