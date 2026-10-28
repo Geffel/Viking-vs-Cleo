@@ -101,7 +101,7 @@ async function resetPassword({ username, recoveryCode, newPassword, now }) {
   const codeHash = hashRecoveryCode(recoveryCode);
   if (!account || !codeHash) throw authError('INVALID_RECOVERY', 'Invalid username or recovery code');
   database.resetPassword({ accountId: Number(account.account_id), codeHash, passwordHash: await hashPassword(newPassword), now });
-  return true;
+  return { accountId: Number(account.account_id) };
 }
 
 async function regenerateRecoveryCodes({ accountId, currentPassword, now }) {

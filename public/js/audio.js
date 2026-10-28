@@ -348,7 +348,7 @@ const FX_SOUND = {
 // buss det hor hemma i (sound.channel) - sager det inget hamnar det i sfx.
 // Musiken gar alltid i sin egen. Standardnivaerna kommer ur designdokumentet.
 const CHANNELS = {
-  music: { def: 0.7, key: 'vvc.audio.music', preview: null },
+  music: { def: 0.4, key: 'vvc.audio.music', preview: null },
   sfx: { def: 0.85, key: 'vvc.audio.sfx', preview: 'cleoSandBlast' },
   voice: { def: 0.8, key: 'vvc.audio.voice', preview: null },
   ambience: { def: 0.55, key: 'vvc.audio.ambience', preview: null },

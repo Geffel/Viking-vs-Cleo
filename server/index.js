@@ -147,6 +147,11 @@ installAuthRoutes(app, accountService, {
       if (ws.sessionToken === sessionToken) closeUnauthenticatedSocket(ws, 'Session revoked');
     }
   },
+  onPasswordReset(accountId) {
+    for (const ws of wss.clients) {
+      if (ws.accountId === accountId) closeUnauthenticatedSocket(ws, 'Password reset');
+    }
+  },
 });
 
 server.on('upgrade', async (request, socket, head) => {

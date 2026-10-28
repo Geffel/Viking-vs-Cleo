@@ -4,7 +4,7 @@ import { SESSION_ABSOLUTE_MS } from './auth-crypto.js';
 export const SESSION_COOKIE = 'vvc_session';
 
 export function installAuthRoutes(app, accountService, {
-  onRegistered = () => {}, onMigrated = () => {}, onLoggedOut = () => {},
+  onRegistered = () => {}, onMigrated = () => {}, onLoggedOut = () => {}, onPasswordReset = () => {},
 } = {}) {
   const json = express.json({ limit: '8kb', strict: true });
 
@@ -35,6 +35,15 @@ export function installAuthRoutes(app, accountService, {
       await accountService.logout(token);
       onLoggedOut(token);
     }
+    clearSessionCookie(res, req.secure);
+    res.status(204).end();
+  }));
+
+  app.post('/api/auth/reset-password', json, asyncRoute(async (req, res) => {
+    const result = await accountService.resetPassword(
+      req.body?.username, req.body?.recoveryCode, req.body?.newPassword,
+    );
+    onPasswordReset(result.accountId);
     clearSessionCookie(res, req.secure);
     res.status(204).end();
   }));

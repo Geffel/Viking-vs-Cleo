@@ -59,6 +59,13 @@ const migrationUseLogin = document.getElementById('migration-use-login');
 const migrationLogin = document.getElementById('migration-login');
 const migrationLoginUsername = document.getElementById('migration-login-username');
 const migrationLoginPassword = document.getElementById('migration-login-password');
+const migrationForgotPassword = document.getElementById('migration-forgot-password');
+const migrationPasswordReset = document.getElementById('migration-password-reset');
+const migrationResetUsername = document.getElementById('migration-reset-username');
+const migrationResetCode = document.getElementById('migration-reset-code');
+const migrationResetPassword = document.getElementById('migration-reset-password');
+const migrationResetPasswordConfirm = document.getElementById('migration-reset-password-confirm');
+const migrationResetBack = document.getElementById('migration-reset-back');
 const migrationBack = document.getElementById('migration-back');
 const migrationUseRegister = document.getElementById('migration-use-register');
 const migrationRegister = document.getElementById('migration-register');
@@ -241,8 +248,11 @@ syncMatchMusic(null);
 
 migrationForm?.addEventListener('submit', submitLegacyMigration);
 migrationLogin?.addEventListener('submit', submitMigrationLogin);
+migrationPasswordReset?.addEventListener('submit', submitPasswordReset);
 migrationRegister?.addEventListener('submit', submitRegistration);
 migrationUseLogin?.addEventListener('click', () => showMigrationLogin(true));
+migrationForgotPassword?.addEventListener('click', showPasswordReset);
+migrationResetBack?.addEventListener('click', () => showMigrationLogin(true));
 migrationBack?.addEventListener('click', () => showMigrationLogin(false));
 migrationUseRegister?.addEventListener('click', showRegistration);
 migrationRegisterBack?.addEventListener('click', () => showMigrationLogin(true));
@@ -635,6 +645,7 @@ async function submitLegacyMigration(event) {
     localStorage.setItem('vvc.name', currentName);
     migrationClaim.hidden = true;
     migrationLogin.hidden = true;
+    migrationPasswordReset.hidden = true;
     migrationRegister.hidden = true;
     migrationRecoveryCodes.textContent = result.recoveryCodes.join('\n');
     migrationRecovery.hidden = false;
@@ -666,6 +677,36 @@ async function submitMigrationLogin(event) {
   } catch (error) {
     migrationError.textContent = error.message;
     setFormBusy(migrationLogin, false);
+  }
+}
+
+async function submitPasswordReset(event) {
+  event.preventDefault();
+  migrationError.textContent = '';
+  if (migrationResetPassword.value !== migrationResetPasswordConfirm.value) {
+    migrationError.textContent = 'The passwords do not match.';
+    migrationResetPasswordConfirm.focus();
+    return;
+  }
+  setFormBusy(migrationPasswordReset, true);
+  try {
+    await authRequest('/api/auth/reset-password', {
+      username: migrationResetUsername.value,
+      recoveryCode: migrationResetCode.value,
+      newPassword: migrationResetPassword.value,
+    });
+    migrationLoginUsername.value = migrationResetUsername.value;
+    migrationLoginPassword.value = '';
+    migrationPasswordReset.reset();
+    showMigrationLogin(true);
+    migrationTitle.textContent = 'Password reset';
+    migrationCopy.textContent = 'Your password has been changed. Sign in with your new password.';
+    migrationCopy.hidden = false;
+    migrationLoginPassword.focus();
+  } catch (error) {
+    migrationError.textContent = error.message;
+  } finally {
+    setFormBusy(migrationPasswordReset, false);
   }
 }
 
@@ -709,6 +750,7 @@ function showMigrationLogin(show) {
   migrationError.textContent = '';
   migrationClaim.hidden = show;
   migrationLogin.hidden = !show;
+  migrationPasswordReset.hidden = true;
   migrationRegister.hidden = true;
   migrationTitle.textContent = show
     ? pendingLegacyMigration ? 'Sign in to another account' : 'Sign in'
@@ -722,11 +764,27 @@ function showMigrationLogin(show) {
   (show ? migrationLoginUsername : migrationUsername.readOnly ? migrationPassword : migrationUsername).focus();
 }
 
+function showPasswordReset() {
+  migrationError.textContent = '';
+  migrationClaim.hidden = true;
+  migrationLogin.hidden = true;
+  migrationPasswordReset.hidden = false;
+  migrationRegister.hidden = true;
+  migrationRecovery.hidden = true;
+  setMigrationPresentation(false);
+  migrationTitle.textContent = 'Reset password';
+  migrationCopy.textContent = 'Enter one of the recovery codes you saved when the account was created.';
+  migrationCopy.hidden = false;
+  migrationResetUsername.value = migrationLoginUsername.value;
+  (migrationResetUsername.value ? migrationResetCode : migrationResetUsername).focus();
+}
+
 function showRegistration() {
   if (pendingLegacyMigration) return;
   migrationError.textContent = '';
   migrationClaim.hidden = true;
   migrationLogin.hidden = true;
+  migrationPasswordReset.hidden = true;
   migrationRegister.hidden = false;
   setMigrationPresentation(false);
   migrationTitle.textContent = 'Create account';
@@ -738,6 +796,7 @@ function showRegistration() {
 function showRecoveryCodes(codes, title, copy) {
   migrationClaim.hidden = true;
   migrationLogin.hidden = true;
+  migrationPasswordReset.hidden = true;
   migrationRegister.hidden = true;
   migrationRecoveryCodes.textContent = codes.join('\n');
   migrationRecovery.hidden = false;

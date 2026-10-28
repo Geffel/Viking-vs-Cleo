@@ -96,8 +96,18 @@
           <label class="field"><span>Player name</span><input id="migration-login-username" type="text" maxlength="14" autocomplete="username" required /></label>
           <label class="field"><span>Password</span><input id="migration-login-password" type="password" autocomplete="current-password" required /></label>
           <button class="migration-primary" type="submit">Sign in</button>
+          <button id="migration-forgot-password" class="migration-link" type="button">Forgot password?</button>
           <button id="migration-use-register" class="migration-link" type="button">Create account</button>
           <button id="migration-back" class="migration-link" type="button">Back to profile migration</button>
+        </form>
+
+        <form id="migration-password-reset" hidden>
+          <label class="field"><span>Player name</span><input id="migration-reset-username" type="text" maxlength="14" autocomplete="username" required /></label>
+          <label class="field"><span>Recovery code</span><input id="migration-reset-code" type="text" minlength="32" maxlength="32" pattern="[a-f0-9]{32}" autocomplete="one-time-code" spellcheck="false" required /></label>
+          <label class="field"><span>New password</span><input id="migration-reset-password" type="password" minlength="12" maxlength="128" autocomplete="new-password" required /></label>
+          <label class="field"><span>Repeat new password</span><input id="migration-reset-password-confirm" type="password" minlength="12" maxlength="128" autocomplete="new-password" required /></label>
+          <button class="migration-primary" type="submit">Reset password</button>
+          <button id="migration-reset-back" class="migration-link" type="button">Back to sign in</button>
         </form>
 
         <form id="migration-register" hidden>

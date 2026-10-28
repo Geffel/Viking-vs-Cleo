@@ -59,7 +59,32 @@ try {
   assert.equal(reconnected.profileId, 1);
   assert.equal(reconnected.name, 'New Fighter');
 
-  console.log('AUTH LIFECYCLE HTTP TESTS OK: fresh registration, logout, login and restart reconnect work end to end');
+  const resetSocket = await openIdentified(server.url, server.origin, reconnectCookie);
+  const resetSocketClosed = once(resetSocket.socket, 'close', { signal: AbortSignal.timeout(5000) });
+  const reset = await post(restartedHttpUrl, '/api/auth/reset-password', {
+    username: 'new fighter', recoveryCode: registered.data.recoveryCodes[0], newPassword: 'a replaced secure password',
+  }, reconnectCookie, false);
+  assert.equal(reset.response.status, 204);
+  assert.match(reset.response.headers.get('set-cookie'), /^vvc_session=;/);
+  assert.equal((await resetSocketClosed)[0], 1008, 'password reset closes active game sockets');
+  const afterReset = await post(restartedHttpUrl, '/api/auth/state', { clientId: 'fresh-browser' }, reconnectCookie);
+  assert.equal(afterReset.data.authenticated, false, 'password reset revokes every existing session');
+
+  const oldPassword = await post(restartedHttpUrl, '/api/auth/login', {
+    username: 'New Fighter', password: 'a secure new password',
+  });
+  assert.equal(oldPassword.response.status, 401);
+  const reusedCode = await post(restartedHttpUrl, '/api/auth/reset-password', {
+    username: 'New Fighter', recoveryCode: registered.data.recoveryCodes[0], newPassword: 'another secure password',
+  });
+  assert.equal(reusedCode.response.status, 400, 'a recovery code can only be used once');
+  assert.equal(reusedCode.data.error, 'INVALID_RECOVERY');
+  const afterPasswordReset = await post(restartedHttpUrl, '/api/auth/login', {
+    username: 'New Fighter', password: 'a replaced secure password',
+  });
+  assert.equal(afterPasswordReset.response.status, 200);
+
+  console.log('AUTH LIFECYCLE HTTP TESTS OK: registration, sessions and one-time recovery work end to end');
 } finally {
   await server?.stop();
   await rm(dataDir, { recursive: true, force: true });

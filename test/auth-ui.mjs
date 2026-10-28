@@ -8,6 +8,10 @@ assert.doesNotMatch(html, /id="intro"|id="intro-form"|id="intro-name"/,
   'the retired Enter name screen is absent');
 assert.match(html, /id="migration-register-name"/,
   'registration has one player-name field');
+assert.match(html, /id="migration-forgot-password"/,
+  'sign-in exposes password recovery');
+assert.match(html, /id="migration-password-reset"[\s\S]*id="migration-reset-code"[\s\S]*id="migration-reset-password-confirm"/,
+  'password recovery collects a recovery code and confirms the new password');
 assert.doesNotMatch(html, /migration-register-display-name|migration-register-username/,
   'registration does not split login and fighter names');
 assert.match(html, /id="migration-username"[^>]*readonly/,
@@ -22,6 +26,8 @@ assert.match(main, /currentName = state\.session\.username;[\s\S]*setView\('lobb
   'an authenticated session routes directly to the lobby');
 assert.doesNotMatch(main, /function submitName\(|setView\('intro'\)/,
   'the client no longer routes through Enter name');
+assert.match(main, /authRequest\('\/api\/auth\/reset-password',[\s\S]*recoveryCode:[\s\S]*newPassword:/,
+  'password recovery submits the recovery code and new password');
 assert.ok(
   main.indexOf('const renderFrameSamples = []') < main.indexOf('const netDebug = initNetDebug(NET_DEBUG)'),
   'performance frame metrics exist before the eagerly enabled debug panel samples them',

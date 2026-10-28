@@ -1105,8 +1105,36 @@ a.gamepad-hover,
 #migration-recovery-codes { padding: 16px; border: 1px solid rgba(255, 209, 102, 0.3); border-radius: 0; overflow-x: auto; user-select: all; background: rgba(5, 7, 15, 0.7); color: #ffd166; line-height: 1.55; text-align: left; }
 .migration-card .field { margin-bottom: 15px; }
 .migration-card .field span { color: rgba(242, 245, 255, 0.6); font-family: "Oswald", sans-serif; font-size: 11px; letter-spacing: 0.16em; opacity: 1; }
-.migration-card .field input { border-radius: 0; border-color: rgba(255, 255, 255, 0.22); background: rgba(255, 255, 255, 0.06); clip-path: var(--cut); }
-.migration-card .field input:focus { border-color: var(--viking); box-shadow: 0 0 0 2px rgba(77, 195, 255, 0.14); }
+.migration-card .field input {
+  border-radius: 0;
+  border-color: rgba(77, 195, 255, 0.28);
+  background:
+    linear-gradient(120deg, rgba(255, 77, 157, 0.07), rgba(77, 195, 255, 0.08)),
+    rgba(5, 7, 15, 0.9);
+  color: var(--text);
+  caret-color: var(--gold);
+  clip-path: var(--cut);
+  color-scheme: dark;
+  transition: border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
+}
+.migration-card .field input:hover {
+  border-color: rgba(169, 226, 255, 0.46);
+}
+.migration-card .field input:focus {
+  border-color: var(--viking);
+  background:
+    linear-gradient(120deg, rgba(255, 77, 157, 0.1), rgba(77, 195, 255, 0.13)),
+    rgba(7, 11, 22, 0.96);
+  box-shadow: 0 0 0 2px rgba(77, 195, 255, 0.18), 0 8px 24px rgba(0, 0, 0, 0.24);
+}
+.migration-card .field input:-webkit-autofill,
+.migration-card .field input:-webkit-autofill:hover,
+.migration-card .field input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--text);
+  caret-color: var(--gold);
+  box-shadow: 0 0 0 1000px #0b1020 inset, 0 0 0 2px rgba(77, 195, 255, 0.18);
+  transition: background-color 9999s ease-out;
+}
 .migration-card .err { min-height: 1.4em; margin: 14px 0 0; color: #ff86bf; }
 
 .migration-sprite {
