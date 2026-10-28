@@ -7,14 +7,14 @@ function Get-VvcRuntimeSpec {
     ) { "arm64" } else { "x64" }
 
     $checksums = @{
-        x64 = "d2046d28c2c3dcd211ac5145c0bf30e2047ef9dfb306693c8c6e2eccd8b95fa5"
-        arm64 = "a0c807319fede24c4a0d8f84564c82a619bd313b16b10c007c383c2609e99171"
+        x64 = "ca1bff5d8ead13c9f2ea404a176db46bd430704d5b5113734049fa365e7799e2"
+        arm64 = "f47968c213105077f64c6510f007632c0ca2574802a0b5067c327c49abe1c468"
     }
 
     [pscustomobject]@{
-        Version = "24.22.1"
+        Version = "24.22.2"
         Architecture = $machineArchitecture
-        ArchiveName = "node-v24.22.1-win-$machineArchitecture.zip"
+        ArchiveName = "node-v24.22.2-win-$machineArchitecture.zip"
         Sha256 = $checksums[$machineArchitecture]
     }
 }

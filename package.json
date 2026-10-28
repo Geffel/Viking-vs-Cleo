@@ -5,7 +5,7 @@
   "type": "module",
   "description": "2D lagbaserad arenafighter for lokalt natverk",
   "engines": {
-    "node": "24.22.1"
+    "node": "24.22.2"
   },
   "scripts": {
     "check:runtime": "node tools/check-runtime.mjs",
@@ -39,6 +39,6 @@
     "ws": "^8.18.3"
   },
   "devDependencies": {
-    "sharp": "^0.35.3"
+    "sharp": "^0.35.5"
   }
 }

@@ -6,7 +6,7 @@ tester.
 
 ## Runtime
 
-- Produktion och utveckling använder exakt Node.js **24.22.1 (Krypton LTS)**.
+- Produktion och utveckling använder exakt Node.js **24.22.2 (Krypton LTS)**.
   Versionen finns i `.nvmrc`, `package.json` och verifieras före `npm start`.
 - På Windows hämtar `Start.bat` vid behov den officiella ZIP-distributionen till
   `.runtime/` och verifierar dess låsta SHA-256 före uppackning. Den lokala

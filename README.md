@@ -5,7 +5,7 @@ alltid på servern — man skriver in namn, väljer lag och hoppar rakt in.
 
 ## Kom igång
 
-Spelet använder exakt **Node.js 24.22.1**. Vid första körningen hämtar `Start.bat`
+Spelet använder exakt **Node.js 24.22.2**. Vid första körningen hämtar `Start.bat`
 automatiskt en verifierad kopia till `.runtime/` och installerar paketen från
 `package-lock.json`. Installationen gäller bara spelet, kräver inte
 administratörsrättigheter och påverkar inte datorns övriga Node-installationer.

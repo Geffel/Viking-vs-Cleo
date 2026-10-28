@@ -68,7 +68,13 @@ export function readSessionCookie(request) {
   const header = String(request?.headers?.cookie ?? '');
   for (const part of header.split(';')) {
     const [name, ...value] = part.trim().split('=');
-    if (name === SESSION_COOKIE) return decodeURIComponent(value.join('='));
+    if (name === SESSION_COOKIE) {
+      // Session tokens only use the base64url alphabet, so decoding is both
+      // unnecessary and dangerous: malformed percent escapes must never throw
+      // from the HTTP server's WebSocket upgrade event.
+      const token = value.join('=');
+      return /^[A-Za-z0-9_-]{43}$/.test(token) ? token : '';
+    }
   }
   return '';
 }

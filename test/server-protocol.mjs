@@ -35,6 +35,8 @@ try {
   assert.match(await performancePage.text(), /\/js\/main\.js\?v=4/);
 
   assert.equal(await rejectedUpgrade('', server.origin), 401, 'a handwritten anonymous WebSocket is rejected');
+  assert.equal(await rejectedUpgrade('vvc_session=%', server.origin), 401,
+    'a malformed percent-encoded session cookie is rejected without crashing the server');
   assert.equal(await rejectedUpgrade(server.authCookies[0], 'https://attacker.invalid'), 403,
     'a valid cookie cannot be used from a foreign origin');
 

@@ -1,4 +1,4 @@
-const REQUIRED_NODE_VERSION = '24.22.1';
+const REQUIRED_NODE_VERSION = '24.22.2';
 
 if (process.versions.node !== REQUIRED_NODE_VERSION) {
   console.error(

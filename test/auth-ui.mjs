@@ -28,6 +28,10 @@ assert.doesNotMatch(main, /function submitName\(|setView\('intro'\)/,
   'the client no longer routes through Enter name');
 assert.match(main, /authRequest\('\/api\/auth\/reset-password',[\s\S]*recoveryCode:[\s\S]*newPassword:/,
   'password recovery submits the recovery code and new password');
+assert.match(main, /const result = await authRequest\('\/api\/auth\/migrate',[\s\S]*migrationForm\.reset\(\);/,
+  'successful migration clears the password fields from the DOM');
+assert.match(main, /const result = await authRequest\('\/api\/auth\/register',[\s\S]*migrationRegister\.reset\(\);/,
+  'successful registration clears the password fields from the DOM');
 assert.ok(
   main.indexOf('const renderFrameSamples = []') < main.indexOf('const netDebug = initNetDebug(NET_DEBUG)'),
   'performance frame metrics exist before the eagerly enabled debug panel samples them',

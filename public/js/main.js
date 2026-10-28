@@ -641,8 +641,9 @@ async function submitLegacyMigration(event) {
     const result = await authRequest('/api/auth/migrate', {
       clientId, name: migrationUsername.value, password: migrationPassword.value,
     });
-    currentName = migrationUsername.value;
+    currentName = result.displayName;
     localStorage.setItem('vvc.name', currentName);
+    migrationForm.reset();
     migrationClaim.hidden = true;
     migrationLogin.hidden = true;
     migrationPasswordReset.hidden = true;
@@ -726,6 +727,7 @@ async function submitRegistration(event) {
     });
     currentName = result.displayName;
     localStorage.setItem('vvc.name', currentName);
+    migrationRegister.reset();
     migrationRegister.hidden = true;
     showRecoveryCodes(result.recoveryCodes, 'Account created', 'Your new fighter is ready.');
   } catch (error) {
