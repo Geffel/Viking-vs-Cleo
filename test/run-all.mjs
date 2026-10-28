@@ -11,6 +11,7 @@ const logicTests = [
   ['platforms', 'test/platforms.mjs'],
   ['maps', 'test/maps.mjs'],
   ['matches', 'test/matches.mjs'],
+  ['round-results', 'test/round-results.mjs'],
   ['ability-layout', 'test/ability-layout.mjs'],
   ['auth-ui', 'test/auth-ui.mjs'],
   ['sprite-assets', 'test/sprite-assets.mjs'],

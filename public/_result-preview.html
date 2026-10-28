@@ -1,0 +1,510 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Result screen preview</title>
+    <link rel="stylesheet" href="/css/style.css" />
+    <style>
+      body {
+        min-height: 100vh;
+        overflow: hidden;
+        background: var(--bg-2);
+      }
+
+      .round-results {
+        position: fixed;
+        padding-block: clamp(24px, 4vh, 48px);
+      }
+
+      .preview-controls {
+        position: fixed;
+        z-index: 20;
+        top: 14px;
+        right: 14px;
+        display: flex;
+        gap: 8px;
+      }
+
+      .preview-controls button {
+        width: auto;
+        padding: 9px 13px;
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        border-radius: 0;
+        background: rgba(8, 12, 25, 0.9);
+        color: var(--text);
+        font: 700 12px "Oswald", sans-serif;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .preview-controls button[aria-pressed="true"] {
+        border-color: var(--gold);
+        color: var(--gold);
+      }
+
+      .podium-preview {
+        max-width: 1180px;
+      }
+
+      .podium-header {
+        margin: 0 auto clamp(18px, 3vh, 34px);
+        text-align: center;
+      }
+
+      .podium-header .screen-step {
+        margin-bottom: 8px;
+      }
+
+      .preview-score {
+        display: inline-grid;
+        grid-template-columns: auto auto 36px auto auto;
+        gap: 12px;
+        align-items: center;
+        padding: 7px 18px;
+        border-block: 1px solid rgba(255, 255, 255, 0.14);
+        background: rgba(255, 255, 255, 0.025);
+      }
+
+      .preview-score span {
+        color: rgba(242, 245, 255, 0.64);
+        font: 700 12px "Oswald", sans-serif;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+
+      .preview-score strong {
+        font: 400 clamp(27px, 3vw, 40px)/1 "Anton", sans-serif;
+      }
+
+      .preview-score .cleo-score {
+        color: var(--cleo);
+      }
+
+      .preview-score .viking-score {
+        color: var(--viking);
+      }
+
+      .preview-score i {
+        color: rgba(255, 255, 255, 0.36);
+        font: normal 700 12px "Oswald", sans-serif;
+      }
+
+      .podium-title {
+        max-width: none;
+        margin: 12px auto 0;
+        font-size: clamp(46px, 5.8vw, 84px);
+        line-height: 0.94;
+        text-align: center;
+      }
+
+      .preview-unranked {
+        display: inline-flex;
+        gap: 10px;
+        align-items: center;
+        margin-top: 12px;
+        padding: 7px 14px;
+        border: 1px solid rgba(255, 209, 102, 0.34);
+        background: rgba(255, 209, 102, 0.08);
+        color: rgba(242, 245, 255, 0.66);
+        font: 600 11px "Oswald", sans-serif;
+        letter-spacing: 0.06em;
+        clip-path: var(--slash);
+      }
+
+      .preview-unranked[hidden] {
+        display: none;
+      }
+
+      .preview-unranked b {
+        color: var(--gold);
+        letter-spacing: 0.16em;
+      }
+
+      .podium-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(210px, 1fr));
+        gap: clamp(14px, 2.2vw, 28px);
+        align-items: end;
+        width: min(100%, 980px);
+        margin-inline: auto;
+      }
+
+      .podium-entry {
+        --team: var(--viking);
+        --team-rgb: 77, 195, 255;
+        display: flex;
+        min-width: 0;
+        flex-direction: column;
+        justify-content: flex-end;
+      }
+
+      .podium-entry[data-team="cleo"] {
+        --team: var(--cleo);
+        --team-rgb: 255, 77, 157;
+      }
+
+      .podium-card {
+        position: relative;
+        display: flex;
+        min-height: 280px;
+        flex-direction: column;
+        justify-content: flex-end;
+        border: 1px solid rgba(var(--team-rgb), 0.42);
+        background:
+          linear-gradient(180deg, rgba(var(--team-rgb), 0.13), rgba(8, 12, 25, 0.96) 64%),
+          rgba(8, 12, 25, 0.94);
+        box-shadow: 0 18px 46px rgba(0, 0, 0, 0.36), inset 0 0 36px rgba(var(--team-rgb), 0.05);
+        clip-path: polygon(8% 0, 92% 0, 100% 8%, 100% 100%, 0 100%, 0 8%);
+      }
+
+      .podium-entry.rank-1 .podium-card {
+        min-height: 358px;
+        border-color: rgba(255, 209, 102, 0.62);
+        background:
+          linear-gradient(180deg, rgba(255, 209, 102, 0.18), rgba(var(--team-rgb), 0.11) 36%, rgba(8, 12, 25, 0.97) 70%),
+          rgba(8, 12, 25, 0.96);
+        box-shadow: 0 22px 60px rgba(0, 0, 0, 0.46), 0 0 46px rgba(255, 209, 102, 0.1);
+      }
+
+      .podium-entry.rank-3 .podium-card {
+        min-height: 270px;
+      }
+
+      .podium-place {
+        position: absolute;
+        z-index: 3;
+        top: 12px;
+        left: 14px;
+        display: flex;
+        align-items: baseline;
+        gap: 7px;
+        color: rgba(242, 245, 255, 0.56);
+        font: 700 10px "Oswald", sans-serif;
+        letter-spacing: 0.15em;
+        text-transform: uppercase;
+      }
+
+      .podium-place b {
+        color: var(--team);
+        font: 400 28px "Anton", sans-serif;
+        letter-spacing: 0;
+      }
+
+      .rank-1 .podium-place,
+      .rank-1 .podium-place b {
+        color: var(--gold);
+      }
+
+      .podium-art {
+        position: relative;
+        display: flex;
+        min-height: 135px;
+        flex: 1 1 auto;
+        align-items: flex-end;
+        justify-content: center;
+        margin: 42px 8px 0;
+        overflow: hidden;
+      }
+
+      .podium-art::after {
+        position: absolute;
+        right: 12%;
+        bottom: 0;
+        left: 12%;
+        height: 2px;
+        background: var(--team);
+        box-shadow: 0 0 22px var(--team);
+        content: "";
+      }
+
+      .podium-art img {
+        z-index: 1;
+        width: auto;
+        max-width: 92%;
+        height: 148px;
+        max-height: 100%;
+        object-fit: contain;
+        filter: drop-shadow(0 15px 15px rgba(0, 0, 0, 0.58));
+      }
+
+      .rank-1 .podium-art {
+        min-height: 205px;
+      }
+
+      .rank-1 .podium-art img {
+        height: 205px;
+      }
+
+      .rank-3 .podium-art img {
+        height: 126px;
+      }
+
+      .rank-3 .podium-art {
+        min-height: 118px;
+      }
+
+      .podium-identity {
+        position: relative;
+        z-index: 4;
+        display: grid;
+        gap: 1px;
+        padding: 10px 14px 8px;
+        border-top: 1px solid rgba(var(--team-rgb), 0.32);
+        background: rgba(6, 9, 19, 0.88);
+        text-align: center;
+      }
+
+      .podium-identity small {
+        color: var(--team);
+        font: 700 10px "Oswald", sans-serif;
+        letter-spacing: 0.15em;
+        text-transform: uppercase;
+      }
+
+      .podium-identity strong {
+        overflow: hidden;
+        color: var(--text);
+        font: 400 clamp(22px, 2.5vw, 34px)/1.1 "Anton", sans-serif;
+        letter-spacing: 0.025em;
+        text-overflow: ellipsis;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+
+      .rank-1 .podium-identity strong {
+        color: var(--gold);
+        font-size: clamp(28px, 3vw, 40px);
+      }
+
+      .podium-stats {
+        position: relative;
+        z-index: 4;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(4, 7, 15, 0.96);
+      }
+
+      .podium-stat {
+        display: grid;
+        gap: 1px;
+        padding: 8px 4px;
+        text-align: center;
+      }
+
+      .podium-stat + .podium-stat {
+        border-left: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
+      .podium-stat b {
+        color: var(--text);
+        font: 700 16px "Oswald", sans-serif;
+      }
+
+      .podium-stat span {
+        color: rgba(242, 245, 255, 0.43);
+        font: 700 8px "Oswald", sans-serif;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      .podium-plinth {
+        display: grid;
+        height: 68px;
+        place-items: center;
+        border-top: 3px solid rgba(var(--team-rgb), 0.66);
+        background: linear-gradient(135deg, rgba(var(--team-rgb), 0.18), rgba(8, 12, 25, 0.98) 68%);
+        box-shadow: inset 0 16px 30px rgba(var(--team-rgb), 0.06);
+        clip-path: polygon(5% 0, 95% 0, 100% 100%, 0 100%);
+      }
+
+      .podium-plinth strong {
+        color: rgba(255, 255, 255, 0.17);
+        font: 400 48px/1 "Anton", sans-serif;
+      }
+
+      .rank-1 .podium-plinth {
+        height: 96px;
+        border-color: rgba(255, 209, 102, 0.78);
+        background: linear-gradient(135deg, rgba(255, 209, 102, 0.19), rgba(8, 12, 25, 0.98) 70%);
+      }
+
+      .rank-1 .podium-plinth strong {
+        color: rgba(255, 209, 102, 0.3);
+        font-size: 66px;
+      }
+
+      .rank-3 .podium-plinth {
+        height: 50px;
+      }
+
+      .rank-3 .podium-plinth strong {
+        font-size: 38px;
+      }
+
+      .podium-actions {
+        margin-top: clamp(16px, 2.5vh, 28px);
+      }
+
+      @media (max-height: 780px) {
+        .round-results { padding-block: 20px; }
+        .podium-header { margin-bottom: 16px; }
+        .podium-title { font-size: 50px; }
+        .podium-entry.rank-1 .podium-card { min-height: 298px; }
+        .podium-entry.rank-2 .podium-card { min-height: 258px; }
+        .podium-entry.rank-3 .podium-card { min-height: 244px; }
+        .podium-art { min-height: 112px; margin-top: 38px; }
+        .rank-1 .podium-art { min-height: 158px; }
+        .rank-3 .podium-art { min-height: 102px; }
+        .podium-art img { height: 120px; }
+        .rank-1 .podium-art img { height: 164px; }
+        .rank-3 .podium-art img { height: 105px; }
+        .podium-plinth { height: 52px; }
+        .rank-1 .podium-plinth { height: 68px; }
+        .rank-3 .podium-plinth { height: 42px; }
+        .podium-actions { margin-top: 14px; }
+      }
+
+      @media (max-width: 760px) {
+        body { overflow: auto; }
+        .round-results { align-items: flex-start; }
+        .preview-controls { position: absolute; }
+        .podium-preview { min-width: 700px; padding-top: 46px; }
+      }
+    </style>
+  </head>
+  <body>
+    <nav class="preview-controls" aria-label="Preview result">
+      <button type="button" data-result="viking">Viking wins</button>
+      <button type="button" data-result="cleo">Cleo wins</button>
+      <button type="button" data-result="draw">Draw</button>
+      <button type="button" data-result="unranked">Unranked</button>
+    </nav>
+
+    <main class="round-results" id="round-results" data-winner="viking">
+      <div class="result-wrap podium-preview">
+        <header class="podium-header">
+          <div class="screen-step">Round complete</div>
+          <div id="round-result-score" class="preview-score"></div>
+          <h1 id="round-result-title" class="result-title podium-title"></h1>
+          <div id="unranked-note" class="preview-unranked" hidden>
+            <b>Unranked</b><span>Shared screen — no profile stats recorded</span>
+          </div>
+        </header>
+
+        <section id="podium-grid" class="podium-grid" aria-label="Top three fighters"></section>
+
+        <div class="round-actions podium-actions">
+          <button id="leave-match" type="button">Finish match</button>
+          <button id="view-achievements-result" type="button">View achievements</button>
+          <button id="reset-match" type="button">New round</button>
+        </div>
+      </div>
+    </main>
+
+    <script>
+      const rows = {
+        viking: {
+          winner: 'viking',
+          title: 'Team Viking is victorious',
+          cleo: 5,
+          viking: 8,
+          podium: [
+            { rank: 1, name: 'Ragnar', team: 'viking', kills: 7, deaths: 2, damage: 1842 },
+            { rank: 2, name: 'Nefertari', team: 'cleo', kills: 5, deaths: 3, damage: 1530 },
+            { rank: 3, name: 'Astrid', team: 'viking', kills: 1, deaths: 1, damage: 711 },
+          ],
+        },
+        cleo: {
+          winner: 'cleo',
+          title: 'Team Cleo is victorious',
+          cleo: 9,
+          viking: 6,
+          podium: [
+            { rank: 1, name: 'Nefertari', team: 'cleo', kills: 8, deaths: 1, damage: 2036 },
+            { rank: 2, name: 'Ragnar', team: 'viking', kills: 5, deaths: 3, damage: 1614 },
+            { rank: 3, name: 'Anippe', team: 'cleo', kills: 1, deaths: 2, damage: 683 },
+          ],
+        },
+        draw: {
+          winner: '',
+          title: 'The round ends in a draw',
+          cleo: 7,
+          viking: 7,
+          podium: [
+            { rank: 1, name: 'Ragnar', team: 'viking', kills: 6, deaths: 2, damage: 1710 },
+            { rank: 2, name: 'Nefertari', team: 'cleo', kills: 6, deaths: 2, damage: 1624 },
+            { rank: 3, name: 'Astrid', team: 'viking', kills: 1, deaths: 1, damage: 746 },
+          ],
+        },
+        unranked: {
+          winner: 'viking',
+          title: 'Team Viking is victorious',
+          cleo: 4,
+          viking: 6,
+          unranked: true,
+          podium: [
+            { rank: 1, name: 'P1', team: 'viking', kills: 5, deaths: 1, damage: 1418 },
+            { rank: 2, name: 'P2', team: 'cleo', kills: 4, deaths: 3, damage: 1262 },
+            { rank: 3, name: 'P3', team: 'viking', kills: 1, deaths: 2, damage: 604 },
+          ],
+        },
+      };
+
+      const root = document.getElementById('round-results');
+      const title = document.getElementById('round-result-title');
+      const score = document.getElementById('round-result-score');
+      const podium = document.getElementById('podium-grid');
+      const unrankedNote = document.getElementById('unranked-note');
+      const buttons = [...document.querySelectorAll('[data-result]')];
+
+      function podiumCard(player) {
+        const label = player.rank === 1 ? 'MVP' : player.rank === 2 ? 'Runner up' : 'Third place';
+        const teamName = player.team === 'cleo' ? 'Team Cleo' : 'Team Viking';
+        return `
+          <article class="podium-entry rank-${player.rank}" data-team="${player.team}">
+            <div class="podium-card">
+              <div class="podium-place"><b>#${player.rank}</b><span>${label}</span></div>
+              <div class="podium-art"><img src="/assets/${player.team}/idle.png" alt="${teamName}" /></div>
+              <div class="podium-identity"><small>${teamName}</small><strong>${player.name}</strong></div>
+              <div class="podium-stats">
+                <div class="podium-stat"><b>${player.kills}</b><span>Kills</span></div>
+                <div class="podium-stat"><b>${player.deaths}</b><span>Deaths</span></div>
+                <div class="podium-stat"><b>${player.damage}</b><span>Damage</span></div>
+              </div>
+            </div>
+            <div class="podium-plinth" aria-hidden="true"><strong>${player.rank}</strong></div>
+          </article>`;
+      }
+
+      function show(result) {
+        const key = rows[result] ? result : 'viking';
+        const row = rows[key];
+        const winner = row.winner;
+        const winnerColor = winner === 'viking' ? 'rgba(77,195,255,' : 'rgba(255,77,157,';
+        const visualOrder = [
+          row.podium.find((player) => player.rank === 2),
+          row.podium.find((player) => player.rank === 1),
+          row.podium.find((player) => player.rank === 3),
+        ];
+
+        root.dataset.winner = winner || 'draw';
+        root.style.setProperty('--winner-bg', winner ? `${winnerColor}0.14)` : 'rgba(255,209,102,0.14)');
+        root.style.setProperty('--winner-border', winner ? `${winnerColor}0.4)` : 'rgba(255,209,102,0.42)');
+        title.textContent = row.title;
+        unrankedNote.hidden = !row.unranked;
+        score.innerHTML = `
+          <span>Team Cleo</span><strong class="cleo-score">${row.cleo}</strong>
+          <i>VS</i>
+          <strong class="viking-score">${row.viking}</strong><span>Team Viking</span>`;
+        podium.innerHTML = visualOrder.map(podiumCard).join('');
+        for (const button of buttons) button.setAttribute('aria-pressed', String(button.dataset.result === key));
+        history.replaceState(null, '', `?winner=${key}`);
+      }
+
+      for (const button of buttons) button.addEventListener('click', () => show(button.dataset.result));
+      show(new URLSearchParams(location.search).get('winner'));
+    </script>
+  </body>
+</html>

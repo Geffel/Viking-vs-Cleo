@@ -367,10 +367,14 @@
           </div>
 
           <div class="round-results" id="round-results" hidden>
-            <div class="result-wrap">
-              <div class="screen-step">Round over</div>
-              <div id="round-result-score" class="result-score">0 VS 0</div>
-              <div id="round-result-note" class="result-note"></div>
+            <div class="result-wrap podium-results">
+              <header class="podium-header">
+                <div class="screen-step">Round complete</div>
+                <div id="round-result-score" class="preview-score">0 VS 0</div>
+                <h1 id="round-result-title" class="result-title podium-title">Round over</h1>
+                <div id="round-result-note" class="preview-unranked" hidden></div>
+              </header>
+              <section id="round-result-podium" class="podium-grid" aria-label="Top three fighters"></section>
               <div id="match-achievements-summary" class="match-achievements-summary" hidden></div>
               <div class="round-actions">
                 <button id="leave-match" type="button">Finish match</button>

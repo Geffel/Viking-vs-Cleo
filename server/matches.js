@@ -50,6 +50,7 @@ export class MatchRegistry {
       mapVotes: new Map(),
       selectedMap: null,
       finalScore: null,
+      roundResult: null,
       resultCounts: true,
       unrankedReason: null,
       finishedAt: 0,
@@ -309,6 +310,7 @@ export class MatchRegistry {
     match.seatPlayerIds.clear();
     match.selectedMap = null;
     match.finalScore = null;
+    match.roundResult = null;
     match.resultCounts = true;
     match.unrankedReason = null;
     match.finishedAt = 0;
@@ -355,7 +357,7 @@ export class MatchRegistry {
     return seat ? { match, seat } : { match };
   }
 
-  finish(matchId, sessionId, finalScore = null) {
+  finish(matchId, sessionId, finalScore = null, roundResult = null) {
     const match = this.matches.get(String(matchId));
     if (!match || ![MATCH_PHASES.mapVote, MATCH_PHASES.countdown, MATCH_PHASES.playing].includes(match.phase)) {
       return { error: "The match can't be ended right now." };
@@ -363,7 +365,7 @@ export class MatchRegistry {
     if (match.hostId !== sessionId) return { error: 'Only the host can end the round.' };
 
     const now = this.clock();
-    completeMatch(match, finalScore, now, resultOptionsFor(match));
+    completeMatch(match, finalScore, now, { ...resultOptionsFor(match), roundResult });
     return { match };
   }
 
@@ -378,7 +380,7 @@ export class MatchRegistry {
     return { match };
   }
 
-  advancePhases({ scoreForMatch = null } = {}) {
+  advancePhases({ scoreForMatch = null, resultForMatch = null } = {}) {
     const now = this.clock();
     const changes = [];
 
@@ -405,9 +407,11 @@ export class MatchRegistry {
       if (match.phase === MATCH_PHASES.playing && match.matchEndsAt && now >= match.matchEndsAt) {
         const statsEnabled = match.statsEnabled !== false;
         const resultCounts = statsEnabled && countPickedPlayers(match) >= 2;
-        completeMatch(match, scoreForMatch?.(match) ?? null, now, {
+        const result = resultForMatch?.(match) ?? null;
+        completeMatch(match, result?.finalScore ?? scoreForMatch?.(match) ?? null, now, {
           resultCounts,
           unrankedReason: statsEnabled ? (resultCounts ? null : 'soloTimeUp') : 'sharedScreen',
+          roundResult: result?.roundResult ?? null,
         });
         changes.push({ match, from: MATCH_PHASES.playing, to: MATCH_PHASES.results, reason: 'timeUp' });
       }
@@ -533,6 +537,7 @@ function snapshot(match) {
     mapVotes,
     selectedMap: match.selectedMap,
     finalScore: match.finalScore,
+    roundResult: match.roundResult,
     resultCounts: match.resultCounts !== false,
     unrankedReason: match.unrankedReason ?? null,
     finishedAt: match.finishedAt,
@@ -562,6 +567,7 @@ function resetMatchSetup(match, { keepLocalSeatCharacters = false } = {}) {
   match.seatPlayerIds?.clear();
   match.selectedMap = null;
   match.finalScore = null;
+  match.roundResult = null;
   match.resultCounts = true;
   match.unrankedReason = null;
   match.finishedAt = 0;
@@ -693,9 +699,10 @@ function unrankedReasonFor(match) {
   return 'sharedScreen';
 }
 
-function completeMatch(match, finalScore, now, { resultCounts = true, unrankedReason = null } = {}) {
+function completeMatch(match, finalScore, now, { resultCounts = true, unrankedReason = null, roundResult = null } = {}) {
   match.phase = MATCH_PHASES.results;
   match.finalScore = sanitizeScore(finalScore);
+  match.roundResult = roundResult;
   const statsEnabled = match.statsEnabled !== false;
   match.resultCounts = statsEnabled && resultCounts !== false;
   match.unrankedReason = match.resultCounts ? null : unrankedReason ?? (statsEnabled ? null : unrankedReasonFor(match));

@@ -108,6 +108,8 @@ const mapLockBtn = document.getElementById('map-lock');
 const roundResults = document.getElementById('round-results');
 const roundResultScore = document.getElementById('round-result-score');
 const roundResultNote = document.getElementById('round-result-note');
+const roundResultTitle = document.getElementById('round-result-title');
+const roundResultPodium = document.getElementById('round-result-podium');
 const leaveMatchBtn = document.getElementById('leave-match');
 const viewAchievementsResultBtn = document.getElementById('view-achievements-result');
 const leaveMatchFallback = document.getElementById('leave-match-fallback');
@@ -1776,7 +1778,7 @@ function renderMapVote(match) {
 }
 
 function renderRoundResults(match) {
-  if (!roundResults || !roundResultScore || !roundResultNote) return;
+  if (!roundResults || !roundResultScore || !roundResultNote || !roundResultTitle || !roundResultPodium) return;
   const showing = match.phase === MATCH_PHASES.results;
   roundResults.hidden = !showing;
   if (!showing) return;
@@ -1785,27 +1787,58 @@ function renderRoundResults(match) {
   const viking = Math.max(0, Number(match.finalScore?.viking) || 0);
   const winner = cleo === viking ? '' : cleo > viking ? 'cleo' : 'viking';
   const winnerColor = winner === 'viking' ? 'rgba(77,195,255,' : 'rgba(255,77,157,';
-  const resultRoster = isSharedScreenMatch(match)
-    ? sharedSeatsFor(match).map((seat) => ({ character: seat.character, n: seat.name ?? seat.id }))
-    : match.players;
-  const mvp = resultRoster.find((player) => player.character === winner)?.n ?? match.hostName ?? currentName;
+  const podium = Array.isArray(match.roundResult?.podium)
+    ? match.roundResult.podium
+    : match.roundResult?.mvp ? [{ ...match.roundResult.mvp, rank: 1 }] : [];
 
+  roundResults.dataset.winner = winner || 'draw';
   roundResults.style.setProperty('--winner-bg', winner ? `${winnerColor}0.14)` : 'rgba(255,209,102,0.14)');
   roundResults.style.setProperty('--winner-border', winner ? `${winnerColor}0.4)` : 'rgba(255,209,102,0.42)');
+  roundResultTitle.textContent = winner ? `Team ${characterLabel(winner)} is victorious` : 'The round ends in a draw';
   roundResultScore.innerHTML = `
-    <span class="result-side cleo"><span>Team Cleo</span><strong>${cleo}</strong></span>
-    <span class="result-vs"><span>VS</span></span>
-    <span class="result-side viking"><span>Team Viking</span><strong>${viking}</strong></span>`;
+    <span>Team Cleo</span><strong class="cleo-score">${cleo}</strong>
+    <i>VS</i>
+    <strong class="viking-score">${viking}</strong><span>Team Viking</span>`;
+  roundResultPodium.innerHTML = podium.length
+    ? podium.map(resultPodiumCard).join('')
+    : '<div class="podium-empty">No individual ranking — no kills or damage were recorded</div>';
+
   if (match.resultCounts === false) {
-    roundResultNote.textContent = unrankedResultLabel(match.unrankedReason);
+    roundResultNote.hidden = false;
+    roundResultNote.innerHTML = `<b>Unranked</b><span>${escapeHtml(unrankedResultLabel(match.unrankedReason))}</span>`;
   } else {
-    roundResultNote.innerHTML = `${escapeHtml(resultLabel(cleo, viking))} - MVP <b>${escapeHtml(mvp || 'Host')}</b>`;
+    roundResultNote.hidden = true;
+    roundResultNote.textContent = '';
   }
   if (viewAchievementsResultBtn) viewAchievementsResultBtn.hidden = match.statsEnabled === false;
   achievementsUi.renderSummary(match);
   roundResults.classList.remove('vvc-enter');
   void roundResults.offsetWidth;
   roundResults.classList.add('vvc-enter');
+}
+
+function resultPodiumCard(player, index) {
+  const rank = Math.max(1, Math.min(3, Number(player?.rank) || index + 1));
+  const team = player?.team === 'cleo' ? 'cleo' : 'viking';
+  const teamName = team === 'cleo' ? 'Team Cleo' : 'Team Viking';
+  const label = rank === 1 ? 'MVP' : rank === 2 ? 'Runner up' : 'Third place';
+  const kills = Math.max(0, Number(player?.kills) || 0);
+  const deaths = Math.max(0, Number(player?.deaths) || 0);
+  const damage = Math.max(0, Number(player?.damageDealt) || 0);
+  return `
+    <article class="podium-entry rank-${rank}" data-team="${team}">
+      <div class="podium-card">
+        <div class="podium-place"><b>#${rank}</b><span>${label}</span></div>
+        <div class="podium-art"><img src="/assets/${team}/idle.png" alt="${teamName}" /></div>
+        <div class="podium-identity"><small>${teamName}</small><strong>${escapeHtml(player?.name || 'Unknown fighter')}</strong></div>
+        <div class="podium-stats">
+          <div class="podium-stat"><b>${kills}</b><span>Kills</span></div>
+          <div class="podium-stat"><b>${deaths}</b><span>Deaths</span></div>
+          <div class="podium-stat"><b>${damage}</b><span>Damage</span></div>
+        </div>
+      </div>
+      <div class="podium-plinth" aria-hidden="true"><strong>${rank}</strong></div>
+    </article>`;
 }
 
 function updatePhaseTimers() {
@@ -2266,15 +2299,10 @@ function localSeatInputLabel(seat) {
   return '';
 }
 
-function resultLabel(cleo, viking) {
-  if (cleo === viking) return 'Draw round';
-  return cleo > viking ? 'Team Cleo takes the round' : 'Team Viking takes the round';
-}
-
 function unrankedResultLabel(reason) {
-  if (reason === 'sharedScreen') return 'Shared screen - no stats recorded';
-  if (reason === 'soloTimeUp') return 'Unranked solo timeout - no win rate or team points';
-  return 'Unranked round - no win rate or team points';
+  if (reason === 'sharedScreen') return 'Shared screen — no profile stats recorded';
+  if (reason === 'soloTimeUp') return 'Solo timeout — no win rate or team points';
+  return 'No win rate or team points';
 }
 
 function phaseLabel(phase) {

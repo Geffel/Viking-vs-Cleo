@@ -33,7 +33,7 @@ implementerade. Lokal rörelseförutsägelse är fortfarande öppen.
 | IMP-10 | P2 | Anpassa interpolationsbufferten efter mätningar | Utred |
 | IMP-11 | P3 | Minska överdimensionerade spelbilder | Utred |
 | IMP-12 | P3 | Minska kostnaden för grafikeffekter och erbjuda kvalitetsval | Utred |
-| IMP-13 | P2 | Gör MVP-valet prestationsbaserat | Öppen |
+| IMP-13 | P2 | Gör MVP-valet prestationsbaserat | Implementerad |
 | IMP-14 | P3 | Separera statistik och lagring från nätverk och matchlivscykel | Öppen – separat profilarbete |
 | IMP-15 | P2 | Samla testsviterna och isolera testernas profildata | Implementerad |
 
@@ -303,9 +303,9 @@ tills en riktig regel finns.
 
 **Klart när:**
 
-- [ ] MVP följer den beslutade regeln oavsett anslutningsordning.
-- [ ] Oavgjort, lika poäng, sena anslutningar och avhopp hanteras uttryckligen.
-- [ ] Resultatvyn har tillgång till rätt rondstatistik även efter att spelinstansen städats bort.
+- [x] MVP följer regeln flest kills, därefter mest skada och därefter färre deaths, oavsett anslutningsordning.
+- [x] Oavgjort, lika poäng, sena anslutningar och avhopp hanteras uttryckligen.
+- [x] Resultatvyn har tillgång till rätt rondstatistik även efter att spelinstansen städats bort.
 
 ## IMP-14 – Separera statistik och lagring
 
@@ -385,6 +385,11 @@ Använd ID:t i uppgifter, exempelvis: **”Ta IMP-07”**. Vid arbete med en pun
 
 ## Ändringslogg
 
+- **2026-10-28:** IMP-13 implementerad. Servern fryser en prestationsbaserad
+  MVP-sammanfattning innan spelinstansen städas, med deterministiska regler för
+  oavgjort, lika prestation, sena anslutningar och avhopp. Resultatvyn visar
+  vinnarlag, slutpoäng och en topp-tre-prispall med MVP, karaktär, kills, deaths
+  och total skada. Orankade ronder markeras utan att dölja rondprestationerna.
 - **2026-10-27:** IMP-06 implementerad och regressionstestad utan ändring av
   profilernas lagringsformat.
 - **2026-10-27:** Arbetsdokument skapat. Tidigare implementerade IMP-02, IMP-03

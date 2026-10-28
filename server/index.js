@@ -7,6 +7,7 @@ import express from 'express';
 import { WebSocketServer } from 'ws';
 import { Game } from './game.js';
 import { MatchRegistry } from './matches.js';
+import { buildRoundResult } from './round-results.js';
 import { MAX_MESSAGE_BYTES, parseClientMessage } from './protocol.js';
 import { claimRoundRegistration, clearRoundRegistration } from './round-registration.js';
 import { SqliteProfileStore } from './sqlite-profile-store.js';
@@ -468,7 +469,8 @@ function handleMessage(ws, msg) {
       const result = requireMatch(ws);
       if (!result) return;
       const matchGame = matchGames.get(result.id);
-      const { match, error } = matches.finish(result.id, ws.sessionId, matchGame?.score);
+      const roundResult = buildRoundResult(matchGame, matchGame?.score);
+      const { match, error } = matches.finish(result.id, ws.sessionId, matchGame?.score, roundResult);
       if (error) {
         send(ws, { t: 'appError', message: error });
         return;
@@ -1632,7 +1634,13 @@ setInterval(() => {
 
 setInterval(() => {
   const changes = matches.advancePhases({
-    scoreForMatch: (match) => matchGames.get(match.id)?.score,
+    resultForMatch: (match) => {
+      const matchGame = matchGames.get(match.id);
+      return {
+        finalScore: matchGame?.score,
+        roundResult: buildRoundResult(matchGame, matchGame?.score),
+      };
+    },
   });
   if (!changes.length) return;
 

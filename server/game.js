@@ -68,6 +68,9 @@ export class Game {
     this.startedAt = this.now();
     this.powerupSpawns = layout.powerupSpawns ?? POWERUP_SPAWNS;
     this.players = new Map();
+    // Unlike players, this list keeps fighters who disconnect before the
+    // result screen so their contribution can still be considered for MVP.
+    this.roundPlayers = [];
     this.tick = 0;
     this.score = { cleo: 0, viking: 0 };
     this.fx = []; // visuella effekter, toms vid varje broadcast
@@ -87,6 +90,7 @@ export class Game {
     this.snapshotSeq = 0;
     this.viewHistory.clear();
     this.players.clear();
+    this.roundPlayers = [];
     this.tick = 0;
     this.score = { cleo: 0, viking: 0 };
     this.fx = [];
@@ -179,6 +183,7 @@ export class Game {
     };
     this.spawn(p);
     this.players.set(id, p);
+    this.roundPlayers.push(p);
     return p;
   }
 

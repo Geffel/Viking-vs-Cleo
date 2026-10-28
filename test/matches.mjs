@@ -66,14 +66,22 @@ const removed = registry.removePlayer(created.id, host.sessionId);
 check('hostbyte sker nar host lamnar', removed.hostId !== host.sessionId && removed.players.has(removed.hostId));
 
 clock = created.matchEndsAt;
-const toResults = registry.advancePhases({ scoreForMatch: () => ({ cleo: 2, viking: 1 }) });
+const expectedRoundResult = {
+  winner: 'cleo',
+  mvp: { name: 'Late', team: 'cleo', profileId: 33, kills: 2, deaths: 0, damageDealt: 500 },
+};
+const toResults = registry.advancePhases({
+  resultForMatch: () => ({ finalScore: { cleo: 2, viking: 1 }, roundResult: expectedRoundResult }),
+});
 check('tiden kan avsluta matchen', toResults.some((c) => c.to === MATCH_PHASES.results) && created.phase === MATCH_PHASES.results);
 check('slutpoang sparas', created.finalScore.cleo === 2 && created.finalScore.viking === 1);
+check('MVP-resultat sparas i snapshot efter spelinstansen', registry.snapshot(created.id).roundResult?.mvp?.name === 'Late');
 check('resultatet raknas nar minst tva valt karaktar', created.resultCounts === true && created.unrankedReason === null);
 
 check('icke-host kan inte starta om fran resultat', !!registry.resetToLobby(created.id, host.sessionId).error);
 registry.resetToLobby(created.id, removed.hostId);
 check('host kan starta ny rond fran resultat', created.phase === MATCH_PHASES.matchLobby && !created.selectedMap);
+check('ny rond rensar tidigare MVP-resultat', created.roundResult === null);
 check('ny rond rensar karaktarer och ready', [...created.players.values()].every((p) => !p.character && !p.ready));
 registry.setCharacter(created.id, removed.hostId, 'viking');
 registry.setCharacter(created.id, late.sessionId, 'cleo');
