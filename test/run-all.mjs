@@ -17,6 +17,7 @@ const logicTests = [
   ['sprite-assets', 'test/sprite-assets.mjs'],
   ['netcode', 'test/netcode.mjs'],
   ['server-protocol', 'test/server-protocol.mjs'],
+  ['public-leaderboard', 'test/public-leaderboard.mjs'],
   ['round-stats', 'test/round-stats.mjs'],
   ['profile-kills', 'test/profile-kills.mjs'],
   ['profile-attribution', 'test/profile-attribution.mjs'],

@@ -95,6 +95,7 @@ app.get('/api/performance-test', (_req, res) => {
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE_BYTES });
+const leaderboardWss = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE_BYTES });
 
 // Legacy-spelet finns kvar for direktjoin-vagen, men lobby-matcher far egna
 // Game-instanser nar deras countdown startar.
@@ -164,6 +165,13 @@ server.on('upgrade', async (request, socket, head) => {
     return;
   }
 
+  if (webSocketPath(request) === '/ws/leaderboard') {
+    leaderboardWss.handleUpgrade(request, socket, head, (ws) => {
+      leaderboardWss.emit('connection', ws);
+    });
+    return;
+  }
+
   const sessionToken = readSessionCookie(request);
   const performanceGuest = isLocalPerformanceRequest(request);
   let authSession = null;
@@ -178,6 +186,18 @@ server.on('upgrade', async (request, socket, head) => {
   wss.handleUpgrade(request, socket, head, (ws) => {
     wss.emit('connection', ws, request, authSession, sessionToken, performanceGuest);
   });
+});
+
+// The public display gets one deliberately narrow, read-only channel. Keeping
+// it on a separate WebSocketServer prevents anonymous clients from reaching
+// any game, profile or account message handler by mistake.
+leaderboardWss.on('connection', (ws) => {
+  ws.lastPongAt = Date.now();
+  ws.on('pong', () => { ws.lastPongAt = Date.now(); });
+  ws.on('error', () => {});
+  ws.on('message', () => ws.close(1008, 'Read-only leaderboard'));
+  ws.send(JSON.stringify(leaderboardPayload()));
+  ws.ping();
 });
 
 wss.on('connection', (ws, _request, authSession, sessionToken, performanceGuest = false) => {
@@ -1191,6 +1211,9 @@ function broadcastLeaderboard({ force = false } = {}) {
   for (const ws of wss.clients) {
     if (ws.readyState === ws.OPEN) ws.send(str);
   }
+  for (const ws of leaderboardWss.clients) {
+    if (ws.readyState === ws.OPEN) ws.send(str);
+  }
   return payload;
 }
 
@@ -1579,6 +1602,14 @@ function isAllowedWebSocketOrigin(request) {
   }
 }
 
+function webSocketPath(request) {
+  try {
+    return new URL(request.url ?? '/', 'http://localhost').pathname;
+  } catch {
+    return '';
+  }
+}
+
 function isLocalPerformanceRequest(request) {
   if (!PERFORMANCE_ENABLED) return false;
   const remote = String(request.socket?.remoteAddress ?? '').toLowerCase();
@@ -1727,14 +1758,16 @@ const DEAD_AFTER_MS = 15000;
 
 setInterval(() => {
   const t = Date.now();
-  for (const ws of wss.clients) {
-    if (ws.readyState !== ws.OPEN) continue;
-    if (t - ws.lastPongAt > DEAD_AFTER_MS) {
-      ws.terminate();
-      continue;
+  for (const clients of [wss.clients, leaderboardWss.clients]) {
+    for (const ws of clients) {
+      if (ws.readyState !== ws.OPEN) continue;
+      if (t - ws.lastPongAt > DEAD_AFTER_MS) {
+        ws.terminate();
+        continue;
+      }
+      ws.pingAt = t;
+      ws.ping();
     }
-    ws.pingAt = t;
-    ws.ping();
   }
 }, 1000);
 

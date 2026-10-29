@@ -48,7 +48,7 @@ function connect() {
 
   setConnection('connecting');
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const ws = new WebSocket(`${proto}//${location.host}`);
+  const ws = new WebSocket(`${proto}//${location.host}/ws/leaderboard`);
   state.ws = ws;
 
   ws.addEventListener('open', () => setConnection('connected'));
