@@ -4,7 +4,7 @@ import path from 'node:path';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { DatabaseSync } from 'node:sqlite';
 import { AccountService } from '../server/account-service.js';
-import { SESSION_ABSOLUTE_MS, SESSION_IDLE_MS, SESSION_TOUCH_INTERVAL_MS } from '../server/auth-crypto.js';
+import { SESSION_ABSOLUTE_MS, SESSION_IDLE_MS, SESSION_TOUCH_INTERVAL_MS, validatePassword } from '../server/auth-crypto.js';
 
 const dataDir = await mkdtemp(path.join(os.tmpdir(), 'vvc-accounts-'));
 let now = 1_800_000_000_000;
@@ -35,7 +35,8 @@ try {
 
   await assert.rejects(service.register('TEST.PLAYER', 'a different password'), hasCode('USERNAME_TAKEN'));
   await assert.rejects(service.register('name that is far too long', 'a different password'), hasCode('INVALID_DISPLAY_NAME'));
-  await assert.rejects(service.register('valid_name', 'too short'), hasCode('INVALID_PASSWORD'));
+  assert.equal(validatePassword('1234'), '1234');
+  assert.throws(() => validatePassword('123'), hasCode('INVALID_PASSWORD'));
   const spaced = await service.register('Player Two', 'a different password');
   assert.equal(spaced.displayName, 'Player Two');
 

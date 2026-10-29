@@ -20,8 +20,8 @@ export function validatePassword(value) {
     throw authError('INVALID_PASSWORD', 'Password must be valid Unicode text');
   }
   const length = [...value].length;
-  if (length < 12 || length > 128) {
-    throw authError('INVALID_PASSWORD', 'Password must contain 12-128 Unicode characters');
+  if (length < 4 || length > 128) {
+    throw authError('INVALID_PASSWORD', 'Password must contain 4-128 Unicode characters');
   }
   return value;
 }

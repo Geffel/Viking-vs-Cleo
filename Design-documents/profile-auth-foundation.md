@@ -24,7 +24,7 @@ tester.
   Namnet trimmas och kontrolltecken tas bort. Den skrivna formen, inklusive
   stora och små bokstäver, sparas och visas i spelet. En NFKC-normaliserad form
   i gemener används för unikhetskontroll och inloggning.
-- Lösenord är 12–128 Unicode-kodpunkter. De trimmas eller Unicode-normaliseras
+- Lösenord är 4–128 Unicode-kodpunkter. De trimmas eller Unicode-normaliseras
   inte. Kontroll sker både före och efter UTF-8-avkodning; ogiltig text nekas.
 - Hashformatet är versionsmärkt och innehåller algoritm, parametrar och salt.
   Version 1 använder `crypto.scrypt` med `N=131072`, `r=8`, `p=1`, 64 byte

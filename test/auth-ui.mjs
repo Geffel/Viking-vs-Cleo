@@ -12,6 +12,10 @@ assert.match(html, /id="migration-forgot-password"/,
   'sign-in exposes password recovery');
 assert.match(html, /id="migration-password-reset"[\s\S]*id="migration-reset-code"[\s\S]*id="migration-reset-password-confirm"/,
   'password recovery collects a recovery code and confirms the new password');
+const newPasswordInputs = [...html.matchAll(/<input[^>]*type="password"[^>]*autocomplete="new-password"[^>]*>/g)]
+  .map(([input]) => input);
+assert.ok(newPasswordInputs.length > 0 && newPasswordInputs.every((input) => /minlength="4"/.test(input)),
+  'every new-password form accepts the four-character minimum');
 assert.doesNotMatch(html, /migration-register-display-name|migration-register-username/,
   'registration does not split login and fighter names');
 assert.match(html, /id="migration-username"[^>]*readonly/,
