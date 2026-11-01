@@ -3,6 +3,7 @@ import { startTestServer } from './test-server.mjs';
 
 const node = process.execPath;
 const logicTests = [
+  ['documentation-links', 'test/documentation-links.mjs'],
   ['achievements', 'test/achievements.mjs'],
   ['hitreg', 'test/hitreg.mjs'],
   ['combat', 'test/combat.mjs'],

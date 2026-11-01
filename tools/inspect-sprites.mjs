@@ -1,8 +1,10 @@
 // Diagnostik: vad innehaller kallbilderna egentligen?
 import sharp from 'sharp';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const SOURCE_ROOT = 'C:/Viking-Vs-Cleo/source-images';
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const SOURCE_ROOT = path.join(ROOT, 'source-images');
 
 const files = [
   'viking_standard_pose.png',

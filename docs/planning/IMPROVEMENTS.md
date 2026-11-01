@@ -55,7 +55,7 @@ skrivkö utanför speltråden. SQLite är föreslaget som framtida lagring, med
 transaktioner och WAL. Databasbyte ensamt löser inte blockering på speltråden.
 Utvärdera achievements för berörda profiler och undvik upprepade fulla genomgångar.
 
-**Berört:** [server/index.js](server/index.js): `processStatEvents`,
+**Berört:** [server/index.js](../../server/index.js): `processStatEvents`,
 `processKillStats`, `unlockPendingAchievements`, `saveProfiles`.
 
 **Klart när:**
@@ -79,8 +79,8 @@ sin egen historik med samma beräkningar som klienten. Positioner från klienten
 accepteras inte. Tidsbudget, framtida positioner, fel spelomgång och tidigare liv
 kontrolleras. Delad skärm använder rätt sampling för lokala motståndare.
 
-**Berört:** [server/game.js](server/game.js), [public/js/net.js](public/js/net.js),
-[shared/netcode.js](shared/netcode.js), [test/netcode.mjs](test/netcode.mjs).
+**Berört:** [server/game.js](../../server/game.js), [public/js/net.js](../../public/js/net.js),
+[shared/netcode.js](../../shared/netcode.js), [test/netcode.mjs](../../test/netcode.mjs).
 
 **Verifierat:** automatiska tester för 0, 30, 60, 100 och 150 ms RTT med och utan
 jitter; synliga träffar och missar; ny snapshot mellan ritning och input;
@@ -103,8 +103,8 @@ meddelanden och värden, avvisning av binära meddelanden och en inkommande
 paketgräns på 4 KiB. WebSocket-fel från felaktiga/för stora paket hanteras utan
 att fälla servern.
 
-**Berört:** [server/protocol.js](server/protocol.js),
-[server/index.js](server/index.js), [test/server-protocol.mjs](test/server-protocol.mjs).
+**Berört:** [server/protocol.js](../../server/protocol.js),
+[server/index.js](../../server/index.js), [test/server-protocol.mjs](../../test/server-protocol.mjs).
 
 - [x] Felaktig JSON, primitiva värden och felaktiga fält avvisas.
 - [x] För stora paket stänger den berörda anslutningen; servern svarar fortsatt.
@@ -121,8 +121,8 @@ röstningsstatistik. Behåll skydd mot att samma rond registreras flera gånger.
 Rensa också förbrukade registreringsmarkeringar när de inte längre behövs.
 Nätverkets nya spelomgångsidentitet i IMP-02 löser inte automatiskt denna statistikbugg.
 
-**Berört:** [server/index.js](server/index.js): `recordMapVoteStats`,
-`recordMatchResult`; [server/matches.js](server/matches.js): `resetToLobby`.
+**Berört:** [server/index.js](../../server/index.js): `recordMapVoteStats`,
+`recordMatchResult`; [server/matches.js](../../server/matches.js): `resetToLobby`.
 
 **Klart när:**
 
@@ -139,7 +139,7 @@ två och sjönk till en efter `commitPending`.
 **Förslag:** välj en entydig källa för killantal. Separera sparat och ännu osparat
 utan att lägga samma händelse till flera gånger i den visade totalsumman.
 
-**Berört:** [server/index.js](server/index.js): `buildProfileView`,
+**Berört:** [server/index.js](../../server/index.js): `buildProfileView`,
 `processKillStats`, `commitPending`.
 
 **Klart när:**
@@ -158,9 +158,9 @@ användaren i kodvägar där statistik är aktiverad.
 både stridshändelser och killstatistik. Giltiga positiva heltals-ID:n behåller
 det befintliga beteendet och lagringsformatet är oförändrat.
 
-**Berört:** [server/index.js](server/index.js): `statProfile`, `processKillStats`;
-[server/profile-ids.js](server/profile-ids.js);
-[test/profile-attribution.mjs](test/profile-attribution.mjs).
+**Berört:** [server/index.js](../../server/index.js): `statProfile`, `processKillStats`;
+[server/profile-ids.js](../../server/profile-ids.js);
+[test/profile-attribution.mjs](../../test/profile-attribution.mjs).
 
 **Klart när:**
 
@@ -176,8 +176,8 @@ Mönstret är bekräftat; faktisk FPS-vinst är inte uppmätt.
 **Förslag:** skapa element per plats/förmåga när uppsättningen ändras. Uppdatera
 bara ändrade texter, klasser och indikatorer under spelet.
 
-**Berört:** [public/js/hud.js](public/js/hud.js): `updateShared`;
-[public/js/main.js](public/js/main.js): renderloopen.
+**Berört:** [public/js/hud.js](../../public/js/hud.js): `updateShared`;
+[public/js/main.js](../../public/js/main.js): renderloopen.
 
 **Klart när:**
 
@@ -198,9 +198,9 @@ fortsätter bestämma skada, död och övrigt avgörande spelutfall.
 **Beroenden:** bygg vidare på IMP-02. När egen rörelserendering ändras måste
 träffkontrollens återskapande av angriparens visade position uppdateras samtidigt.
 
-**Berört:** [public/js/input.js](public/js/input.js),
-[public/js/net.js](public/js/net.js), [server/game.js](server/game.js),
-[shared/netcode.js](shared/netcode.js).
+**Berört:** [public/js/input.js](../../public/js/input.js),
+[public/js/net.js](../../public/js/net.js), [server/game.js](../../server/game.js),
+[shared/netcode.js](../../shared/netcode.js).
 
 **Klart när:**
 
@@ -224,8 +224,8 @@ andra viktiga händelser inte tappas när snapshots hoppas över.
 intilliggande i serverns sekvens. Om servern börjar hoppa över utskick per klient
 måste denna kontroll och testningen anpassas till vilka snapshots klienten fick.
 
-**Berört:** [server/index.js](server/index.js): `send`, `broadcastTo`,
-`sendGameSnapshot`; [server/game.js](server/game.js): `attackView`.
+**Berört:** [server/index.js](../../server/index.js): `send`, `broadcastTo`,
+`sendGameSnapshot`; [server/game.js](../../server/game.js): `attackView`.
 
 **Klart när:**
 
@@ -262,7 +262,7 @@ maximal visningsstorlek. Justera källrektanglar/ankarpunkter vid beskärning.
 
 **Berört:** `public/assets/cleo_shield_icon.png`,
 `public/assets/viking_harpoon_projectile.png`, Sun fire-bilderna i `public/assets/cleo/`,
-[public/js/render.js](public/js/render.js).
+[public/js/render.js](../../public/js/render.js).
 
 **Klart när:**
 
@@ -280,9 +280,9 @@ transparenta lager. Dessa är kandidater för profilering, inte bevisade huvudfl
 glödbilder i stället för nykonstruerade gradienter där utseendet tillåter det.
 Erbjud effekt-/kvalitetsnivåer via Video-inställningarna när nyttan är bekräftad.
 
-**Berört:** [public/js/render.js](public/js/render.js): bland annat
+**Berört:** [public/js/render.js](../../public/js/render.js): bland annat
 `drawFireflies`, dimma, glöd och stridseffekter;
-[public/js/settings.js](public/js/settings.js): Video är i dag en platshållare.
+[public/js/settings.js](../../public/js/settings.js): Video är i dag en platshållare.
 
 **Klart när:**
 
@@ -299,7 +299,7 @@ inte spelaren med bäst prestation. Vid oavgjort kan värden användas som reser
 prestation. Beräkna från serverns rondresultat. Alternativt ta bort MVP-etiketten
 tills en riktig regel finns.
 
-**Berört:** [public/js/main.js](public/js/main.js): `renderRoundResults`.
+**Berört:** [public/js/main.js](../../public/js/main.js): `renderRoundResults`.
 
 **Klart när:**
 
@@ -321,7 +321,7 @@ Storleken på dessa prestandavinster är inte mätt.
 
 **Beroenden:** lämpligt tillsammans med IMP-01 och regressionstester för IMP-04–06.
 
-**Berört:** [server/index.js](server/index.js): profil- och statistikfunktioner,
+**Berört:** [server/index.js](../../server/index.js): profil- och statistikfunktioner,
 `getProfileById`, `lobbySnapshotFor`, `broadcastLobby`.
 
 **Klart när:**
@@ -340,8 +340,8 @@ Testservern använde samma profilfil som den vanliga servern.
 egna processer, automatiskt tilldelade portar och tillfälliga profilkataloger.
 `npm run test:net` kör de två nya nätverkssviterna separat.
 
-**Berört:** [package.json](package.json), [test/run-all.mjs](test/run-all.mjs),
-[test/test-server.mjs](test/test-server.mjs).
+**Berört:** [package.json](../../package.json), [test/run-all.mjs](../../test/run-all.mjs),
+[test/test-server.mjs](../../test/test-server.mjs).
 
 - [x] Samtliga 12 sviter passerade efter nätverksändringarna.
 - [x] Kontroll av profilfilens hash visade att testkörningen inte ändrade den.

@@ -24,6 +24,7 @@ if (!CONFIG) throw new Error(`Okant lag: ${TEAM}. Valj cleo eller viking.`);
 
 const OUT_DIR = path.join(ROOT, 'public', 'assets', TEAM);
 const MANIFEST_PATH = path.join(OUT_DIR, 'manifest.json');
+const PREVIEW_DIR = path.join(ROOT, 'tmp', 'previews', TEAM);
 
 const FRAME_COUNT = 8;
 const ALPHA_MIN = 16;
@@ -147,9 +148,10 @@ console.log(
   `\nSpringanimation: ${outputWidth}x${outputHeight}px per ruta, ` +
     `${worldWidth}x${FIGURE_WORLD_HEIGHT} varldspixlar, ankare (${anchorX}, 1)`,
 );
-console.log(`Forhandsvy: public/assets/${TEAM}/_preview_run.png`);
+console.log(`Forhandsvy: tmp/previews/${TEAM}/_preview_run.png`);
 
 async function writePreview() {
+  await fs.mkdir(PREVIEW_DIR, { recursive: true });
   const pad = 10;
   const labelHeight = 18;
   const cellWidth = outputWidth + pad;
@@ -179,5 +181,5 @@ async function writePreview() {
   })
     .composite(parts)
     .png()
-    .toFile(path.join(OUT_DIR, '_preview_run.png'));
+    .toFile(path.join(PREVIEW_DIR, '_preview_run.png'));
 }

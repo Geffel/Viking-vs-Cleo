@@ -177,29 +177,31 @@ function Save-Png {
   $Bitmap.Save($OutputPath, [System.Drawing.Imaging.ImageFormat]::Png)
 }
 
-$root = 'C:\Spel\Viking-Vs-Cleo\Viking-Vs-Cleo'
+$root = Split-Path -Parent $PSScriptRoot
 $assetDir = Join-Path $root 'public\assets\cleo'
 $sourceDir = Join-Path $root 'source-images'
+$workDir = Join-Path $root 'tmp\cleo-punch'
+New-Item -ItemType Directory -Path $workDir -Force | Out-Null
 
 $attack1Input = Join-Path $sourceDir 'cleo_melee_punch_frame_1.png'
-$attack2Input = Join-Path $assetDir 'attack2_punch_right_hand_facing_left_flipped.png'
+$attack2Input = Join-Path $sourceDir 'cleo_melee_attack_frame_2_punch_right_hand_facing_left_flipped.png'
 
 $attack1Canvas = Fit-ToCanvas -Bitmap ([System.Drawing.Bitmap]::FromFile($attack1Input)) -TargetWidth 178 -TargetHeight 185 -Scale 0.24 -OffsetX 0 -OffsetY 0
 $attack2Removed = Remove-BackgroundByFloodFill -InputPath $attack2Input
 $attack2Canvas = Fit-ToCanvas -Bitmap $attack2Removed -TargetWidth 178 -TargetHeight 185 -Scale 0.155 -OffsetX 0 -OffsetY 0
 
 try {
-  Copy-Item -LiteralPath (Join-Path $assetDir 'attack1.png') -Destination (Join-Path $assetDir 'attack1.original.png') -Force
-  Copy-Item -LiteralPath (Join-Path $assetDir 'attack2.png') -Destination (Join-Path $assetDir 'attack2.previous-opaque.png') -Force
-  Copy-Item -LiteralPath (Join-Path $assetDir 'attack3.png') -Destination (Join-Path $assetDir 'attack3.original.png') -Force
+  Copy-Item -LiteralPath (Join-Path $assetDir 'attack1.png') -Destination (Join-Path $workDir 'attack1.before.png') -Force
+  Copy-Item -LiteralPath (Join-Path $assetDir 'attack2.png') -Destination (Join-Path $workDir 'attack2.before.png') -Force
+  Copy-Item -LiteralPath (Join-Path $assetDir 'attack3.png') -Destination (Join-Path $workDir 'attack3.before.png') -Force
 
   Save-Png -Bitmap $attack1Canvas -OutputPath (Join-Path $assetDir 'attack1.png')
   Save-Png -Bitmap $attack2Canvas -OutputPath (Join-Path $assetDir 'attack2.png')
   Save-Png -Bitmap $attack2Canvas -OutputPath (Join-Path $assetDir 'attack3.png')
 
-  Save-Png -Bitmap $attack1Canvas -OutputPath (Join-Path $sourceDir 'cleo_melee_attack_frame_1.transparent-runtime.png')
-  Save-Png -Bitmap $attack2Canvas -OutputPath (Join-Path $sourceDir 'cleo_melee_attack_frame_2.transparent-runtime.png')
-  Save-Png -Bitmap $attack2Canvas -OutputPath (Join-Path $sourceDir 'cleo_melee_attack_frame_3.transparent-runtime.png')
+  Save-Png -Bitmap $attack1Canvas -OutputPath (Join-Path $workDir 'attack1.transparent-runtime.png')
+  Save-Png -Bitmap $attack2Canvas -OutputPath (Join-Path $workDir 'attack2.transparent-runtime.png')
+  Save-Png -Bitmap $attack2Canvas -OutputPath (Join-Path $workDir 'attack3.transparent-runtime.png')
 }
 finally {
   $attack1Canvas.Dispose()

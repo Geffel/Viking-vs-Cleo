@@ -16,7 +16,7 @@ const map = MAPS.find((item) => item.id === MAP_ID) ?? MAPS[0];
 const imageMap = map.asset ? map : MAPS.find((item) => item.asset);
 const layout = mapLayoutFor(map.id);
 const ARENA = path.join(ROOT, imageMap.asset.replace(/^\//, 'public/'));
-const OUT = path.join(ROOT, `public/assets/_${map.id}-platform-preview.png`);
+const OUT = path.join(ROOT, `tmp/previews/_${map.id}-platform-preview.png`);
 
 const platformColor = 'rgba(77,195,255,0.70)';
 const platformFill = 'rgba(77,195,255,0.20)';
@@ -24,6 +24,7 @@ const groundColor = 'rgba(255,209,102,0.85)';
 const spawnColor = 'rgba(123,241,168,0.95)';
 
 await fs.access(ARENA);
+await fs.mkdir(path.dirname(OUT), { recursive: true });
 
 let svg = `<svg width="${WORLD.w}" height="${WORLD.h}" viewBox="0 0 ${WORLD.w} ${WORLD.h}" xmlns="http://www.w3.org/2000/svg">
   <style>

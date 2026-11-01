@@ -8,7 +8,7 @@ vid en vanlig kodpatch.
 - [ ] Läs igenom ändringarna och avgör om patchen innehåller databas- eller
   profiländringar.
 - [ ] Starta `Start.bat` en gång efter patchen medan internet är tillgängligt.
-  Den hämtar automatiskt den privata Node.js 24.22.1-körmiljön till `.runtime/`
+  Den hämtar automatiskt den privata Node.js 24.22.2-körmiljön till `.runtime/`
   vid behov och installerar låsta beroenden. Den ändrar inte datorns vanliga
   Node-installation.
 - [ ] Bekräfta var live-datakatalogen finns. Normalt är den `data`; om

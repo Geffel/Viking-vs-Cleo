@@ -11,7 +11,9 @@ import {
   ACTION_SLOTS,
   ABILITIES,
   ABILITY_BINDS,
+  BACKSTAB,
   COMBO,
+  CRIT,
   GAMEPAD_BINDS,
   LOCAL_SEAT_IDS,
   MAPS,
@@ -144,6 +146,7 @@ const instructionsCloseBtn = document.getElementById('instructions-close');
 const instructionsTabs = [...document.querySelectorAll('[data-help-team]')];
 const instructionsSectionTabs = [...document.querySelectorAll('[data-help-section]')];
 const instructionsPanels = [...document.querySelectorAll('.instructions-panel')];
+const instructionsGameplay = document.getElementById('instructions-gameplay');
 const instructionsBasics = document.getElementById('instructions-basics');
 const instructionsAbilities = document.getElementById('instructions-abilities');
 const instructionsPowerups = document.getElementById('instructions-powerups');
@@ -216,7 +219,7 @@ let settingsReturnView = 'lobby';
 let screenPromptTimer = 0;
 let screenPromptKey = '';
 let instructionsTeam = 'cleo';
-let instructionsSection = 'abilities';
+let instructionsSection = 'gameplay';
 let instructionsFocusReturn = null;
 let pendingLegacyMigration = false;
 const sharedSeatInput = {
@@ -971,7 +974,7 @@ function closeInstructions({ restoreFocus = true } = {}) {
 }
 
 function renderInstructions() {
-  if (!instructionsOverlay || !instructionsBasics || !instructionsAbilities || !instructionsPowerups || !instructionsCombos) return;
+  if (!instructionsOverlay || !instructionsGameplay || !instructionsBasics || !instructionsAbilities || !instructionsPowerups || !instructionsCombos) return;
 
   const team = instructionsTeam === 'viking' ? 'viking' : 'cleo';
   const accent = TEAMS[team]?.color ?? '#ff4d9d';
@@ -993,6 +996,34 @@ function renderInstructions() {
     tab.classList.toggle('on', on);
     tab.setAttribute('aria-pressed', on ? 'true' : 'false');
   }
+
+  const critChance = Math.round(CRIT.chance * 100);
+  const critBonus = Math.round((CRIT.mul - 1) * 100);
+  const backstabBonus = Math.round((BACKSTAB.mul - 1) * 100);
+  const stackedBonus = Math.round((CRIT.mul * BACKSTAB.mul - 1) * 100);
+  instructionsGameplay.innerHTML = `
+    <article class="instructions-gameplay-card crit">
+      <div class="instructions-gameplay-badge" aria-hidden="true">CRIT</div>
+      <div class="instructions-gameplay-copy">
+        <div class="instructions-gameplay-kicker">Every damaging hit rolls</div>
+        <h3>Critical hits</h3>
+        <p>Each hit has a <strong>${critChance}% chance</strong> to become a critical hit and deal <strong>${critBonus}% extra damage</strong>. Crits can trigger on melee attacks, abilities, and thrown weapons.</p>
+      </div>
+      <div class="instructions-gameplay-stat"><strong>${critChance}%</strong><span>chance</span></div>
+    </article>
+    <article class="instructions-gameplay-card backstab">
+      <div class="instructions-gameplay-badge" aria-hidden="true">BACK</div>
+      <div class="instructions-gameplay-copy">
+        <div class="instructions-gameplay-kicker">Position matters</div>
+        <h3>Attacking from behind</h3>
+        <p>Land a hit while you are behind an opponent who is facing away from you to deal <strong>${backstabBonus}% extra damage</strong>. It works with melee attacks, abilities, and thrown weapons.</p>
+      </div>
+      <div class="instructions-gameplay-stat"><strong>+${backstabBonus}%</strong><span>damage</span></div>
+    </article>
+    <aside class="instructions-gameplay-stack">
+      <b>The bonuses stack</b>
+      <span>A hit from behind can also crit. Together they deal ${stackedBonus}% extra damage before rounding, and crit is applied after the behind bonus and other damage bonuses.</span>
+    </aside>`;
 
   instructionsBasics.innerHTML = [
     { slots: ['left', 'right'], name: 'Move' },

@@ -426,14 +426,21 @@
       </div>
 
       <div class="instructions-nav" role="tablist" aria-label="Instructions sections">
-        <button id="instructions-tab-abilities" class="instructions-tab on" type="button" role="tab" aria-controls="instructions-panel-abilities" aria-selected="true" data-help-section="abilities">Abilities</button>
+        <button id="instructions-tab-gameplay" class="instructions-tab on" type="button" role="tab" aria-controls="instructions-panel-gameplay" aria-selected="true" data-help-section="gameplay">Gameplay</button>
+        <button id="instructions-tab-abilities" class="instructions-tab" type="button" role="tab" aria-controls="instructions-panel-abilities" aria-selected="false" data-help-section="abilities">Abilities</button>
         <button id="instructions-tab-powerups" class="instructions-tab" type="button" role="tab" aria-controls="instructions-panel-powerups" aria-selected="false" data-help-section="powerups">Powerups</button>
         <button id="instructions-tab-combos" class="instructions-tab" type="button" role="tab" aria-controls="instructions-panel-combos" aria-selected="false" data-help-section="combos">Combos</button>
         <button id="instructions-tab-rearrange" class="instructions-tab" type="button" role="tab" aria-controls="instructions-panel-rearrange" aria-selected="false" data-help-section="rearrange">Rearrange abilities</button>
       </div>
 
       <div class="instructions-body">
-        <section id="instructions-panel-abilities" class="instructions-panel" role="tabpanel" aria-labelledby="instructions-tab-abilities">
+        <section id="instructions-panel-gameplay" class="instructions-panel" role="tabpanel" aria-labelledby="instructions-tab-gameplay">
+          <div class="instructions-panel-heading"><div><div class="instructions-eyebrow">Know the rules</div><h2>Gameplay</h2></div></div>
+          <p class="instructions-gameplay-intro">These damage bonuses apply to both fighters and can turn any opening into a much bigger hit.</p>
+          <div class="instructions-gameplay-grid" id="instructions-gameplay"></div>
+        </section>
+
+        <section id="instructions-panel-abilities" class="instructions-panel" role="tabpanel" aria-labelledby="instructions-tab-abilities" hidden>
           <div class="instructions-panel-heading">
             <div><div class="instructions-eyebrow">Choose your fighter</div><h2>Abilities</h2></div>
             <div class="instructions-fighters" aria-label="Fighter">
@@ -475,6 +482,6 @@
 
     <div id="conn" hidden>Connecting...</div>
 
-    <script type="module" src="/js/main.js?v=4"></script>
+    <script type="module" src="/js/main.js?v=5"></script>
   </body>
 </html>

@@ -13,9 +13,10 @@
 import sharp from 'sharp';
 import path from 'node:path';
 import fs from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import { PLAYER } from '../shared/constants.js';
 
-const ROOT = 'C:/Viking-Vs-Cleo';
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SOURCE_ROOT = path.join(ROOT, 'source-images');
 const OUT_ROOT = path.join(ROOT, 'public/assets');
 
@@ -102,6 +103,7 @@ async function load(src) {
 
 async function build(team, config) {
   const outDir = path.join(OUT_ROOT, team);
+  const previewDir = path.join(ROOT, 'tmp', 'previews', team);
   console.log(`\n=== ${team} ===`);
 
   const frames = [];
@@ -154,6 +156,7 @@ async function build(team, config) {
   console.log(`spelstorlek ${(canvasW * worldScale).toFixed(1)}x${(canvasH * worldScale).toFixed(1)} varldspixlar\n`);
 
   await fs.mkdir(outDir, { recursive: true });
+  await fs.mkdir(previewDir, { recursive: true });
 
   for (const [i, p] of prepared.entries()) {
     // Sharp kor alltid resize fore composite i samma pipeline, sa placeringen
@@ -179,7 +182,20 @@ async function build(team, config) {
     );
   }
 
+  const manifestPath = path.join(outDir, 'manifest.json');
+  let previousManifest = {};
+  try {
+    previousManifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+
+  const defaultAttack = prepared.filter((p) => p.key !== 'idle').map((p) => `${p.key}.png`);
+  const attack = previousManifest.attack && !Array.isArray(previousManifest.attack)
+    ? { ...previousManifest.attack, default: defaultAttack }
+    : defaultAttack;
   const manifest = {
+    ...previousManifest,
     // Figurens storlek i spelvarldens pixlar
     worldWidth: +(canvasW * worldScale).toFixed(2),
     worldHeight: +(canvasH * worldScale).toFixed(2),
@@ -188,18 +204,18 @@ async function build(team, config) {
     anchorY: +(maxTop / canvasH).toFixed(4),
     facing: config.facing,
     idle: 'idle.png',
-    attack: prepared.filter((p) => p.key !== 'idle').map((p) => `${p.key}.png`),
+    attack,
   };
 
-  await fs.writeFile(path.join(outDir, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
+  await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
   console.log('\nmanifest.json:', JSON.stringify(manifest));
 
-  await writePreviews(team, outDir, prepared, manifest, outW, outH);
+  await writePreviews(team, outDir, previewDir, prepared, manifest, outW, outH);
 }
 
 // Kontaktkarta for ogongranskning: alla rutor sida vid sida med fotlinje och
 // fotpunktsmarkering. Ar allt ratt star figuren stadigt pa den roda linjen.
-async function writePreviews(team, outDir, prepared, manifest, outW, outH) {
+async function writePreviews(team, outDir, previewDir, prepared, manifest, outW, outH) {
   const PAD = 10;
   const sheetW = (outW + PAD) * prepared.length + PAD;
   const sheetH = outH + PAD * 2 + 14;
@@ -226,9 +242,9 @@ async function writePreviews(team, outDir, prepared, manifest, outW, outH) {
       ...marks,
     ])
     .png()
-    .toFile(path.join(outDir, '_preview.png'));
+    .toFile(path.join(previewDir, '_preview.png'));
 
-  console.log(`kontaktkarta: public/assets/${team}/_preview.png (rod linje = fotter, bla = mittlinje)`);
+  console.log(`kontaktkarta: tmp/previews/${team}/_preview.png (rod linje = fotter, bla = mittlinje)`);
 
   // Andra forhandsvyn: figuren i sin verkliga spelstorlek mot traffytan, sa det
   // gar att se om hon eller han ar lagom stor jamfort med plattformarna.
@@ -272,10 +288,10 @@ async function writePreviews(team, outDir, prepared, manifest, outW, outH) {
   await sharp({ create: { width: gameW, height: Math.round(gameH), channels: 4, background: { r: 27, g: 16, b: 48, alpha: 1 } } })
     .composite(gameParts)
     .png()
-    .toFile(path.join(outDir, '_ingame.png'));
+    .toFile(path.join(previewDir, '_ingame.png'));
 
   console.log(
-    `spelvy:       public/assets/${team}/_ingame.png (rod ram = traffytan ${PLAYER.w}x${PLAYER.h}, allt i ${Z}x spelstorlek)`,
+    `spelvy:       tmp/previews/${team}/_ingame.png (rod ram = traffytan ${PLAYER.w}x${PLAYER.h}, allt i ${Z}x spelstorlek)`,
   );
 }
 

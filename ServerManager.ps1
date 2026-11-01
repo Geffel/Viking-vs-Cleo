@@ -17,9 +17,11 @@ $Port = 3000
 $RestartHour = 2
 $RestartMinute = 0
 $Root = $PSScriptRoot
-$ManagerLog = Join-Path $Root "ServerManager.log"
-$ServerLog = Join-Path $Root "server.log"
-$ServerErrorLog = Join-Path $Root "server-error.log"
+$LogDir = Join-Path $Root "logs"
+New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
+$ManagerLog = Join-Path $LogDir "ServerManager.log"
+$ServerLog = Join-Path $LogDir "server.log"
+$ServerErrorLog = Join-Path $LogDir "server-error.log"
 
 . (Join-Path $Root "tools\local-node-runtime.ps1")
 
@@ -160,7 +162,7 @@ function Start-GameServer {
     $script:ServerProcess.Refresh()
 
     if ($script:ServerProcess.HasExited) {
-        throw "The server stopped directly after startup. Check server-error.log."
+        throw "The server stopped directly after startup. Check logs\server-error.log."
     }
 
     Write-Log "Server started. PID $($script:ServerProcess.Id), port $Port."
@@ -228,8 +230,8 @@ try {
     Clear-Host
     Write-Host "Viking vs Cleo Server Manager"
     Write-Host "Automatic restart every night at 02:00"
-    Write-Host "Server output: server.log"
-    Write-Host "Server errors: server-error.log"
+    Write-Host "Server output: logs\server.log"
+    Write-Host "Server errors: logs\server-error.log"
     Write-Host "Live game events and server errors are shown below"
     Write-Host ""
 

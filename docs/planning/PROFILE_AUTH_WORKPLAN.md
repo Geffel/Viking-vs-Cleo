@@ -252,7 +252,7 @@ låsta Node-versionen 24.22.1 den 27 oktober 2026.
 Node-version, lösenords- och scryptregler, sessionslivslängd, rate limiting,
 återställningskoder, hantering av förlorat legacy-`clientId`, publik leaderboard
 samt backup- och rollbackmodell är beslutade i
-[konto- och profilmigreringens grundbeslut](Design-documents/profile-auth-foundation.md).
+[konto- och profilmigreringens grundbeslut](../../Design-documents/profile-auth-foundation.md).
 Parametrarna ska mätas på produktionsservern under implementationen. Om de inte
 klarar kapacitetskraven krävs ett nytt dokumenterat säkerhetsbeslut; de får inte
 tyst försvagas.

@@ -18,7 +18,7 @@ import { PLAYER } from '../shared/constants.js';
 // Utgar fran verktygets egen plats, sa vyn gar att bygga var projektet an ligger.
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ASSETS = path.join(ROOT, 'public/assets');
-const OUT = path.join(ASSETS, '_matchup-preview.png');
+const OUT = path.join(ROOT, 'tmp/previews/_matchup-preview.png');
 
 const TEAMS = ['cleo', 'viking'];
 const Z = 3; // forstoring, sa pixlarna gar att se
@@ -88,10 +88,12 @@ for (const [row, r] of rows.entries()) {
   }
 }
 
+await fs.mkdir(path.dirname(OUT), { recursive: true });
+
 await sharp({ create: { width: sheetW, height: sheetH, channels: 4, background: { r: 27, g: 16, b: 48, alpha: 1 } } })
   .composite(parts)
   .png()
   .toFile(OUT);
 
 console.log(`rader (uppifran): ${rows.map((r) => `${r.team} f=${r.f}`).join(', ')}`);
-console.log(`skrev public/assets/_matchup-preview.png  ${sheetW}x${sheetH}`);
+console.log(`skrev tmp/previews/_matchup-preview.png  ${sheetW}x${sheetH}`);

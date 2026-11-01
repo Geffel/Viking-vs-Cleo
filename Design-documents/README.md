@@ -6,7 +6,7 @@ The settings surface for the "Cleo vs Viking" arena fighting game. Two connected
 1. **Settings shell** — a compact menu selector (left rail) that switches between settings categories in place. Currently ships **Audio** and **Controls**; **Video** and **Gameplay** are placeholders wired for future work. Header holds a save/dirty indicator + Save button; the rail holds a global **Restore defaults**.
 2. **Audio page** — the first fully-designed category: master volume + a live meter, and per-channel sliders (Music, Effects, Announcer, Ambience, Interface) each with a value readout, test-sound button, and mute toggle.
 
-The **Controls** category embeds the existing keybinds designs (a chrome-free variant of the standalone `Controls - Keybinds` screen) directly inside the shell so it lives under the same menu.
+The **Controls** category is specified as an embedded keybinds panel in the same shell, so it lives under the same menu.
 
 Together they cover: category navigation (rail), audio mixing (sliders + master), and key rebinding (embedded panel).
 
@@ -93,11 +93,11 @@ Audio `#ffd166` · Controls `#4dc3ff` · Video `#c58bff` (soon) · Gameplay `#ff
 - Handle: 16×22 chamfered white block, `left: value%`, `translate(-50%,-50%)`.
 - **Drag:** `pointerdown` on the track captures its `getBoundingClientRect()`, converts pointer X → 0–100 (clamped), then a window `pointermove`/`pointerup` pair tracks the drag. Click-to-set works from the same handler. `transition: 0.06s linear` on fill/handle for smoothness.
 
-### 3. Controls panel (embedded — `Keybinds Panel.dc.html`)
+### 3. Controls panel (embedded)
 **Purpose:** Key rebinding, living under the same Settings menu.
 
-- This is a **chrome-free extraction** of the standalone `Controls - Keybinds` screen: same category rail (Movement / Combat / Items / Interface), same rebindable rows (primary + alternate slots), same click-to-listen → press-key flow, auto-swap on conflict, right-click to clear, per-row + global reset, and the note toast. The outer page background, the Cleo/vs/Viking control bar, and the stage frame are **removed** so it drops cleanly into the shell's main panel (mounted full-bleed, `margin:0 -30px -22px` to reach the panel edges).
-- The standalone `Controls - Keybinds.dc.html` remains as-is for full-screen use; this panel duplicates its binding data/logic. **In production, both should share one keybind module** rather than two copies.
+- The panel uses the same category rail (Movement / Combat / Items / Interface), rebindable rows (primary + alternate slots), click-to-listen → press-key flow, auto-swap on conflict, right-click to clear, per-row + global reset, and note toast. The intended presentation is chrome-free inside the shell's main panel (full-bleed with `margin:0 -30px -22px`).
+- This repository contains the design specification rather than a separate keybinds mockup file. **In production, the controls UI should share one keybind module** rather than duplicate its binding logic.
 
 ### 4. Video / Gameplay (placeholder)
 When a "soon" category is selected the main panel shows a centered ghost `SOON` with a one-line message. Wire these up as those features land; the rail item just flips `soon:false`.
@@ -125,7 +125,7 @@ When a "soon" category is selected the main panel shows a centered ghost `SOON` 
 - Static config: `NAV` (rail items), `CHAN` (channel id/label/desc/icon/color/default). `defaults()` builds the reset/initial state.
 - **Real integration:** map each channel to an audio-mixer bus; persist values to the player's profile/local store; `Save` commits, `Restore defaults` reverts to `defaults()`.
 
-### Keybinds panel (`Keybinds Panel.dc.html`)
+### Keybinds panel
 - `bindings`: `{ [actionId]: { primary, alt } }` of `KeyboardEvent.code` strings.
 - `cat`: active category. `listening`: `{ id, slot } | null` while capturing. `note`: toast string.
 - Static config: `GROUPS` (category→color), `defs()` (action list with defaults, icons/tags).
@@ -144,6 +144,6 @@ The Audio panel uses **no image assets** — channel icons are text glyphs (`♫
 All copy, default levels, and the channel list are **placeholder-quality defaults** — confirm the real channel taxonomy and starting values with audio/design.
 
 ## Files (in this bundle)
-- `Settings.dc.html` — the settings shell (menu selector) + Audio panel; embeds the keybinds panel for the Controls category.
-- `Keybinds Panel.dc.html` — chrome-free keybinds panel mounted inside the Controls category.
-- (Both reference the shared prototyping runtime `support.js` and the `assets/` folder; they are design references, not runnable product code.)
+- `Settings.dc.html` — the settings shell (menu selector) + Audio panel.
+- `README.md` — the Controls-panel specification and implementation notes.
+- The files reference the shared prototyping runtime `support.js` and the `assets/` folder; they are design references, not runnable product code.

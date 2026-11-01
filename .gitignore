@@ -1,15 +1,15 @@
-# Beroenden
+# Beroenden och lokal runtime
 node_modules/
 .runtime/
+
+# Tillfälliga mellanled och QA-previews
+tmp/
 
 # Loggar
 npm-debug.log*
 yarn-error.log*
 logs/
 *.log
-
-# Genererade felsokningsbilder (preview-*.mjs, prepare-sprites.mjs)
-public/assets/**/_*.png
 
 # Spelardata som servern skriver under drift: profiler, poang och speltid.
 # Hor hemma pa maskinen som kor servern, inte i historiken.

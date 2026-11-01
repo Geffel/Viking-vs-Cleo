@@ -26,8 +26,14 @@ const second = new AccountService({ dataDir, now: () => 1_800_000_000_001 });
 
 try {
   await first.open();
+  // AccountService.open() starts its worker but intentionally does not wait for
+  // the worker's SQLite schema setup. Warm the first connection before starting
+  // the second one so this test races the migration claim, not two WAL setup
+  // operations.
+  const firstLegacyProfile = await first.findLegacyProfile('legacy-one');
   await second.open();
-  assert.deepEqual(await first.findLegacyProfile('legacy-one'), {
+  await second.findLegacyProfile('legacy-one');
+  assert.deepEqual(firstLegacyProfile, {
     profileId: 1, displayName: 'Same Fighter', points: 17, playMs: 1200, seen: 6,
     kills: 4, deaths: 3, matches: 5, achievements: 1, nameAvailable: true, nameIssue: null,
   });

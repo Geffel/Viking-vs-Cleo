@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SOURCE_ROOT = path.join(ROOT, 'source-images');
 const OUT_DIR = path.join(ROOT, 'public/assets/viking');
+const PREVIEW_DIR = path.join(ROOT, 'tmp/previews/viking');
 
 const ALPHA_MIN = 16; // lagre an sa raknas som bakgrund
 const FEET_BAND = 0.12; // nedersta 12 % av figuren = fotterna
@@ -286,9 +287,11 @@ for (const c of cells) {
   x += c.w + PAD;
 }
 
+await fs.mkdir(PREVIEW_DIR, { recursive: true });
+
 await sharp({ create: { width: x, height: sheetH, channels: 4, background: { r: 24, g: 22, b: 38, alpha: 1 } } })
   .composite(parts)
   .png()
-  .toFile(path.join(OUT_DIR, '_preview_shield.png'));
+  .toFile(path.join(PREVIEW_DIR, '_preview_shield.png'));
 
-console.log('kontaktkarta: public/assets/viking/_preview_shield.png (rod linje = fotter, bla = mittlinje)');
+console.log('kontaktkarta: tmp/previews/viking/_preview_shield.png (rod linje = fotter, bla = mittlinje)');

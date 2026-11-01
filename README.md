@@ -22,10 +22,8 @@ starta den lokala prestandatest-servern.
 Servern skriver ut två adresser. Den andra (`http://192.168.x.x:3000`) är den du
 skickar till alla andra på nätverket.
 
-Dubbelklicka på **`turn-off-game.bat`** för att stänga av. Den letar reda på
-servern via port 3000 och avslutar den — bra när fönstret har hamnat bakom allt
-annat eller körs minimerat. Har något annat program än Node.js tagit porten lämnas
-det ifred.
+Skriv **`Shutdown`** i Server Manager-fönstret för att stänga av servern
+kontrollerat. Det tömmer först serverns skrivkö och avslutar sedan processen.
 
 Kör man `Start.bat` medan spelet redan är igång stängs den gamla servern
 först, så det blir aldrig krock om porten.
@@ -346,12 +344,13 @@ Klienten speglar sedan hela setet runt fotpunkten när spelaren vänder, så `fa
 avgör bara vilket håll källbilderna råkar vara ritade åt. Vikings ruta 3 och Cleos
 rutor 2 och 3 är ritade spegelvänt mot resten och speglas därför i verktyget.
 
-Tre förhandsvyer skrivs ut för ögongranskning:
+Tre förhandsvyer skrivs ut under `tmp/previews/` för ögongranskning; de servas
+inte av spelet:
 
-- `<lag>/_preview.png` — alla rutor med fotlinje och mittlinje, för att se att
+- `tmp/previews/<lag>/_preview.png` — alla rutor med fotlinje och mittlinje, för att se att
   figuren står stadigt och inte hoppar mellan rutorna
-- `<lag>/_ingame.png` — figuren i verklig spelstorlek med träffytan utritad
-- `_matchup-preview.png` — båda lagen, alla rutor, åt båda blickriktningarna, med
+- `tmp/previews/<lag>/_ingame.png` — figuren i verklig spelstorlek med träffytan utritad
+- `tmp/previews/_matchup-preview.png` — båda lagen, alla rutor, åt båda blickriktningarna, med
   samma uträkning som renderaren använder. Byggs med
   `node tools/preview-matchup.mjs` och är det snabbaste sättet att se att ingen
   ruta tittar åt fel håll.
@@ -369,7 +368,7 @@ npm run sprites:cleo-run
 
 Originalen ligger som `source-images/cleo_run_01.png`–`08.png`. Verktyget
 linjerar marknivån och höften, skriver `run1.png`–`run8.png`, uppdaterar
-`manifest.run` och skapar `public/assets/cleo/_preview_run.png` för visuell
+`manifest.run` och skapar `tmp/previews/cleo/_preview_run.png` för visuell
 kontroll. Springcykelns takt och minsta aktiveringsfart finns i `SPRITE_ANIM`.
 
 Vikings motsvarande original heter `viking_run_01.png`–`08.png` och byggs med
@@ -401,7 +400,7 @@ Verktyget ([`tools/prepare-viking-shield.mjs`](tools/prepare-viking-shield.mjs))
 tar bort bakgrunden med flood fill inåt från bildens ram, skalar varje ruta så
 hjälmen blir lika bred som i viloposen, lägger rutorna på en gemensam duk med
 fotpunkten på samma ställe och skriver in måtten i `manifest.json`. Kontrollera
-resultatet i `viking/_preview_shield.png`, där viloposen står bredvid slagets
+resultatet i `tmp/previews/viking/_preview_shield.png`, där viloposen står bredvid slagets
 rutor på samma fotlinje.
 
 | Inställning | Gör |
@@ -423,8 +422,8 @@ frekvensen). Klienten skickar input och bildreferenser; servern avgör resultate
 Inkommande meddelanden typkontrolleras och begränsas till 4 KiB.
 
 ```
-start-game.bat        Startar servern och öppnar webbläsaren
-turn-off-game.bat     Stänger av servern
+Start.bat             Startar servern och öppnar Server Manager
+ServerManager.ps1     Hanterar servern; skriv Shutdown för kontrollerad avstängning
 shared/constants.js   Kartor, fysik, lag, förmågor — delas av server och klient
 shared/netcode.js     Gemensam interpolation och extrapolering för träffkontroll
 server/game.js        Spelvärlden: fysik, kollision, skada, respawn, poäng
