@@ -1525,6 +1525,9 @@ a.gamepad-hover,
   background: rgba(255, 255, 255, 0.1);
   font-size: 12px;
   font-weight: 800;
+}
+
+.vote-pill.fresh {
   animation: vote-hop 0.22s ease-out;
 }
 
@@ -3421,6 +3424,9 @@ body {
   border-radius: 0;
   background: rgba(255, 255, 255, 0.04);
   clip-path: polygon(0 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%);
+}
+
+.match-row.vvc-new-row {
   animation: vvc-stagger 0.5s ease both;
   animation-delay: var(--row-delay, 0s);
 }

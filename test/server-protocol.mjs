@@ -32,7 +32,7 @@ try {
   const performancePage = await fetch(`${server.origin}/performance-test`);
   assert.equal(performancePage.status, 200);
   assert.match(performancePage.headers.get('cache-control') ?? '', /no-store/);
-  assert.match(await performancePage.text(), /\/js\/main\.js\?v=4/);
+  assert.match(await performancePage.text(), /\/js\/main\.js\?v=6/);
 
   assert.equal(await rejectedUpgrade('', server.origin), 401, 'a handwritten anonymous WebSocket is rejected');
   assert.equal(await rejectedUpgrade('vvc_session=%', server.origin), 401,

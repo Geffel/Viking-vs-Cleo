@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 
 const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
 const main = await readFile(new URL('../public/js/main.js', import.meta.url), 'utf8');
+const style = await readFile(new URL('../public/css/style.css', import.meta.url), 'utf8');
 
 assert.doesNotMatch(html, /id="intro"|id="intro-form"|id="intro-name"/,
   'the retired Enter name screen is absent');
@@ -40,5 +41,20 @@ assert.ok(
   main.indexOf('const renderFrameSamples = []') < main.indexOf('const netDebug = initNetDebug(NET_DEBUG)'),
   'performance frame metrics exist before the eagerly enabled debug panel samples them',
 );
+assert.match(main, /if \(changedView\) markViewEntry\(view\);/,
+  'view entry animation only runs when the visible view actually changes');
+
+const lobbyHandler = main.match(/net\.on\('lobby',[\s\S]*?\n\}\);/)?.[0] ?? '';
+assert.ok(lobbyHandler, 'the global lobby handler exists');
+assert.doesNotMatch(lobbyHandler, /applyMatchUpdate|renderMatchRoom/,
+  'global lobby broadcasts do not route or reanimate the local match view');
+assert.match(main, /if \(!activeWipeHasSwapped\) activeWipeSwap = swap;/,
+  'overlapping transition packets keep the latest pending UI swap');
+assert.match(main, /roundResults\.dataset\.entryKey !== entryKey/,
+  'round results animate once per match round instead of once per render');
+assert.match(style, /\.vote-pill\.fresh\s*\{[\s\S]*?animation: vote-hop/,
+  'only newly added map votes run the vote animation');
+assert.match(style, /\.match-row\.vvc-new-row\s*\{[\s\S]*?animation: vvc-stagger/,
+  'only newly added matches run the lobby-row entrance animation');
 
 console.log('AUTH UI TESTS OK: one player name, locked migration name and direct lobby routing');

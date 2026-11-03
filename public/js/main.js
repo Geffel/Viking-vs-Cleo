@@ -218,6 +218,11 @@ let achievementsReturnView = 'lobby';
 let settingsReturnView = 'lobby';
 let screenPromptTimer = 0;
 let screenPromptKey = '';
+let activeWipeSwap = null;
+let activeWipeHasSwapped = false;
+let renderedMatchIds = null;
+let renderedMapVoteScope = '';
+let renderedMapVoteKeys = new Set();
 let instructionsTeam = 'cleo';
 let instructionsSection = 'gameplay';
 let instructionsFocusReturn = null;
@@ -431,8 +436,9 @@ net.on('lobby', (msg) => {
   if (msg.me?.name) currentName = msg.me.name;
   if (msg.lb) renderLeaderboard(msg.lb);
   renderMatches(msg.matches ?? []);
-  if (currentName) applyMatchUpdate(msg.match ?? null);
-  else renderMatchRoom(msg.match ?? null);
+  // Lobby-paket ar globala sammanfattningar som alla anslutna klienter far.
+  // Matchens egna `match`/`gameReady`-paket ager routing och transitions; annars
+  // skulle en orelaterad lobbyandring animera om varenda klients aktuella vy.
 });
 
 net.on('match', (match) => {
@@ -871,7 +877,7 @@ function setView(view) {
   }
 
   syncTrainingOverlay();
-  markViewEntry(view);
+  if (changedView) markViewEntry(view);
   syncGamepadCursor();
 }
 
@@ -1187,11 +1193,17 @@ function playWipe(wipe, swap) {
   }
 
   if (wiping) {
-    swap();
+    // Flera serverpaket kan beskriva samma fasbyte. Fore mittpunkten behaller
+    // overlayen den senaste UI-snapshoten i stallet for att kapa animationen
+    // eller lata en aldre, fordrojd callback skriva tillbaka gammalt state.
+    if (!activeWipeHasSwapped) activeWipeSwap = swap;
+    else swap();
     return;
   }
 
   wiping = true;
+  activeWipeSwap = swap;
+  activeWipeHasSwapped = false;
   const ov = document.createElement('div');
   ov.className = 'vvc-overlay';
   let showsVs = false;
@@ -1253,10 +1265,17 @@ function playWipe(wipe, swap) {
 
   document.body.appendChild(ov);
   if (showsVs) audio.playMenuTransition();
-  window.setTimeout(swap, TRANSITION_MS * 0.46);
+  window.setTimeout(() => {
+    activeWipeHasSwapped = true;
+    const latestSwap = activeWipeSwap;
+    activeWipeSwap = null;
+    latestSwap?.();
+  }, TRANSITION_MS * 0.46);
   window.setTimeout(() => {
     ov.remove();
     wiping = false;
+    activeWipeSwap = null;
+    activeWipeHasSwapped = false;
   }, TRANSITION_MS * 1.04);
 }
 
@@ -1281,8 +1300,12 @@ function renderMatches(matches) {
   net.matches = matches;
   if (!matchList) return;
 
+  const previousIds = renderedMatchIds;
+  const nextIds = new Set(matches.map((match) => String(match.id)));
+
   if (!matches.length) {
     matchList.innerHTML = '<div class="empty">No matches yet.</div>';
+    renderedMatchIds = nextIds;
     return;
   }
 
@@ -1296,8 +1319,9 @@ function renderMatches(matches) {
       const accent = ROW_ACCENTS[index % ROW_ACCENTS.length];
       const joinLabel = closed ? 'Closed' : inLobby ? 'Join' : 'Jump in';
       const joinTitle = closed ? 'Shared screen matches are local only.' : '';
+      const isNew = !previousIds || !previousIds.has(String(match.id));
       return `
-        <div class="match-row ${closed ? 'closed' : ''}" data-match-id="${escapeHtml(match.id)}" style="--row-accent:${accent};--row-delay:${(index * 0.06).toFixed(2)}s">
+        <div class="match-row ${closed ? 'closed' : ''} ${isNew ? 'vvc-new-row' : ''}" data-match-id="${escapeHtml(match.id)}" style="--row-accent:${accent};--row-delay:${(index * 0.06).toFixed(2)}s">
           <div class="match-main">
             <span class="match-title">${escapeHtml(match.title)}</span>
             <span class="match-meta">
@@ -1315,6 +1339,7 @@ function renderMatches(matches) {
         </div>`;
     })
     .join('');
+  renderedMatchIds = nextIds;
 }
 
 function renderMatchRoom(match) {
@@ -1463,11 +1488,19 @@ function routeForMatch(match, previousPhase = lastMatchPhase) {
   lastMatchPhase = match.phase;
   syncMatchMusic(match);
 
+  // Vanliga stateuppdateringar (karaktar, ready, kartrost) ska inte kasta ut
+  // anvandaren ur Settings/Achievements. Ett faktiskt fasbyte far fortfarande
+  // routa till den gemensamma matchvyn.
+  const preserveAuxiliaryView =
+    (currentView === 'achievements' || currentView === 'settings') && previousPhase === match.phase;
+
   // Sen anslutare som annu inte spawnats (ingen selfId) stannar i matchrummet
   // och valjer karaktar - forst nar de faktiskt ar med i arenan gar de till spelvyn.
   const live = match.phase === MATCH_PHASES.countdown || match.phase === MATCH_PHASES.playing;
-  if (live && net.localPlayerIds().length) setView('game');
-  else setView('matchRoom');
+  if (!preserveAuxiliaryView) {
+    if (live && net.localPlayerIds().length) setView('game');
+    else setView('matchRoom');
+  }
 
   syncGameAccess(match);
   if (enteringFight) triggerFightSlam();
@@ -1812,6 +1845,8 @@ function renderMapVote(match) {
   mapVote.hidden = !voting;
   if (!voting) {
     mapVoteList.innerHTML = '';
+    renderedMapVoteScope = '';
+    renderedMapVoteKeys = new Set();
     return;
   }
 
@@ -1834,6 +1869,10 @@ function renderMapVote(match) {
   const myVote = sharedScreen ? localSeatById(match, HOST_SEAT_ID)?.mapVote ?? null : currentMatchPlayer(match)?.mapVote ?? null;
   if (mapLockBtn) mapLockBtn.disabled = !maps.length;
 
+  const voteScope = `${match.id}:${match.roundId ?? 0}`;
+  const previousVoteKeys = renderedMapVoteScope === voteScope ? renderedMapVoteKeys : new Set();
+  const nextVoteKeys = new Set();
+
   mapVoteList.innerHTML = maps
     .map((map, index) => {
       const voters = map.voters ?? [];
@@ -1853,10 +1892,12 @@ function renderMapVote(match) {
           <span class="map-count">${voters.length}</span>
           <span class="vote-pills">
             ${voters
-              .map(
-                (voter) =>
-                  `<span class="vote-pill ${escapeHtml(voter.character ?? '')}" title="${escapeHtml(voter.n)}">${escapeHtml(voter.seatId ?? initials(voter.n))}</span>`,
-              )
+              .map((voter) => {
+                const voteKey = `${map.id}:${voter.seatId ?? voter.id}`;
+                nextVoteKeys.add(voteKey);
+                const fresh = !previousVoteKeys.has(voteKey);
+                return `<span class="vote-pill ${fresh ? 'fresh' : ''} ${escapeHtml(voter.character ?? '')}" title="${escapeHtml(voter.n)}">${escapeHtml(voter.seatId ?? initials(voter.n))}</span>`;
+              })
               .join('')}
             ${cursorSeats
               .map(
@@ -1868,13 +1909,18 @@ function renderMapVote(match) {
         </button>`;
     })
     .join('');
+  renderedMapVoteScope = voteScope;
+  renderedMapVoteKeys = nextVoteKeys;
 }
 
 function renderRoundResults(match) {
   if (!roundResults || !roundResultScore || !roundResultNote || !roundResultTitle || !roundResultPodium) return;
   const showing = match.phase === MATCH_PHASES.results;
   roundResults.hidden = !showing;
-  if (!showing) return;
+  if (!showing) {
+    roundResults.dataset.entryKey = '';
+    return;
+  }
 
   const cleo = Math.max(0, Number(match.finalScore?.cleo) || 0);
   const viking = Math.max(0, Number(match.finalScore?.viking) || 0);
@@ -1905,9 +1951,13 @@ function renderRoundResults(match) {
   }
   if (viewAchievementsResultBtn) viewAchievementsResultBtn.hidden = match.statsEnabled === false;
   achievementsUi.renderSummary(match);
-  roundResults.classList.remove('vvc-enter');
-  void roundResults.offsetWidth;
-  roundResults.classList.add('vvc-enter');
+  const entryKey = `${match.id}:${match.roundId ?? 0}`;
+  if (roundResults.dataset.entryKey !== entryKey) {
+    roundResults.dataset.entryKey = entryKey;
+    roundResults.classList.remove('vvc-enter');
+    void roundResults.offsetWidth;
+    roundResults.classList.add('vvc-enter');
+  }
 }
 
 function resultPodiumCard(player, index) {
