@@ -48,6 +48,15 @@ export const MATCH_MODES = {
   performance: 'performance',
 };
 
+// Matchens transportlage (online/shared screen) och stridsregler ar separata.
+// Det gor att Free for All kan spelas bade online och lokalt utan att
+// karaktarsvalet maste fortsatta fungera som lagtillhorighet.
+export const GAME_MODES = {
+  teamBattle: 'teamBattle',
+  freeForAll: 'freeForAll',
+};
+export const GAME_MODE_IDS = Object.values(GAME_MODES);
+
 // Traningslage: en ensam spelare mot en NPC som bara gar fram och tillbaka.
 // Cooldownen kapas sa att formagorna gar att ova pa utan langa pauser - taket
 // sanker bara det som ar langre an taket, korta formagor ar redan snabba nog.

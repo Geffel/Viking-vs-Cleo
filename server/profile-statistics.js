@@ -1,4 +1,5 @@
 import { ACHIEVEMENTS, evaluateAchievements } from '../shared/achievements.js';
+import { GAME_MODES } from '../shared/constants.js';
 import { normalizeProfileId, resolveProfileReference } from './profile-ids.js';
 
 const CONTROL_CHARS = new RegExp('[\\u0000-\\u001f\\u007f]', 'g');
@@ -133,7 +134,9 @@ export class ProfileStatistics {
   applyMatchResult(match, matchGame) {
     const changed = new Set();
     const score = match.finalScore ?? matchGame.score ?? { cleo: 0, viking: 0 };
-    const winner = score.cleo === score.viking ? null : score.cleo > score.viking ? 'cleo' : 'viking';
+    const freeForAll = match.gameMode === GAME_MODES.freeForAll;
+    const winner = freeForAll ? null : score.cleo === score.viking ? null : score.cleo > score.viking ? 'cleo' : 'viking';
+    const winnerProfileId = freeForAll ? normalizeProfileId(match.roundResult?.winnerPlayer?.profileId) : null;
     const mapId = match.selectedMap || matchGame.mapId || 'unknown';
     for (const player of matchGame.players.values()) {
       const profile = this.getProfileById(player.profileId);
@@ -142,7 +145,9 @@ export class ProfileStatistics {
       const map = mapStats(stats, mapId);
       stats.matches.played++;
       map.played++;
-      const result = !winner ? 'draws' : player.team === winner ? 'wins' : 'losses';
+      const result = freeForAll
+        ? winnerProfileId === null ? 'draws' : normalizeProfileId(player.profileId) === winnerProfileId ? 'wins' : 'losses'
+        : !winner ? 'draws' : player.team === winner ? 'wins' : 'losses';
       stats.matches[result]++;
       map[result]++;
       stats.matches.bestKills = Math.max(stats.matches.bestKills, player.kills);

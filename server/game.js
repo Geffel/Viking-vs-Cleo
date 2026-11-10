@@ -7,6 +7,7 @@ import {
   ABILITY_SLOTS,
   ABILITY_TUNING,
   MELEE_SLOTS,
+  GAME_MODES,
   TEAM_IDS,
   INTERP_MS,
   LAGCOMP,
@@ -55,7 +56,7 @@ const freshMatchStats = () => ({
 export class Game {
   // clock och rng gar att byta ut i tester sa att tiden kan stegas exakt och
   // kritiska traffar kan tvingas fram eller stangas av.
-  constructor({ clock = () => Date.now(), rng = Math.random, layout = mapLayoutFor(), mapId = null, abilityCooldownCap = 0 } = {}) {
+  constructor({ clock = () => Date.now(), rng = Math.random, layout = mapLayoutFor(), mapId = null, abilityCooldownCap = 0, gameMode = GAME_MODES.teamBattle } = {}) {
     this.now = clock;
     this.gameId = nextGameId++;
     this.snapshotSeq = 0;
@@ -63,6 +64,7 @@ export class Game {
     this.rng = rng;
     this.layout = layout;
     this.mapId = mapId;
+    this.gameMode = gameMode === GAME_MODES.freeForAll ? GAME_MODES.freeForAll : GAME_MODES.teamBattle;
     // Traningslaget kapar langa cooldowns. 0 = inget tak, spelet som vanligt.
     this.abilityCooldownCap = Math.max(0, Number(abilityCooldownCap) || 0);
     this.startedAt = this.now();
@@ -111,6 +113,16 @@ export class Game {
   }
 
   // ---------------------------------------------------------------- spelare
+
+  isEnemy(source, target) {
+    if (!source || !target || source.id === target.id) return false;
+    return this.gameMode === GAME_MODES.freeForAll || source.team !== target.team;
+  }
+
+  canHit(ownerId, ownerTeam, target) {
+    if (!target || target.id === ownerId) return false;
+    return this.gameMode === GAME_MODES.freeForAll || target.team !== ownerTeam;
+  }
 
   addPlayer(name, team, identity = {}) {
     const id = nextId++;
@@ -249,7 +261,7 @@ export class Game {
     let target = null;
     let bestDistance = Infinity;
     for (const other of this.players.values()) {
-      if (other.id === p.id || other.team === p.team || other.dead) continue;
+      if (!this.isEnemy(p, other) || other.dead) continue;
       const distance = Math.hypot(other.x - p.x, other.y - p.y);
       if (distance < bestDistance) {
         bestDistance = distance;
@@ -353,8 +365,10 @@ export class Game {
 
   /** Valjer den spawnpunkt som ligger langst fran narmaste fiende. */
   spawn(p) {
-    const points = this.layout.spawns[p.team];
-    const enemies = [...this.players.values()].filter((o) => o.team !== p.team && !o.dead);
+    const points = this.gameMode === GAME_MODES.freeForAll
+      ? [...(this.layout.spawns.cleo ?? []), ...(this.layout.spawns.viking ?? [])]
+      : this.layout.spawns[p.team];
+    const enemies = [...this.players.values()].filter((o) => this.isEnemy(p, o) && !o.dead);
     if (!enemies.length) {
       this.resetPlayerAt(p, points[0]);
       return;
@@ -778,7 +792,7 @@ export class Game {
     let target = null;
     let bestDist = Infinity;
     for (const o of this.players.values()) {
-      if (o.id === p.id || o.team === p.team || o.dead) continue;
+      if (!this.isEnemy(p, o) || o.dead) continue;
       if (!overlaps(box, { x: o.x, y: o.y, w: PLAYER.w, h: PLAYER.h })) continue;
       const distance = Math.abs(o.x + PLAYER.w / 2 - cx);
       if (distance < bestDist) {
@@ -867,7 +881,7 @@ export class Game {
         const bandMax = (index + 1) * spacing;
 
         for (const target of this.players.values()) {
-          if (target.id === source.id || target.team === wave.team || target.dead || wave.hit.has(target.id)) continue;
+          if (!this.isEnemy(source, target) || target.dead || wave.hit.has(target.id)) continue;
           const tx = target.x + PLAYER.w / 2;
           const forward = (tx - wave.x) * wave.f;
           const targetBottom = target.y + PLAYER.h;
@@ -898,7 +912,7 @@ export class Game {
     let best = Infinity;
 
     for (const o of this.players.values()) {
-      if (o.id === p.id || o.team === p.team || o.dead) continue;
+      if (!this.isEnemy(p, o) || o.dead) continue;
       const ox = o.x + PLAYER.w / 2;
       const oy = o.y + PLAYER.h / 2;
       if (!inSandCone(ox, oy, cx, cy, p.facing, cfg)) continue;
@@ -1174,7 +1188,7 @@ export class Game {
     let best = Infinity;
 
     for (const o of this.players.values()) {
-      if (o.team === pr.team || o.dead) continue;
+      if (!this.canHit(pr.ownerId, pr.team, o) || o.dead) continue;
       if (!overlaps(box, { x: o.x, y: o.y, w: PLAYER.w, h: PLAYER.h })) continue;
 
       const d = Math.hypot(o.x + PLAYER.w / 2 - pr.px, o.y + PLAYER.h / 2 - pr.py);
@@ -1507,7 +1521,7 @@ export class Game {
     this.fx.push({ k: 'slam', id: p.id, x: cx, y: cy, r: cfg.radius, team: p.team });
 
     for (const o of this.players.values()) {
-      if (o.id === p.id || o.team === p.team || o.dead) continue;
+      if (!this.isEnemy(p, o) || o.dead) continue;
       const ox = o.x + PLAYER.w / 2;
       const oy = o.y + PLAYER.h / 2;
       const d = Math.hypot(ox - cx, oy - cy);
@@ -1535,7 +1549,7 @@ export class Game {
     let shielded = null;
 
     for (const o of this.players.values()) {
-      if (o.id === p.id || o.team === p.team || o.dead) continue;
+      if (!this.isEnemy(p, o) || o.dead) continue;
       const at = s.viewPlayers ? s.viewPlayers.get(o.id) : this.positionAt(o, s.viewTime);
       if (!at || (at.life !== undefined && at.life !== o.life)) continue;
       if (!overlaps(s.box, { x: at.x, y: at.y, w: PLAYER.w, h: PLAYER.h })) continue;
@@ -1762,7 +1776,7 @@ export class Game {
     const box = shield ? shieldChargeBox(p, cfg) : { x: p.x, y: p.y, w: PLAYER.w, h: PLAYER.h };
 
     for (const o of this.players.values()) {
-      if (o.team === p.team || o.dead || p.chargeHits.has(o.id)) continue;
+      if (!this.isEnemy(p, o) || o.dead || p.chargeHits.has(o.id)) continue;
       if (!overlaps(box, { x: o.x, y: o.y, w: PLAYER.w, h: PLAYER.h })) continue;
       p.chargeHits.add(o.id);
       const damage = shield ? randInt(cfg.damageMin, cfg.damageMax) : cfg.damage;
@@ -1801,7 +1815,7 @@ export class Game {
       });
       return true;
     }
-    if (!source || source.team === target.team || !this.hasPowerShield(target, t)) return false;
+    if (!this.isEnemy(source, target) || !this.hasPowerShield(target, t)) return false;
 
     target.shieldCharges--;
     target.shieldSetBlocks++;
@@ -2005,12 +2019,12 @@ export class Game {
     const killer = killerId ? this.players.get(killerId) : null;
     this.fx.push({ k: 'death', id: victim.id, x: victim.x + PLAYER.w / 2, y: victim.y + PLAYER.h / 2, team: victim.team });
 
-    if (killer && killer.team !== victim.team) {
+    if (this.isEnemy(killer, victim)) {
       killer.kills++;
       killer.stats.kills++;
-      this.score[killer.team]++;
+      if (this.gameMode !== GAME_MODES.freeForAll) this.score[killer.team]++;
     }
-    const credited = !!(killer && killer.team !== victim.team);
+    const credited = this.isEnemy(killer, victim);
     const firstInMatch = credited && !this.firstKillDone;
     if (firstInMatch) this.firstKillDone = true;
     this.feed.push({
@@ -2117,7 +2131,11 @@ export class Game {
       if (t - frame.time <= LAGCOMP.historyMs) break;
       this.viewHistory.delete(id);
     }
-    const snap = { t: 'state', gameId: this.gameId, seq, simTime: t, tick: this.tick, players, score: this.score, fx: this.fx, feed: this.feed, events: this.events, pu, pr };
+    const individualScore = this.gameMode === GAME_MODES.freeForAll
+      ? players.map((p) => ({ id: p.i, name: p.n, team: p.tm, kills: p.k, deaths: p.de }))
+          .sort((a, b) => b.kills - a.kills || a.deaths - b.deaths || a.name.localeCompare(b.name))
+      : [];
+    const snap = { t: 'state', gameId: this.gameId, seq, simTime: t, tick: this.tick, players, score: this.score, individualScore, fx: this.fx, feed: this.feed, events: this.events, pu, pr };
     this.fx = [];
     this.feed = [];
     this.events = [];

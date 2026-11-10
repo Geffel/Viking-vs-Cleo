@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { Game } from '../server/game.js';
 import { buildRoundResult } from '../server/round-results.js';
+import { GAME_MODES } from '../shared/constants.js';
 
 function fighter(game, name, team, profileId, stats) {
   const player = game.addPlayer(name, team, { profileId });
@@ -20,6 +21,24 @@ function fighter(game, name, team, profileId, stats) {
   assert.equal(result.mvp.name, 'True MVP', 'MVP comes from the winning team and is not the first connected player');
   assert.deepEqual(result.podium.map((player) => player.name), ['True MVP', 'Cleo Star', 'First Viking']);
   assert.deepEqual(result.podium.map((player) => player.rank), [1, 2, 3], 'the result carries a durable top three');
+}
+
+{
+  const game = new Game({ gameMode: GAME_MODES.freeForAll });
+  fighter(game, 'Cleo One', 'cleo', 61, { kills: 2, damageDealt: 500, deaths: 1 });
+  fighter(game, 'Cleo Winner', 'cleo', 62, { kills: 4, damageDealt: 700, deaths: 2 });
+  fighter(game, 'Viking', 'viking', 63, { kills: 3, damageDealt: 900, deaths: 0 });
+  const result = buildRoundResult(game);
+  assert.equal(result.winner, null, 'free for all does not invent a team winner');
+  assert.equal(result.winnerPlayer?.name, 'Cleo Winner', 'free for all winner is the unique kill leader');
+  assert.deepEqual(result.podium.map((player) => player.name), ['Cleo Winner', 'Viking', 'Cleo One']);
+}
+
+{
+  const game = new Game({ gameMode: GAME_MODES.freeForAll });
+  fighter(game, 'Tied Cleo', 'cleo', 71, { kills: 2, damageDealt: 600, deaths: 1 });
+  fighter(game, 'Tied Viking', 'viking', 72, { kills: 2, damageDealt: 500, deaths: 0 });
+  assert.equal(buildRoundResult(game).winnerPlayer, null, 'a tied free for all has no winner');
 }
 
 {

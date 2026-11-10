@@ -16,7 +16,7 @@ const NOTE_MS = 2600;
 
 const NAV = [
   { id: 'audio', label: 'Audio', icon: '♪', color: '#ffd166', kicker: 'Sound & mixing' },
-  { id: 'controls', label: 'Controls', icon: '⌨', color: '#4dc3ff', kicker: 'Keyboard & gamepad' },
+  { id: 'controls', label: 'Controls', icon: '⌨', color: '#4dc3ff', kicker: 'Keyboard, mouse & gamepad' },
   { id: 'video', label: 'Video', icon: '▣', color: '#c58bff', soon: true },
   { id: 'gameplay', label: 'Gameplay', icon: '⚙', color: '#ff4d9d', soon: true },
 ];

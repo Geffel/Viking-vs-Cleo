@@ -48,6 +48,7 @@ export class Net {
     this.powerups = []; // pizzor pa kartan just nu, senaste ognapsbilden
     this.projectiles = []; // kastade yxor/vapen, senaste ognapsbilden
     this.score = { cleo: 0, viking: 0 };
+    this.individualScore = [];
     this.sessionId = 0;
     this.name = '';
     this.profileId = 0;
@@ -165,6 +166,7 @@ export class Net {
         this.powerups = [];
         this.projectiles = [];
         this.score = { cleo: 0, viking: 0 };
+        this.individualScore = [];
         if (msg.profile) this.setProfile(msg.profile);
         this.emit('gameReady', msg);
       } else if (msg.t === 'achievementUnlocked') {
@@ -201,6 +203,10 @@ export class Net {
 
   setSharedScreenMode(enabled) {
     this.send({ t: 'setSharedScreenMode', enabled });
+  }
+
+  setGameMode(gameMode) {
+    this.send({ t: 'setGameMode', gameMode });
   }
 
   wakeLocalSeat(inputDevice) {
@@ -286,6 +292,7 @@ export class Net {
     this.powerups = msg.pu ?? [];
     this.projectiles = projectiles;
     this.score = msg.score;
+    this.individualScore = msg.individualScore ?? [];
     this.buffer.push(this.latest);
 
     while (this.buffer.length > 2 && time - this.buffer[0].time > BUFFER_MS) this.buffer.shift();
@@ -320,6 +327,7 @@ export class Net {
     this.powerups = [];
     this.projectiles = [];
     this.score = { cleo: 0, viking: 0 };
+    this.individualScore = [];
   }
 
   resetTimeline() {

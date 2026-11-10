@@ -1,3 +1,5 @@
+import { GAME_MODES } from '../shared/constants.js';
+
 const TEAM_IDS = new Set(['cleo', 'viking']);
 
 /**
@@ -7,13 +9,18 @@ const TEAM_IDS = new Set(['cleo', 'viking']);
  */
 export function buildRoundResult(game, finalScore = game?.score) {
   const score = cleanScore(finalScore);
-  const winner = score.cleo === score.viking ? null : score.cleo > score.viking ? 'cleo' : 'viking';
+  const freeForAll = game?.gameMode === GAME_MODES.freeForAll;
+  const winner = freeForAll ? null : score.cleo === score.viking ? null : score.cleo > score.viking ? 'cleo' : 'viking';
   const participants = aggregateParticipants(game);
   const eligible = winner ? participants.filter((player) => player.team === winner) : participants;
   const performed = eligible.filter((player) => player.kills > 0 || player.damageDealt > 0);
   performed.sort(comparePerformance);
   const mvp = performed[0] ?? null;
   const ranked = [...participants].sort(comparePerformance);
+  const topKills = ranked[0]?.kills ?? 0;
+  const winnerPlayer = freeForAll && topKills > 0 && ranked.filter((player) => player.kills === topKills).length === 1
+    ? ranked[0]
+    : null;
   const podium = mvp
     ? [mvp, ...ranked.filter((player) => player !== mvp)]
         .slice(0, 3)
@@ -22,6 +29,7 @@ export function buildRoundResult(game, finalScore = game?.score) {
 
   return {
     winner,
+    winnerPlayer,
     mvp,
     podium,
   };

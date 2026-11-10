@@ -22,6 +22,7 @@ import {
   defaultBindings,
   defaultFor,
   keyLabel,
+  mouseCode,
   padCap,
   padLabel,
   saveBindings,
@@ -56,6 +57,7 @@ export class ControlsUi {
     this.listening = null;
     this.padFrame = 0;
     this.padIgnore = new Set();
+    this.capturedMouseButton = null;
 
     this.page = document.getElementById('controls-view');
     this.title = document.getElementById('controls-title');
@@ -92,6 +94,11 @@ export class ControlsUi {
     // Ligger i capture-fasen sa att tangenten fangas innan nagon annan hinner
     // reagera pa den medan vi lyssnar efter en ny bindning.
     window.addEventListener('keydown', (e) => this.onKeyDown(e), true);
+    window.addEventListener('mousedown', (e) => this.onMouseDown(e), true);
+    window.addEventListener('mouseup', (e) => this.onMouseFollowup(e), true);
+    window.addEventListener('auxclick', (e) => this.onMouseFollowup(e), true);
+    window.addEventListener('contextmenu', (e) => this.onMouseFollowup(e), true);
+    window.addEventListener('blur', () => { this.capturedMouseButton = null; });
     onAbilityOrderChange(() => this.render());
 
     this.render();
@@ -128,6 +135,40 @@ export class ControlsUi {
       return;
     }
     this.assign(this.listening.slot, e.code);
+  }
+
+  onMouseDown(e) {
+    if (!this.listening || this.listening.box !== 'primary' || this.page?.hidden) return;
+    // Den virtuella gamepad-markoren skickar syntetiska mushandelser. De ska
+    // fortsatta navigera men aldrig raknas som en fysisk musbindning.
+    if (!e.isTrusted || e.sourceCapabilities?.firesTouchEvents) return;
+
+    const code = mouseCode(e.button);
+    if (!code || !canBind(code)) {
+      this.showNote('That mouse button cannot be bound');
+      return;
+    }
+
+    e.preventDefault();
+    e.stopPropagation();
+    // Behall knappen tills hela klickgesten ar klar. Webblasare utfor ofta
+    // bakat/framat for sidoknappar forst vid mouseup eller auxclick.
+    this.capturedMouseButton = e.button;
+    this.assign(this.listening.slot, code);
+  }
+
+  onMouseFollowup(e) {
+    if (e.button !== this.capturedMouseButton) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (e.type === 'auxclick' || e.type === 'contextmenu') {
+      this.capturedMouseButton = null;
+      return;
+    }
+    setTimeout(() => {
+      if (this.capturedMouseButton === e.button) this.capturedMouseButton = null;
+    }, 500);
   }
 
   startListen(slot, box) {
@@ -303,7 +344,7 @@ export class ControlsUi {
   keySlotMarkup(slot) {
     const listening = this.isListening(slot, 'primary');
     const code = this.draft[slot]?.primary ?? null;
-    const label = listening ? 'Press a key…' : (keyLabel(code) ?? '—');
+    const label = listening ? 'Press key / mouse…' : (keyLabel(code) ?? '—');
     return `
       <button class="${slotClasses(listening, !code)}" type="button"
         data-kb-slot="${escapeAttr(slot)}" data-kb-box="primary">${escapeHtml(label)}</button>`;

@@ -117,6 +117,10 @@ export class Hud {
       cleo: document.getElementById('score-cleo'),
       viking: document.getElementById('score-viking'),
     };
+    this.scoreLabels = {
+      cleo: this.score.cleo?.closest('.team')?.querySelector('.label'),
+      viking: this.score.viking?.closest('.team')?.querySelector('.label'),
+    };
     this.feed = document.getElementById('killfeed');
     this.respawn = document.getElementById('respawn');
     this.respawnTimer = document.getElementById('respawn-timer');
@@ -295,7 +299,18 @@ export class Hud {
     }
   }
 
-  updateScore(score) {
+  updateScore(score, individualScore = null) {
+    if (Array.isArray(individualScore)) {
+      const leader = individualScore[0] ?? null;
+      const runnerUp = individualScore[1] ?? null;
+      this.scoreLabels.cleo.textContent = leader?.name ?? 'Free for All';
+      this.score.cleo.textContent = leader?.kills ?? 0;
+      this.score.viking.textContent = runnerUp?.kills ?? 0;
+      this.scoreLabels.viking.textContent = runnerUp?.name ?? 'Kills';
+      return;
+    }
+    this.scoreLabels.cleo.textContent = 'Team Cleo';
+    this.scoreLabels.viking.textContent = 'Team Viking';
     this.score.cleo.textContent = score.cleo;
     this.score.viking.textContent = score.viking;
   }

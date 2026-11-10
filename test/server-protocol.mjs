@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import WebSocket from 'ws';
 import { startTestServer } from './test-server.mjs';
-import { MAX_MESSAGE_BYTES } from '../server/protocol.js';
+import { MAX_MESSAGE_BYTES, parseClientMessage } from '../server/protocol.js';
 import { MAPS, MATCH_MODES, MATCH_PHASES } from '../shared/constants.js';
 
 const server = await startTestServer({
@@ -10,6 +10,10 @@ const server = await startTestServer({
   env: { VVC_PERFORMANCE_ENABLED: '1' },
 });
 const sockets = [];
+assert.deepEqual(parseClientMessage(JSON.stringify({ t: 'setGameMode', gameMode: 'freeForAll' })), {
+  t: 'setGameMode', gameMode: 'freeForAll',
+});
+assert.equal(parseClientMessage(JSON.stringify({ t: 'setGameMode', gameMode: 'royale' })), null);
 function connect(cookie = server.authCookies[0], origin = server.origin, url = server.url) {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(url, { headers: { Origin: origin, ...(cookie ? { Cookie: cookie } : {}) } });

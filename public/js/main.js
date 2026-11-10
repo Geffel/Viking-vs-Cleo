@@ -14,6 +14,7 @@ import {
   BACKSTAB,
   COMBO,
   CRIT,
+  GAME_MODES,
   GAMEPAD_BINDS,
   LOCAL_SEAT_IDS,
   MAPS,
@@ -102,6 +103,8 @@ const matchRoomTitle = document.getElementById('match-room-title');
 const matchRoomPhase = document.getElementById('match-room-phase');
 const matchPlayerList = document.getElementById('match-player-list');
 const characterSelect = document.getElementById('character-select');
+const gameModeSetting = document.getElementById('game-mode-setting');
+const gameModeOwner = document.getElementById('game-mode-owner');
 const readyToggle = document.getElementById('ready-toggle');
 const sharedScreenToggle = document.getElementById('shared-screen-toggle');
 const startMatchBtn = document.getElementById('start-match');
@@ -347,6 +350,13 @@ characterSelect.addEventListener('click', (e) => {
   else net.setCharacter(btn.dataset.character);
 });
 
+gameModeSetting?.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-game-mode]');
+  if (!btn || btn.disabled || !net.match) return;
+  lobbyError.textContent = '';
+  net.setGameMode(btn.dataset.gameMode);
+});
+
 readyToggle.addEventListener('click', () => {
   const match = net.match;
   const sharedScreen = isSharedScreenMatch(match);
@@ -545,7 +555,7 @@ function frame(now) {
   renderer.setMapLayout(arena.layout);
   renderer.draw(players, net.powerups, net.sampleProjectiles(), net.localPlayerIds(), dt);
 
-  hud.updateScore(net.score);
+  hud.updateScore(net.score, isFreeForAllMatch(net.match) ? net.individualScore : null);
   if (isSharedScreenMatch(net.match) && net.localPlayers.size) {
     hud.updateShared(net.localSelfPlayers(), sharedSeatsFor(net.match));
   } else {
@@ -1314,6 +1324,7 @@ function renderMatches(matches) {
       // Vanliga matcher kan fortfarande joinas sent; shared screen ar stangd.
       const inLobby = match.phase === MATCH_PHASES.matchLobby;
       const sharedScreen = isSharedScreenMatch(match);
+      const freeForAll = isFreeForAllMatch(match);
       const closed = !!match.closed || sharedScreen;
       const mapLabel = match.selectedMap ? mapName(match, match.selectedMap) : '';
       const accent = ROW_ACCENTS[index % ROW_ACCENTS.length];
@@ -1328,6 +1339,7 @@ function renderMatches(matches) {
               <span>host <b>${escapeHtml(match.hostName)}</b></span>
               <span class="phase-badge ${inLobby ? '' : 'locked'}">${phaseLabel(match.phase)}</span>
               ${sharedScreen ? '<span class="phase-badge shared">Shared screen</span>' : ''}
+              ${freeForAll ? '<span class="phase-badge ffa">Free for All</span>' : ''}
               ${closed ? '<span class="phase-badge closed">Closed</span>' : ''}
               ${mapLabel ? `<span class="match-map">🗺 ${escapeHtml(mapLabel)}</span>` : ''}
             </span>
@@ -1350,6 +1362,7 @@ function renderMatchRoom(match) {
       matchRoom.dataset.mode = '';
     }
     if (matchPlayerList) matchPlayerList.innerHTML = '';
+    if (gameModeSetting) gameModeSetting.hidden = true;
     if (sharedScreenToggle) sharedScreenToggle.hidden = true;
     if (mapVote) mapVote.hidden = true;
     if (roundResults) roundResults.hidden = true;
@@ -1381,6 +1394,7 @@ function renderMatchRoom(match) {
   matchRoomTitle.textContent = match.title;
   const selectedMap = mapName(match, match.selectedMap);
   const modeLabel = sharedScreen ? 'Shared screen - ' : '';
+  const gameModeLabel = isFreeForAllMatch(match) ? 'Free for All - ' : '';
   const visibleReadyCount = sharedScreen ? match.localReadyCount ?? localSeats.filter((seat) => seat.ready).length : match.readyCount;
   const visiblePlayerCount = sharedScreen ? match.localSeatCount ?? localSeats.length : match.playerCount;
   const visiblePickedCount = sharedScreen ? match.localCharactersChosenCount ?? localSeats.filter((seat) => seat.character).length : 0;
@@ -1391,10 +1405,22 @@ function renderMatchRoom(match) {
       ? 'Solo practice against a training dummy' + (selectedMap ? ` - Map: ${selectedMap}` : '')
     : joiningLive
       ? 'Pick a character to jump into the match' + (selectedMap ? ` - Map: ${selectedMap}` : '')
-      : `${modeLabel}${phaseLabel(match.phase)} - Host ${match.hostName} - ${progressLabel}` +
+      : `${modeLabel}${gameModeLabel}${phaseLabel(match.phase)} - Host ${match.hostName} - ${progressLabel}` +
         (selectedMap ? ` - Map: ${selectedMap}` : '');
 
   characterSelect.hidden = !canPick;
+
+  if (gameModeSetting) {
+    gameModeSetting.hidden = !inMatchLobby || soloTest;
+    gameModeSetting.classList.toggle('readonly', !isHost);
+    if (gameModeOwner) gameModeOwner.textContent = isHost ? 'Host chooses' : `${match.hostName} chooses`;
+    for (const btn of gameModeSetting.querySelectorAll('[data-game-mode]')) {
+      const selected = btn.dataset.gameMode === (match.gameMode ?? GAME_MODES.teamBattle);
+      btn.classList.toggle('on', selected);
+      btn.setAttribute('aria-pressed', selected ? 'true' : 'false');
+      btn.disabled = !isHost;
+    }
+  }
 
   for (const btn of characterSelect.querySelectorAll('[data-character]')) {
     const on = btn.dataset.character === (sharedScreen ? hostSeat?.character : me?.character);
@@ -1924,22 +1950,29 @@ function renderRoundResults(match) {
 
   const cleo = Math.max(0, Number(match.finalScore?.cleo) || 0);
   const viking = Math.max(0, Number(match.finalScore?.viking) || 0);
-  const winner = cleo === viking ? '' : cleo > viking ? 'cleo' : 'viking';
+  const freeForAll = isFreeForAllMatch(match);
+  const ffaWinner = freeForAll ? match.roundResult?.winnerPlayer ?? null : null;
+  const winner = freeForAll ? ffaWinner?.team ?? '' : cleo === viking ? '' : cleo > viking ? 'cleo' : 'viking';
   const winnerColor = winner === 'viking' ? 'rgba(77,195,255,' : 'rgba(255,77,157,';
   const podium = Array.isArray(match.roundResult?.podium)
     ? match.roundResult.podium
     : match.roundResult?.mvp ? [{ ...match.roundResult.mvp, rank: 1 }] : [];
+  const ffaTopKills = Math.max(0, Number(podium[0]?.kills) || 0);
 
   roundResults.dataset.winner = winner || 'draw';
   roundResults.style.setProperty('--winner-bg', winner ? `${winnerColor}0.14)` : 'rgba(255,209,102,0.14)');
   roundResults.style.setProperty('--winner-border', winner ? `${winnerColor}0.4)` : 'rgba(255,209,102,0.42)');
-  roundResultTitle.textContent = winner ? `Team ${characterLabel(winner)} is victorious` : 'The round ends in a draw';
-  roundResultScore.innerHTML = `
-    <span>Team Cleo</span><strong class="cleo-score">${cleo}</strong>
-    <i>VS</i>
-    <strong class="viking-score">${viking}</strong><span>Team Viking</span>`;
+  roundResultTitle.textContent = freeForAll
+    ? ffaWinner ? `${ffaWinner.name} wins Free for All` : 'Free for All ends in a draw'
+    : winner ? `Team ${characterLabel(winner)} is victorious` : 'The round ends in a draw';
+  roundResultScore.classList.toggle('ffa', freeForAll);
+  roundResultScore.innerHTML = freeForAll
+    ? `<span>${ffaWinner ? 'Winner' : 'Top score'}</span><strong class="${(ffaWinner ?? podium[0])?.team === 'viking' ? 'viking-score' : 'cleo-score'}">${ffaTopKills}</strong><span>Kills</span>`
+    : `<span>Team Cleo</span><strong class="cleo-score">${cleo}</strong>
+       <i>VS</i>
+       <strong class="viking-score">${viking}</strong><span>Team Viking</span>`;
   roundResultPodium.innerHTML = podium.length
-    ? podium.map(resultPodiumCard).join('')
+    ? podium.map((player, index) => resultPodiumCard(player, index, freeForAll)).join('')
     : '<div class="podium-empty">No individual ranking — no kills or damage were recorded</div>';
 
   if (match.resultCounts === false) {
@@ -1960,11 +1993,11 @@ function renderRoundResults(match) {
   }
 }
 
-function resultPodiumCard(player, index) {
+function resultPodiumCard(player, index, freeForAll = false) {
   const rank = Math.max(1, Math.min(3, Number(player?.rank) || index + 1));
   const team = player?.team === 'cleo' ? 'cleo' : 'viking';
-  const teamName = team === 'cleo' ? 'Team Cleo' : 'Team Viking';
-  const label = rank === 1 ? 'MVP' : rank === 2 ? 'Runner up' : 'Third place';
+  const teamName = team === 'cleo' ? (freeForAll ? 'Cleo' : 'Team Cleo') : (freeForAll ? 'Viking' : 'Team Viking');
+  const label = rank === 1 ? (freeForAll ? 'Top fighter' : 'MVP') : rank === 2 ? 'Runner up' : 'Third place';
   const kills = Math.max(0, Number(player?.kills) || 0);
   const deaths = Math.max(0, Number(player?.deaths) || 0);
   const damage = Math.max(0, Number(player?.damageDealt) || 0);
@@ -2394,6 +2427,10 @@ function isSoloTestMatch(match) {
 
 function isSharedScreenMatch(match) {
   return !!match?.sharedScreen || match?.mode === MATCH_MODES.sharedScreen;
+}
+
+function isFreeForAllMatch(match) {
+  return match?.gameMode === GAME_MODES.freeForAll;
 }
 
 function mapName(match, mapId) {

@@ -3490,6 +3490,11 @@ body {
   color: var(--gold);
 }
 
+.phase-badge.ffa {
+  border-color: rgba(197, 139, 255, 0.55);
+  color: #c58bff;
+}
+
 .phase-badge.closed {
   border-color: rgba(255, 255, 255, 0.22);
   color: rgba(242, 245, 255, 0.66);
@@ -3686,6 +3691,70 @@ body {
   font-size: 12px;
   letter-spacing: 0.16em;
 }
+
+.game-mode-setting {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+  margin-bottom: 12px;
+  padding: 9px 10px 9px 13px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-left: 3px solid var(--gold);
+  background: rgba(255, 255, 255, 0.035);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%);
+}
+
+.game-mode-setting[hidden] { display: none; }
+
+.game-mode-copy {
+  display: grid;
+  gap: 1px;
+  min-width: 94px;
+  font: 700 11px "Oswald", sans-serif;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.game-mode-copy small {
+  color: rgba(242, 245, 255, 0.4);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+}
+
+.game-mode-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+
+.game-mode-options button {
+  min-width: 0;
+  padding: 8px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 0;
+  background: rgba(0, 0, 0, 0.18);
+  color: rgba(242, 245, 255, 0.58);
+  font: 700 11px "Oswald", sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  clip-path: var(--slash);
+}
+
+.game-mode-options button.on {
+  border-color: var(--gold);
+  background: rgba(255, 209, 102, 0.14);
+  color: var(--gold);
+}
+
+.game-mode-options button[data-game-mode="freeForAll"].on {
+  border-color: #c58bff;
+  background: rgba(197, 139, 255, 0.14);
+  color: #d8b5ff;
+}
+
+.game-mode-setting.readonly .game-mode-options button:not(.on) { opacity: 0.35; }
+.game-mode-setting.readonly .game-mode-options button.on { opacity: 0.9; }
 
 .select-kicker span {
   color: rgba(242, 245, 255, 0.3);
@@ -9151,6 +9220,10 @@ body > .instructions-overlay.in-game {
   padding: 7px 18px;
   border-block: 1px solid rgba(255, 255, 255, 0.14);
   background: rgba(255, 255, 255, 0.025);
+}
+
+.preview-score.ffa {
+  grid-template-columns: auto auto auto;
 }
 
 .preview-score span {

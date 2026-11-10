@@ -356,6 +356,18 @@ function handleMessage(ws, msg) {
       sendMatch(match);
       break;
     }
+    case 'setGameMode': {
+      const result = requireMatch(ws);
+      if (!result) return;
+      const { match, error } = matches.setGameMode(result.id, ws.sessionId, msg.gameMode);
+      if (error) {
+        send(ws, { t: 'appError', message: error });
+        return;
+      }
+      broadcastLobby();
+      sendMatch(match);
+      break;
+    }
     case 'wakeLocalSeat': {
       const result = requireMatch(ws);
       if (!result) return;
@@ -740,6 +752,7 @@ function prepareGameForMatch(match) {
     clock: gameNow,
     layout: mapLayoutFor(match.selectedMap),
     mapId: match.selectedMap,
+    gameMode: match.gameMode,
     abilityCooldownCap: training
       ? TRAINING.abilityCooldownMs
       : performanceTest ? PERFORMANCE_TEST.abilityCooldownMs : 0,

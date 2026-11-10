@@ -1,7 +1,7 @@
 // Matchflodet: lobby -> kartrostning -> countdown -> spel -> resultat.
 
 import { MatchRegistry } from '../server/matches.js';
-import { MAPS, MAP_VOTE_MS, MATCH_COUNTDOWN_MS, MATCH_DURATION_MS, MATCH_MODES, MATCH_PHASES, PERFORMANCE_TEST } from '../shared/constants.js';
+import { GAME_MODES, MAPS, MAP_VOTE_MS, MATCH_COUNTDOWN_MS, MATCH_DURATION_MS, MATCH_MODES, MATCH_PHASES, PERFORMANCE_TEST } from '../shared/constants.js';
 
 let clock = 100000;
 const fails = [];
@@ -33,6 +33,14 @@ registry.setCharacter(created.id, host.sessionId, 'cleo');
 registry.setCharacter(created.id, guest.sessionId, 'viking');
 check('spelare kan valja karaktar', [...created.players.values()].every((p) => p.character));
 
+registry.setReady(created.id, host.sessionId, true);
+registry.setReady(created.id, guest.sessionId, true);
+check('bara host kan byta game mode', !!registry.setGameMode(created.id, guest.sessionId, GAME_MODES.freeForAll).error);
+registry.setGameMode(created.id, host.sessionId, GAME_MODES.freeForAll);
+check('host kan valja free for all', registry.snapshot(created.id).gameMode === GAME_MODES.freeForAll);
+check('game mode-byte nollstaller ready', [...created.players.values()].every((p) => !p.ready));
+check('okant game mode nekas', !!registry.setGameMode(created.id, host.sessionId, 'royale').error);
+registry.setGameMode(created.id, host.sessionId, GAME_MODES.teamBattle);
 registry.setReady(created.id, host.sessionId, true);
 registry.setReady(created.id, guest.sessionId, true);
 check('ready raknas i snapshot', registry.snapshot(created.id).allReady);

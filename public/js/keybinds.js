@@ -3,7 +3,7 @@
 // laser harifran - binder man om en tangent slar den igenom overallt pa en gang
 // i stallet for att stanna kvar som gammal text i en ruta.
 //
-// Varje plats har tva rutor: primary ar tangenten pa tangentbordet, pad ar
+// Varje plats har tva rutor: primary ar tangenten eller musknappen, pad ar
 // knappen pa handkontrollen (dess index i Gamepad API:t, se PAD_BUTTONS).
 
 import { ABILITY_BINDS, BIND_SLOTS, GAMEPAD_BINDS, MELEE_BINDS, MOVE_BINDS, PAD_BUTTONS } from '/shared/constants.js';
@@ -13,9 +13,17 @@ const STORAGE_KEY = 'vvc.keybinds';
 const ALL_BINDS = [...MOVE_BINDS, ...MELEE_BINDS, ...ABILITY_BINDS];
 const BIND_BY_SLOT = new Map(ALL_BINDS.map((bind) => [bind.slot, bind]));
 
-// KeyboardEvent.code ar alltid bokstaver och siffror. Allt annat i sparfilen ar
-// inte skrivet av oss och slangs nar den lases.
+// KeyboardEvent.code ar alltid bokstaver och siffror. Musknappar sparas som
+// Mouse0..Mouse31. Allt annat i sparfilen slangs nar den lases.
 const CODE_RE = /^[A-Za-z0-9]{1,24}$/;
+const MOUSE_CODE_RE = /^Mouse(?:[0-9]|[12][0-9]|3[01])$/;
+const MOUSE_LABELS = {
+  Mouse0: 'LMB',
+  Mouse1: 'MMB',
+  Mouse2: 'RMB',
+  Mouse3: 'Mouse 4',
+  Mouse4: 'Mouse 5',
+};
 
 // Modifierare gar inte att binda: input-lagret slapper igenom Ctrl/Alt/Meta till
 // webblasaren, sa en bindning pa dem skulle anda aldrig ga igang.
@@ -113,6 +121,11 @@ export function codeMap(source = current) {
   return map;
 }
 
+/** MouseEvent.button -> samma kodformat som sparas i primary-rutan. */
+export function mouseCode(button) {
+  return Number.isInteger(button) && button >= 0 && button <= 31 ? `Mouse${button}` : null;
+}
+
 /** Vilken plats en tangent redan sitter pa, om nagon. */
 export function slotForCode(code, source = current) {
   for (const slot of Object.keys(source)) {
@@ -174,6 +187,8 @@ export function canBindPad(button) {
 /** Kort etikett for en tangentkod: KeyQ -> Q, Digit1 -> 1, ArrowLeft -> vanster pil. */
 export function keyLabel(code) {
   if (!code) return null;
+  if (MOUSE_LABELS[code]) return MOUSE_LABELS[code];
+  if (MOUSE_CODE_RE.test(code)) return `Mouse ${Number(code.slice(5)) + 1}`;
   if (KEY_LABELS[code]) return KEY_LABELS[code];
   if (code.startsWith('Key')) return code.slice(3);
   if (code.startsWith('Digit')) return code.slice(5);
@@ -183,7 +198,9 @@ export function keyLabel(code) {
 
 /** Gar tangenten att binda alls? Modifierare och Esc ar reserverade. */
 export function canBind(code) {
-  return CODE_RE.test(String(code ?? '')) && !BLOCKED_CODES.has(code);
+  const value = String(code ?? '');
+  if (value.startsWith('Mouse')) return MOUSE_CODE_RE.test(value);
+  return CODE_RE.test(value) && !BLOCKED_CODES.has(value);
 }
 
 function load() {

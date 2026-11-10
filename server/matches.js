@@ -1,4 +1,6 @@
 import {
+  GAME_MODE_IDS,
+  GAME_MODES,
   LOCAL_SEAT_IDS,
   MAPS,
   MAP_VOTE_MS,
@@ -32,6 +34,7 @@ export class MatchRegistry {
       title: performance ? `Performance test ${id}` : training ? `Training ${id}` : `Match ${id}`,
       phase: MATCH_PHASES.matchLobby,
       mode,
+      gameMode: GAME_MODES.teamBattle,
       maxBots: performance
         ? Math.max(PERFORMANCE_TEST.minBots, Math.min(PERFORMANCE_TEST.maxBots, Math.round(Number(maxBots) || PERFORMANCE_TEST.defaultBots)))
         : 0,
@@ -130,6 +133,22 @@ export class MatchRegistry {
     if (enabled) ensureHostSeat(match);
     resetMatchSetup(match);
     if (!enabled) clearLocalSeats(match);
+    match.updatedAt = this.clock();
+    return { match };
+  }
+
+  setGameMode(matchId, sessionId, gameMode) {
+    const match = this.matches.get(String(matchId));
+    const player = match?.players.get(sessionId);
+    if (!match || !player) return { error: "You're not in a match lobby." };
+    if (match.hostId !== sessionId) return { error: 'Only the host can change the game mode.' };
+    if (match.phase !== MATCH_PHASES.matchLobby) return { error: 'Game mode can only be changed in the match lobby.' };
+    if (!GAME_MODE_IDS.includes(gameMode)) return { error: 'Unknown game mode.' };
+    if (match.gameMode === gameMode) return { match };
+
+    match.gameMode = gameMode;
+    for (const row of match.players.values()) row.ready = false;
+    for (const seat of match.localSeats.values()) seat.ready = false;
     match.updatedAt = this.clock();
     return { match };
   }
@@ -511,6 +530,7 @@ function snapshot(match) {
     title: match.title,
     phase: match.phase,
     mode: match.mode ?? MATCH_MODES.online,
+    gameMode: GAME_MODE_IDS.includes(match.gameMode) ? match.gameMode : GAME_MODES.teamBattle,
     sharedScreen,
     training: isTraining(match),
     performance: isPerformanceTest(match),

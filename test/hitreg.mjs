@@ -6,7 +6,7 @@
 // syns pa angriparens skarm ar det som galler.
 
 import { Game } from '../server/game.js';
-import { PLAYER, MELEE, TICK_MS, INTERP_MS, MAP, ABILITY_TUNING } from '../shared/constants.js';
+import { GAME_MODES, PLAYER, MELEE, TICK_MS, INTERP_MS, MAP, ABILITY_TUNING } from '../shared/constants.js';
 
 const GROUND_Y = MAP.platforms.find((pl) => pl.ground).y - PLAYER.h; // star still pa marken, ingen fysik i vagen
 
@@ -38,13 +38,13 @@ function advance(g, ms) {
 }
 
 /** Angripare pa x, motstandare pa fiendeX, bada stillastaende pa marken. */
-function scenario({ ax = 400, facing = 1, enemies = [], allies = [] } = {}) {
+function scenario({ ax = 400, facing = 1, enemies = [], allies = [], gameMode = GAME_MODES.teamBattle } = {}) {
   clock = 100000;
   // Varannan rng-dragning ar en skaderullning (pinnad till MELEE_ROLL_R), varannan
   // ar crit-tarningen - har alltid 1, sa rng() < CRIT.chance aldrig slar till.
   // Siffrorna blir darmed exakta; crits och combos testas i test/combat.mjs.
   let rngCall = 0;
-  const g = new Game({ clock: () => clock, rng: () => (rngCall++ % 2 === 0 ? MELEE_ROLL_R : 1) });
+  const g = new Game({ clock: () => clock, rng: () => (rngCall++ % 2 === 0 ? MELEE_ROLL_R : 1), gameMode });
 
   const a = place(g.addPlayer('Angripare', 'cleo'), ax);
   a.facing = facing;
@@ -127,6 +127,13 @@ console.log(`narstrid: ${MELEE.damageMin}-${MELEE.damageMax} skada, rackvidd ${M
   const { g, a, mates } = scenario({ allies: [440] });
   swing(g, a);
   check('skadar inte lagkamrat i rackhall', mates[0].hp === PLAYER.maxHp, `hp ${mates[0].hp}`);
+}
+
+{
+  const { g, a, mates } = scenario({ allies: [440], gameMode: GAME_MODES.freeForAll });
+  mates[0].facing = -1;
+  swing(g, a);
+  check('free for all skadar samma fighter', mates[0].hp === PLAYER.maxHp - MELEE_HIT, `hp ${mates[0].hp}`);
 }
 
 {

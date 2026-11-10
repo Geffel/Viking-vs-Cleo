@@ -1,5 +1,5 @@
 import { GAMEPAD_BINDS, LOCAL_SEAT_IDS, MATCH_MODES } from '/shared/constants.js';
-import { codeMap, onBindingsChange, padMap } from '/js/keybinds.js';
+import { codeMap, mouseCode, onBindingsChange, padMap } from '/js/keybinds.js';
 import { abilityForPosition, onAbilityOrderChange } from '/js/ability-layout.js';
 
 // Keyboard and the first gamepad are merged in normal online mode. In shared
@@ -8,6 +8,7 @@ const MOVE_SLOTS = new Set(['left', 'right']);
 const HOST_SEAT_ID = LOCAL_SEAT_IDS[0] ?? 'P1';
 
 const KEYBOARD = 'keyboard';
+const MOUSE = 'mouse';
 const LEGACY_GAMEPAD = 'gamepad';
 const STICK_DEADZONE = 0.35;
 const DROP_DEADZONE = 0.62;
@@ -171,6 +172,45 @@ export function initInput(net, onAction) {
 
     e.preventDefault();
     syncSlotDown(slot, KEYBOARD, false);
+  });
+
+  window.addEventListener('mousedown', (e) => {
+    if (!e.isTrusted || e.sourceCapabilities?.firesTouchEvents) return;
+    const slot = codes[mouseCode(e.button)];
+    if (!slot) return;
+
+    // Sparade sidoknappar tillhor spelet aven i menyerna; annars kan Mouse 4/5
+    // lamna sidan innan nasta match har hunnit starta.
+    if (!active && e.button < 3) return;
+    e.preventDefault();
+    if (!active || e.ctrlKey || e.altKey || e.metaKey) return;
+    syncSlotDown(slot, MOUSE, true);
+  });
+
+  window.addEventListener('mouseup', (e) => {
+    if (!e.isTrusted || e.sourceCapabilities?.firesTouchEvents) return;
+    const slot = codes[mouseCode(e.button)];
+    if (!slot) return;
+
+    if (!active && e.button < 3) return;
+    e.preventDefault();
+    if (!active) return;
+    syncSlotDown(slot, MOUSE, false);
+  });
+
+  // Chrome/Edge kan lagga browserns bakat/framat pa musens sidoknappar som
+  // standardbeteende for auxclick, efter att mouseup redan har hanterats.
+  window.addEventListener('auxclick', (e) => {
+    if (!e.isTrusted || e.sourceCapabilities?.firesTouchEvents) return;
+    if (!codes[mouseCode(e.button)]) return;
+    if (!active && e.button < 3) return;
+    e.preventDefault();
+  });
+
+  // Hindra webblasarens meny nar hoger musknapp faktiskt anvands i spelet.
+  window.addEventListener('contextmenu', (e) => {
+    if (!active || !codes.Mouse2) return;
+    e.preventDefault();
   });
 
   window.addEventListener('blur', () => {
