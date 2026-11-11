@@ -29,6 +29,8 @@ const logicTests = [
   ['profile-migration', 'test/profile-migration.mjs'],
   ['migration-http', 'test/migration-http.mjs'],
   ['auth-lifecycle-http', 'test/auth-lifecycle-http.mjs'],
+  ['browser-match-flow', 'test/browser-match-flow.mjs'],
+  ['browser-gameplay-input', 'test/browser-gameplay-input.mjs'],
 ];
 
 const smokeScale = Number(process.env.SMOKE_TIME_SCALE || 10);

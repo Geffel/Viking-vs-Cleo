@@ -12,6 +12,8 @@
     "prestart": "npm run check:runtime",
     "start": "node server/index.js",
     "test": "node test/run-all.mjs",
+    "test:browser": "node test/browser-match-flow.mjs",
+    "test:browser-gameplay": "node test/browser-gameplay-input.mjs",
     "test:net": "node test/netcode.mjs && node test/server-protocol.mjs",
     "test:hits": "node test/hitreg.mjs",
     "test:combat": "node test/combat.mjs",
@@ -39,6 +41,7 @@
     "ws": "^8.18.3"
   },
   "devDependencies": {
+    "playwright-core": "^1.65.0",
     "sharp": "^0.35.5"
   }
 }

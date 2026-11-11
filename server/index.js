@@ -101,7 +101,10 @@ const leaderboardWss = new WebSocketServer({ noServer: true, maxPayload: MAX_MES
 // Game-instanser nar deras countdown startar.
 const game = new Game({ clock: gameNow });
 const matchGames = new Map();
-const matches = new MatchRegistry();
+// Matchfaser och Game maste dela samma klocka. Det gor GAME_TIME_SCALE
+// konsekvent i isolerade prestanda- och browser-tester utan att paverka
+// normal drift (dar skalan ar 1).
+const matches = new MatchRegistry({ clock: gameNow });
 const profiles = new Map();
 const profileStore = new SqliteProfileStore({ dataDir: DATA_DIR });
 const accountService = new AccountService({ dataDir: DATA_DIR });
