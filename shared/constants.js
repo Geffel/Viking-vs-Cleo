@@ -620,9 +620,9 @@ export const MAPS = [
 
 export const POWERUP = {
   heal: 45,
-  spawnIntervalMs: 20000,
+  spawnIntervalMs: 25000,
   lifetimeMs: 40000,
-  maxActive: 3,
+  maxActive: 6,
   firstSpawnMs: 5000,
   w: 46,
   h: 46,

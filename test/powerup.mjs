@@ -36,7 +36,7 @@ for (let i = 0; i < POWERUP.maxActive + 2; i++) {
   stepTo(clock + POWERUP.spawnIntervalMs);
 }
 
-check('aldrig fler an tre powerups ute samtidigt', game.powerups.length === POWERUP.maxActive, `${game.powerups.length} aktiva`);
+check('aldrig fler an sex powerups ute samtidigt', game.powerups.length === POWERUP.maxActive, `${game.powerups.length} aktiva`);
 check('powerups delar inte spawnpunkt', new Set(game.powerups.map((p) => p.spawn)).size === game.powerups.length);
 
 // En overgiven powerup forsvinner efter 40 s och ersatts pa en annan plats.
@@ -64,7 +64,7 @@ check('skadad spelare plockar pizza', game.powerups.length === POWERUP.maxActive
 check('pizza ger 45 hp', player.hp === 75, `hp ${player.hp}`);
 check('pizza skickar visuell effekt', game.fx.some((fx) => fx.k === 'pizza' && fx.id === player.id));
 
-stepTo(clock + POWERUP.spawnIntervalMs - 32);
+stepTo(game.nextPowerupAt - 32);
 check('ny powerup kommer inte direkt efter upplock', game.powerups.length === POWERUP.maxActive - 1);
 
 const stillThere = game.powerups[0];

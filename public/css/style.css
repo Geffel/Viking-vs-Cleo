@@ -176,6 +176,17 @@ a.gamepad-hover,
   gap: 0.55em;
 }
 
+#scoreboard .team[hidden] {
+  display: none;
+}
+
+/* FFA visar bara spelaren som ligger etta. Lagfargen foljer ledarens
+   karaktar i stallet for den fasta vanster/hoger-positionen. */
+#scoreboard.free-for-all .label {
+  display: inline;
+  white-space: nowrap;
+}
+
 #scoreboard .label {
   font-weight: 600;
   opacity: 0.85;
@@ -2927,6 +2938,8 @@ body {
 
 .lb-avatar img {
   height: 30px;
+  max-width: 100%;
+  object-fit: contain;
   image-rendering: pixelated;
 }
 
@@ -3120,6 +3133,8 @@ body {
   top: 8%;
   left: 50%;
   height: 52%;
+  max-width: calc(100% - 48px);
+  object-fit: contain;
   transform: translateX(-50%);
   image-rendering: pixelated;
   filter: drop-shadow(0 12px 26px rgba(0, 0, 0, 0.5));
@@ -3627,6 +3642,8 @@ body {
 
 .player-avatar img {
   height: 38px;
+  max-width: 100%;
+  object-fit: contain;
   image-rendering: pixelated;
 }
 
@@ -3791,6 +3808,8 @@ body {
   bottom: 0;
   left: 50%;
   height: 66%;
+  max-width: calc(100% - 32px);
+  object-fit: contain;
   image-rendering: pixelated;
   filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.5));
   transform: translateX(-50%);

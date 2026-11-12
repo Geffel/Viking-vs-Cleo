@@ -117,9 +117,14 @@ export class Hud {
       cleo: document.getElementById('score-cleo'),
       viking: document.getElementById('score-viking'),
     };
+    this.scoreboard = document.getElementById('scoreboard');
+    this.scoreTeams = {
+      cleo: this.score.cleo?.closest('.team'),
+      viking: this.score.viking?.closest('.team'),
+    };
     this.scoreLabels = {
-      cleo: this.score.cleo?.closest('.team')?.querySelector('.label'),
-      viking: this.score.viking?.closest('.team')?.querySelector('.label'),
+      cleo: this.scoreTeams.cleo?.querySelector('.label'),
+      viking: this.scoreTeams.viking?.querySelector('.label'),
     };
     this.feed = document.getElementById('killfeed');
     this.respawn = document.getElementById('respawn');
@@ -302,13 +307,24 @@ export class Hud {
   updateScore(score, individualScore = null) {
     if (Array.isArray(individualScore)) {
       const leader = individualScore[0] ?? null;
-      const runnerUp = individualScore[1] ?? null;
-      this.scoreLabels.cleo.textContent = leader?.name ?? 'Free for All';
+      const leaderTeam = leader?.team === 'viking' ? 'viking' : leader?.team === 'cleo' ? 'cleo' : '';
+      this.scoreboard?.classList.add('free-for-all');
+      this.scoreTeams.cleo?.classList.remove('cleo', 'viking');
+      if (leaderTeam) this.scoreTeams.cleo?.classList.add(leaderTeam);
+      if (this.scoreTeams.viking) this.scoreTeams.viking.hidden = true;
+      this.scoreLabels.cleo.textContent = leader ? `Leader · ${leader.name}` : 'Leader';
       this.score.cleo.textContent = leader?.kills ?? 0;
-      this.score.viking.textContent = runnerUp?.kills ?? 0;
-      this.scoreLabels.viking.textContent = runnerUp?.name ?? 'Kills';
+      this.scoreTeams.cleo?.setAttribute(
+        'aria-label',
+        leader ? `Leader ${leader.name}, ${leader.kills ?? 0} kills` : 'No leader yet',
+      );
       return;
     }
+    this.scoreboard?.classList.remove('free-for-all');
+    this.scoreTeams.cleo?.classList.remove('viking');
+    this.scoreTeams.cleo?.classList.add('cleo');
+    this.scoreTeams.cleo?.removeAttribute('aria-label');
+    if (this.scoreTeams.viking) this.scoreTeams.viking.hidden = false;
     this.scoreLabels.cleo.textContent = 'Team Cleo';
     this.scoreLabels.viking.textContent = 'Team Viking';
     this.score.cleo.textContent = score.cleo;
