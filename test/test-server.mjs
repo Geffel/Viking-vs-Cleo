@@ -10,10 +10,11 @@ import { SqliteProfileDatabase } from '../server/sqlite-profile-database.js';
 
 // Every integration run owns its process, ephemeral port and profile directory.
 // Never send malformed protocol probes to somebody's running game server.
-export async function startTestServer({ timeScale = 1, dataDir: providedDataDir = '', env = {}, authenticatedProfiles = [] } = {}) {
+export async function startTestServer({ timeScale = 1, dataDir: providedDataDir = '', env = {}, authenticatedProfiles = [], legacyProfiles = [] } = {}) {
   const ownsDataDir = !providedDataDir;
   const dataDir = providedDataDir || await mkdtemp(path.join(os.tmpdir(), 'vvc-net-test-'));
-  const authCookies = authenticatedProfiles.length ? await seedAuthenticatedProfiles(dataDir, authenticatedProfiles) : [];
+  const authCookies = authenticatedProfiles.length || legacyProfiles.length
+    ? await seedAuthenticatedProfiles(dataDir, authenticatedProfiles, legacyProfiles) : [];
   const child = spawn(process.execPath, ['server/index.js'], {
     cwd: fileURLToPath(new URL('..', import.meta.url)),
     env: { ...process.env, ...env, PORT: '0', VVC_DATA_DIR: dataDir, GAME_TIME_SCALE: String(timeScale) },
@@ -57,12 +58,13 @@ export async function startTestServer({ timeScale = 1, dataDir: providedDataDir 
   }
 }
 
-async function seedAuthenticatedProfiles(dataDir, names) {
+async function seedAuthenticatedProfiles(dataDir, names, legacyNames = []) {
+  const allNames = [...names, ...legacyNames];
   const database = new SqliteProfileDatabase(path.join(dataDir, 'profiles.sqlite'));
   database.replaceSnapshot({
     version: 4,
-    nextProfileId: names.length + 1,
-    profiles: names.map((name, index) => ({
+    nextProfileId: allNames.length + 1,
+    profiles: allNames.map((name, index) => ({
       clientId: `test-browser-${index + 1}`,
       profileId: index + 1,
       name,

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Viking vs Cleo · Administration</title>
+  <link rel="stylesheet" href="/admin/admin.css?v=2" />
+</head>
+<body>
+  <header class="topbar"><div><span class="eyebrow">VIKING VS CLEO</span><h1>Administration</h1></div><a class="button secondary" href="/">Tillbaka till spelet</a></header>
+  <main>
+    <section class="summary" id="summary" aria-label="Sammanfattning"></section>
+    <section class="panel players-panel">
+      <div class="panel-head"><div><p class="eyebrow">KONTON</p><h2>Spelare och behörighet</h2></div><button id="add-user">+ Lägg till spelare</button></div>
+      <div class="toolbar">
+        <label class="search-field"><span>Sök spelare</span><input id="search" type="search" placeholder="Skriv ett spelarnamn…" autocomplete="off" /></label>
+        <label><span>Roll</span><select id="role-filter"><option value="">Alla roller</option><option value="player">Player</option><option value="admin">Admin</option></select></label>
+        <label><span>Kontotyp</span><select id="migration-filter"><option value="">Alla typer</option><option value="migrated">Migrerad legacy</option><option value="pending">Väntar på migrering</option><option value="blocked">Blockerad legacy</option><option value="native">Nytt konto</option></select></label>
+        <label><span>Status</span><select id="status-filter"><option value="">Alla</option><option value="online">Online</option><option value="offline">Offline</option><option value="password">Lösenordsbyte krävs</option></select></label>
+        <button class="secondary clear-filters" id="clear-filters">Rensa</button>
+      </div>
+      <div class="table-wrap"><table><thead><tr><th><button class="sort" data-sort="username">Spelare <span></span></button></th><th>Roll</th><th>Status</th><th>Migrering</th><th><button class="sort" data-sort="lastSeenAt">Senast aktiv <span></span></button></th><th><span class="sr-only">Öppna</span></th></tr></thead><tbody id="users"></tbody></table><div class="empty" id="empty-users" hidden>Inga spelare matchar filtren.</div></div>
+      <div class="pagination"><span id="result-count"></span><div><button class="secondary" id="previous-page">Föregående</button><span id="page-label"></span><button class="secondary" id="next-page">Nästa</button></div></div>
+    </section>
+    <div class="lower-grid">
+      <section class="panel"><div class="panel-head"><div><p class="eyebrow">SERVER</p><h2>Teamvinster</h2></div><button class="danger ghost" data-global-reset="all">Resetta alla</button></div><div class="global-stats" id="global-stats"></div></section>
+      <section class="panel"><div class="panel-head"><div><p class="eyebrow">HISTORIK</p><h2>Senaste adminåtgärder</h2></div><button class="secondary" id="refresh-audit">Uppdatera</button></div><div class="audit-list" id="audit-list"></div></section>
+    </div>
+  </main>
+  <div class="drawer-backdrop" id="drawer-backdrop" hidden></div>
+  <aside class="drawer" id="player-drawer" aria-label="Spelardetaljer" aria-hidden="true">
+    <div class="drawer-head"><div><p class="eyebrow">SPELARE</p><h2 id="drawer-title"></h2><div id="drawer-badges" class="badges"></div></div><button class="icon-button" id="close-drawer" aria-label="Stäng">×</button></div>
+    <nav class="tabs" id="tabs"><button data-tab="overview" class="active">Översikt</button><button data-tab="stats">Statistik</button><button data-tab="achievements">Achievements</button><button data-tab="account">Konto</button></nav>
+    <div class="drawer-body" id="drawer-content"></div>
+  </aside>
+  <dialog id="dialog"><form method="dialog" id="dialog-form"><button class="icon-button close" value="cancel" aria-label="Stäng">×</button><div id="dialog-content"></div></form></dialog>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="/admin/admin.js?v=2"></script>
+</body>
+</html>

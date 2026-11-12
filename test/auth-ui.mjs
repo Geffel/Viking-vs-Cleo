@@ -29,6 +29,12 @@ assert.match(main, /pendingLegacyMigration = true;[\s\S]*setMigrationPresentatio
   'the profile-upgrade presentation is enabled only for a legacy migration');
 assert.match(main, /currentName = state\.session\.username;[\s\S]*setView\('lobby'\);[\s\S]*return true;/,
   'an authenticated session routes directly to the lobby');
+assert.match(html, /id="admin-panel-link"[^>]*hidden/,
+  'the admin link starts hidden before authentication completes');
+assert.match(main, /adminPanelLink\.hidden = state\.session\.role !== 'admin'/,
+  'the admin link is shown only for an admin session');
+assert.match(style, /#admin-panel-link\[hidden\]\s*\{\s*display:\s*none/,
+  'screen-link display styling cannot override the hidden admin link');
 assert.doesNotMatch(main, /function submitName\(|setView\('intro'\)/,
   'the client no longer routes through Enter name');
 assert.match(main, /authRequest\('\/api\/auth\/reset-password',[\s\S]*recoveryCode:[\s\S]*newPassword:/,

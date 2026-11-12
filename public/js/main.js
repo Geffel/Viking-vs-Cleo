@@ -69,6 +69,9 @@ const migrationResetCode = document.getElementById('migration-reset-code');
 const migrationResetPassword = document.getElementById('migration-reset-password');
 const migrationResetPasswordConfirm = document.getElementById('migration-reset-password-confirm');
 const migrationResetBack = document.getElementById('migration-reset-back');
+const migrationForcedPassword = document.getElementById('migration-forced-password');
+const migrationForcedPasswordValue = document.getElementById('migration-forced-password-value');
+const migrationForcedPasswordConfirm = document.getElementById('migration-forced-password-confirm');
 const migrationBack = document.getElementById('migration-back');
 const migrationUseRegister = document.getElementById('migration-use-register');
 const migrationRegister = document.getElementById('migration-register');
@@ -97,6 +100,7 @@ const openAchievementsBtn = document.getElementById('open-achievements');
 const achievementsView = document.getElementById('achievements-view');
 const openSettingsBtn = document.getElementById('open-settings');
 const logoutBtn = document.getElementById('logout');
+const adminPanelLink = document.getElementById('admin-panel-link');
 const settingsView = document.getElementById('settings-view');
 const matchRoom = document.getElementById('match-room');
 const matchRoomTitle = document.getElementById('match-room-title');
@@ -260,6 +264,7 @@ syncMatchMusic(null);
 migrationForm?.addEventListener('submit', submitLegacyMigration);
 migrationLogin?.addEventListener('submit', submitMigrationLogin);
 migrationPasswordReset?.addEventListener('submit', submitPasswordReset);
+migrationForcedPassword?.addEventListener('submit', submitForcedPasswordChange);
 migrationRegister?.addEventListener('submit', submitRegistration);
 migrationUseLogin?.addEventListener('click', () => showMigrationLogin(true));
 migrationForgotPassword?.addEventListener('click', showPasswordReset);
@@ -604,7 +609,12 @@ async function initLegacyMigration() {
   try {
     const state = await authRequest('/api/auth/state', { clientId });
     if (state.authenticated) {
+      if (state.session.mustChangePassword) {
+        showForcedPasswordChange();
+        return false;
+      }
       currentName = state.session.username;
+      if (adminPanelLink) adminPanelLink.hidden = state.session.role !== 'admin';
       localStorage.setItem('vvc.name', currentName);
       migrationGate.hidden = true;
       setView('lobby');
@@ -730,6 +740,43 @@ async function submitPasswordReset(event) {
   }
 }
 
+async function submitForcedPasswordChange(event) {
+  event.preventDefault();
+  migrationError.textContent = '';
+  if (migrationForcedPasswordValue.value !== migrationForcedPasswordConfirm.value) {
+    migrationError.textContent = 'The passwords do not match.';
+    migrationForcedPasswordConfirm.focus();
+    return;
+  }
+  setFormBusy(migrationForcedPassword, true);
+  try {
+    const result = await authRequest('/api/auth/change-temporary-password', {
+      newPassword: migrationForcedPasswordValue.value,
+    });
+    migrationForcedPassword.reset();
+    migrationForcedPassword.hidden = true;
+    showRecoveryCodes(result.recoveryCodes, 'Password changed', 'Save your new recovery codes before continuing.');
+  } catch (error) {
+    migrationError.textContent = error.message;
+  } finally {
+    setFormBusy(migrationForcedPassword, false);
+  }
+}
+
+function showForcedPasswordChange() {
+  migrationClaim.hidden = true;
+  migrationLogin.hidden = true;
+  migrationPasswordReset.hidden = true;
+  migrationRegister.hidden = true;
+  migrationRecovery.hidden = true;
+  migrationForcedPassword.hidden = false;
+  setMigrationPresentation(false);
+  migrationTitle.textContent = 'Choose a new password';
+  migrationCopy.textContent = 'An administrator issued a temporary password for this account.';
+  migrationCopy.hidden = false;
+  migrationForcedPasswordValue.focus();
+}
+
 async function submitRegistration(event) {
   event.preventDefault();
   migrationError.textContent = '';
@@ -772,6 +819,7 @@ function showMigrationLogin(show) {
   migrationClaim.hidden = show;
   migrationLogin.hidden = !show;
   migrationPasswordReset.hidden = true;
+  migrationForcedPassword.hidden = true;
   migrationRegister.hidden = true;
   migrationTitle.textContent = show
     ? pendingLegacyMigration ? 'Sign in to another account' : 'Sign in'

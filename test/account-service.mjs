@@ -46,7 +46,10 @@ try {
   const login = await service.login('TEST.PLAYER', 'correct horse battery', '10.0.0.1');
   assert.equal(login.account.accountId, 1);
   assert.match(login.token, /^[A-Za-z0-9_-]{43}$/);
-  assert.deepEqual(await service.verifySession(login.token), { accountId: 1, username: 'Test.Player', status: 'active', profileId: 1 });
+  assert.deepEqual(await service.verifySession(login.token), {
+    accountId: 1, username: 'Test.Player', status: 'active', role: 'player',
+    mustChangePassword: false, profileId: 1,
+  });
   const secretsDb = new DatabaseSync(path.join(dataDir, 'profiles.sqlite'), { readOnly: true });
   assert.equal(secretsDb.prepare('SELECT count(*) AS count FROM sessions WHERE token_hash = ?').get(login.token).count, 0);
   assert.equal(secretsDb.prepare('SELECT count(*) AS count FROM recovery_codes WHERE code_hash = ?').get(registered.recoveryCodes[0]).count, 0);

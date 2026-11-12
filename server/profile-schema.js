@@ -1,4 +1,4 @@
-export const PROFILE_DATABASE_VERSION = 2;
+export const PROFILE_DATABASE_VERSION = 3;
 
 export const PROFILE_SCHEMA_SQL = `
   PRAGMA foreign_keys = ON;
@@ -16,6 +16,8 @@ export const PROFILE_SCHEMA_SQL = `
     username_normalized TEXT NOT NULL UNIQUE,
     username_display TEXT NOT NULL,
     password_hash TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'player' CHECK (role IN ('player', 'admin')),
+    force_password_change INTEGER NOT NULL DEFAULT 0 CHECK (force_password_change IN (0, 1)),
     status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'locked', 'disabled')),
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
@@ -98,4 +100,23 @@ export const PROFILE_SCHEMA_SQL = `
     ON sessions(account_id);
   CREATE INDEX IF NOT EXISTS sessions_expiry
     ON sessions(expires_at);
+
+  CREATE TABLE IF NOT EXISTS admin_audit_log (
+    audit_id INTEGER PRIMARY KEY,
+    actor_account_id INTEGER,
+    action TEXT NOT NULL,
+    target_account_id INTEGER,
+    details_json TEXT NOT NULL DEFAULT '{}',
+    created_at INTEGER NOT NULL
+  ) STRICT;
 `;
+
+export function migrateProfileSchema(db) {
+  const columns = new Set(db.prepare('PRAGMA table_info(accounts)').all().map((row) => row.name));
+  if (!columns.has('role')) {
+    db.exec("ALTER TABLE accounts ADD COLUMN role TEXT NOT NULL DEFAULT 'player' CHECK (role IN ('player', 'admin'))");
+  }
+  if (!columns.has('force_password_change')) {
+    db.exec('ALTER TABLE accounts ADD COLUMN force_password_change INTEGER NOT NULL DEFAULT 0 CHECK (force_password_change IN (0, 1))');
+  }
+}

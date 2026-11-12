@@ -46,6 +46,28 @@ export class AccountService {
     return this.#request('migrateLegacyProfile', { clientId, name, password, now: this.now() });
   }
   cleanupAuthData() { return this.#request('cleanupAuthData', { now: this.now() }); }
+  bootstrapAdmin(username) { return this.#request('bootstrapAdmin', { username, now: this.now() }); }
+  listAdminUsers() { return this.#request('listAdminUsers'); }
+  listAdminLegacyProfiles() { return this.#request('listAdminLegacyProfiles'); }
+  listAdminAudit(limit = 50) { return this.#request('listAdminAudit', { limit }); }
+  adminCreateUser(name, actorAccountId) {
+    return this.#request('adminCreateUser', { name, actorAccountId, now: this.now() });
+  }
+  adminSetRole(accountId, role, actorAccountId) {
+    return this.#request('adminSetRole', { accountId, role, actorAccountId, now: this.now() });
+  }
+  adminResetPassword(accountId, actorAccountId) {
+    return this.#request('adminResetPassword', { accountId, actorAccountId, now: this.now() });
+  }
+  changeForcedPassword(accountId, token, newPassword) {
+    return this.#request('changeForcedPassword', { accountId, token, newPassword, now: this.now() });
+  }
+  adminDeleteUser(accountId, actorAccountId) {
+    return this.#request('adminDeleteUser', { accountId, actorAccountId, now: this.now() });
+  }
+  adminAudit(actorAccountId, action, targetAccountId, details) {
+    return this.#request('adminAudit', { actorAccountId, action, targetAccountId, details, now: this.now() });
+  }
 
   async close() {
     if (this.closed) return;

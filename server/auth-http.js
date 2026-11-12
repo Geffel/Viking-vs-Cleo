@@ -48,6 +48,17 @@ export function installAuthRoutes(app, accountService, {
     res.status(204).end();
   }));
 
+  app.post('/api/auth/change-temporary-password', json, asyncRoute(async (req, res) => {
+    const token = readSessionCookie(req);
+    const session = token ? await sessionFromRequest(accountService, req) : null;
+    if (!session) return res.status(401).json({ error: 'AUTH_REQUIRED', message: 'Sign in required' });
+    if (!session.mustChangePassword) {
+      return res.status(409).json({ error: 'PASSWORD_CHANGE_NOT_REQUIRED', message: 'Password change is not required' });
+    }
+    const result = await accountService.changeForcedPassword(session.accountId, token, req.body?.newPassword);
+    res.json(result);
+  }));
+
   app.post('/api/auth/migrate', json, asyncRoute(async (req, res) => {
     const result = await accountService.migrateLegacyProfile(
       req.body?.clientId, req.body?.name, req.body?.password,
@@ -116,6 +127,7 @@ function statusFor(error) {
   if (error?.code === 'USERNAME_TAKEN' || error?.code === 'LEGACY_NAME_LOCKED'
     || error?.code === 'LEGACY_PROFILE_UNAVAILABLE') return 409;
   if (error?.code === 'INVALID_CREDENTIALS') return 401;
+  if (error?.code === 'PASSWORD_CHANGE_NOT_REQUIRED') return 409;
   if (error?.code === 'LOGIN_RATE_LIMITED') return 429;
   if (error?.code === 'RECOVERY_RATE_LIMITED') return 429;
   if (String(error?.code || '').startsWith('INVALID_')) return 400;

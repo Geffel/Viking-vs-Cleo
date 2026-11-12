@@ -3341,6 +3341,13 @@ body {
   background: rgba(124, 245, 176, 0.16);
 }
 
+/* Author styles override the browser's default [hidden] rule. Keep the admin
+   entry genuinely absent for non-admin sessions even though screen-link sets
+   an explicit display mode. */
+#admin-panel-link[hidden] {
+  display: none;
+}
+
 .online-pill {
   display: flex;
   align-items: center;

@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Anton&family=Oswald:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/css/style.css" />
+    <link rel="stylesheet" href="/css/style.css?v=7" />
   </head>
   <body>
     <div id="stage">
@@ -110,6 +110,13 @@
           <button id="migration-reset-back" class="migration-link" type="button">Back to sign in</button>
         </form>
 
+        <form id="migration-forced-password" hidden>
+          <p>Your temporary password must be replaced before you can enter the arena.</p>
+          <label class="field"><span>New password</span><input id="migration-forced-password-value" type="password" minlength="4" maxlength="128" autocomplete="new-password" required /></label>
+          <label class="field"><span>Repeat new password</span><input id="migration-forced-password-confirm" type="password" minlength="4" maxlength="128" autocomplete="new-password" required /></label>
+          <button class="migration-primary" type="submit">Set new password</button>
+        </form>
+
         <form id="migration-register" hidden>
           <label class="field"><span>Player name</span><input id="migration-register-name" type="text" minlength="1" maxlength="14" autocomplete="username" required /></label>
           <label class="field"><span>Password</span><input id="migration-register-password" type="password" minlength="4" maxlength="128" autocomplete="new-password" required /></label>
@@ -154,6 +161,7 @@
             </div>
             <div class="screen-actions">
               <a class="screen-link" href="/leaderboard.html" target="_blank" rel="noopener">Leaderboard</a>
+              <a id="admin-panel-link" class="screen-link" href="/admin" hidden>Admin</a>
               <button id="open-achievements" type="button">Achievements</button>
               <button id="open-settings" type="button">Settings</button>
               <button id="create-match" type="button">Create match</button>
@@ -492,6 +500,6 @@
 
     <div id="conn" hidden>Connecting...</div>
 
-    <script type="module" src="/js/main.js?v=6"></script>
+    <script type="module" src="/js/main.js?v=7"></script>
   </body>
 </html>

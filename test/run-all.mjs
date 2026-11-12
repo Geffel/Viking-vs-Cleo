@@ -29,6 +29,7 @@ const logicTests = [
   ['profile-migration', 'test/profile-migration.mjs'],
   ['migration-http', 'test/migration-http.mjs'],
   ['auth-lifecycle-http', 'test/auth-lifecycle-http.mjs'],
+  ['admin-http', 'test/admin-http.mjs'],
   ['browser-match-flow', 'test/browser-match-flow.mjs'],
   ['browser-gameplay-input', 'test/browser-gameplay-input.mjs'],
 ];

@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
-import { PROFILE_DATABASE_VERSION, PROFILE_SCHEMA_SQL } from './profile-schema.js';
+import { migrateProfileSchema, PROFILE_DATABASE_VERSION, PROFILE_SCHEMA_SQL } from './profile-schema.js';
 import {
   authError, normalizeUsername, SESSION_ABSOLUTE_MS, SESSION_IDLE_MS, SESSION_TOUCH_INTERVAL_MS,
 } from './auth-crypto.js';
@@ -8,6 +8,7 @@ export class AccountDatabase {
   constructor(filePath) {
     this.db = new DatabaseSync(filePath);
     this.db.exec(PROFILE_SCHEMA_SQL);
+    migrateProfileSchema(this.db);
     this.#synchronizeExistingAccountNames();
     this.db.prepare(`INSERT INTO schema_meta(key, value) VALUES ('schema_version', ?)
       ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run(String(PROFILE_DATABASE_VERSION));
@@ -16,12 +17,12 @@ export class AccountDatabase {
   close() { this.db.close(); }
 
   findAccount(usernameNormalized) {
-    return this.db.prepare(`SELECT account_id, username_normalized, username_display, password_hash, status
+    return this.db.prepare(`SELECT account_id, username_normalized, username_display, password_hash, status, role, force_password_change
       FROM accounts WHERE username_normalized = ?`).get(usernameNormalized) ?? null;
   }
 
   findAccountById(accountId) {
-    return this.db.prepare(`SELECT account_id, username_normalized, username_display, password_hash, status
+    return this.db.prepare(`SELECT account_id, username_normalized, username_display, password_hash, status, role, force_password_change
       FROM accounts WHERE account_id = ?`).get(accountId) ?? null;
   }
 
@@ -177,7 +178,7 @@ export class AccountDatabase {
   }
 
   resolveSession(tokenHash, now) {
-    const row = this.db.prepare(`SELECT s.*, a.username_display, a.status, p.profile_id
+    const row = this.db.prepare(`SELECT s.*, a.username_display, a.status, a.role, a.force_password_change, p.profile_id
       FROM sessions s JOIN accounts a USING(account_id)
       LEFT JOIN profiles p USING(account_id) WHERE s.token_hash = ?`).get(tokenHash);
     if (!row || row.revoked_at !== null || row.status !== 'active' || now >= Number(row.expires_at)
@@ -187,6 +188,7 @@ export class AccountDatabase {
       this.db.prepare('UPDATE sessions SET last_used_at = ?, expires_at = ? WHERE token_hash = ?').run(now, expiresAt, tokenHash);
     }
     return { accountId: Number(row.account_id), username: row.username_display, status: row.status,
+      role: row.role, mustChangePassword: !!row.force_password_change,
       profileId: row.profile_id === null ? null : Number(row.profile_id) };
   }
 
@@ -241,6 +243,170 @@ export class AccountDatabase {
       this.db.exec('ROLLBACK');
       throw error;
     }
+  }
+
+  bootstrapAdmin(usernameNormalized, now) {
+    const account = this.findAccount(usernameNormalized);
+    if (!account) throw authError('ACCOUNT_NOT_FOUND', 'Bootstrap admin account was not found');
+    this.db.prepare("UPDATE accounts SET role = 'admin', updated_at = ? WHERE account_id = ?")
+      .run(now, account.account_id);
+    return { accountId: Number(account.account_id), username: account.username_display, role: 'admin' };
+  }
+
+  listAdminUsers() {
+    const rows = this.db.prepare(`SELECT a.account_id, a.username_display, a.role, a.status,
+        a.force_password_change, a.created_at, p.profile_id, p.migrated_at,
+        c.status AS migration_status
+      FROM accounts a LEFT JOIN profiles p USING(account_id)
+      LEFT JOIN legacy_profile_claims c USING(profile_id)
+      ORDER BY a.username_normalized`).all();
+    return rows.map((row) => ({
+      accountId: Number(row.account_id), username: row.username_display, role: row.role,
+      status: row.status, mustChangePassword: !!row.force_password_change,
+      createdAt: Number(row.created_at), profileId: row.profile_id === null ? null : Number(row.profile_id),
+      migrated: row.migration_status === 'migrated',
+      migrationStatus: row.migration_status === 'migrated' ? 'migrated' : 'native',
+    }));
+  }
+
+  listAdminLegacyProfiles() {
+    const rows = this.db.prepare(`SELECT p.profile_id, p.display_name, p.created_at, p.last_seen_at,
+        c.status AS migration_status
+      FROM legacy_profile_claims c JOIN profiles p USING(profile_id)
+      WHERE p.account_id IS NULL AND c.status IN ('pending', 'blocked')
+      ORDER BY p.display_name COLLATE NOCASE`).all();
+    return rows.map((row) => ({
+      profileId: Number(row.profile_id), username: row.display_name,
+      createdAt: Number(row.created_at), lastSeenAt: Number(row.last_seen_at),
+      migrationStatus: row.migration_status,
+    }));
+  }
+
+  listAdminAudit({ limit = 50 } = {}) {
+    const safeLimit = Math.min(100, Math.max(1, Number(limit) || 50));
+    const rows = this.db.prepare(`SELECT l.audit_id, l.action, l.details_json, l.created_at,
+        l.actor_account_id, actor.username_display AS actor_name,
+        l.target_account_id, target.username_display AS target_name
+      FROM admin_audit_log l
+      LEFT JOIN accounts actor ON actor.account_id = l.actor_account_id
+      LEFT JOIN accounts target ON target.account_id = l.target_account_id
+      ORDER BY l.audit_id DESC LIMIT ?`).all(safeLimit);
+    return rows.map((row) => ({
+      auditId: Number(row.audit_id), action: row.action,
+      actorAccountId: row.actor_account_id === null ? null : Number(row.actor_account_id),
+      actorName: row.actor_name ?? 'System',
+      targetAccountId: row.target_account_id === null ? null : Number(row.target_account_id),
+      targetName: row.target_name ?? null,
+      details: parseJson(row.details_json) ?? {}, createdAt: Number(row.created_at),
+    }));
+  }
+
+  adminCreateAccount({ usernameNormalized, usernameDisplay, passwordHash, now, actorAccountId }) {
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      if (this.findAccount(usernameNormalized)) throw authError('USERNAME_TAKEN', 'Player name is already in use');
+      const inserted = this.db.prepare(`INSERT INTO accounts
+        (username_normalized, username_display, password_hash, role, force_password_change, created_at, updated_at)
+        VALUES (?, ?, ?, 'player', 1, ?, ?)`)
+        .run(usernameNormalized, usernameDisplay, passwordHash, now, now);
+      const accountId = Number(inserted.lastInsertRowid);
+      const next = this.db.prepare("SELECT value FROM schema_meta WHERE key = 'next_profile_id'").get();
+      const highest = Number(this.db.prepare('SELECT COALESCE(MAX(profile_id), 0) AS id FROM profiles').get().id);
+      const profileId = Math.max(1, Number(next?.value) || 1, highest + 1);
+      this.db.prepare(`INSERT INTO profiles (
+        profile_id, account_id, display_name, points, play_ms, seen, last_seen_at,
+        cleo_play_ms, viking_play_ms, stats_json, achievements_json, created_at, migrated_at
+      ) VALUES (?, ?, ?, 0, 0, 0, 0, 0, 0, '{}', '{"unlocked":{}}', ?, ?)`)
+        .run(profileId, accountId, usernameDisplay, now, now);
+      this.setNextProfileId(profileId + 1);
+      this.audit(actorAccountId, 'user.create', accountId, {}, now);
+      this.db.exec('COMMIT');
+      return { accountId, profileId, username: usernameDisplay, role: 'player', mustChangePassword: true };
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      if (String(error.message).includes('accounts.username_normalized')) throw authError('USERNAME_TAKEN', 'Player name is already in use');
+      throw error;
+    }
+  }
+
+  adminSetRole({ accountId, role, actorAccountId, now }) {
+    const target = this.findAccountById(accountId);
+    if (!target) throw authError('ACCOUNT_NOT_FOUND', 'Account not found');
+    if (!['player', 'admin'].includes(role)) throw authError('INVALID_ROLE', 'Invalid role');
+    if (target.role === role) return { accountId, role, changed: false };
+    if (target.role === 'admin' && role !== 'admin') this.#requireAnotherAdmin(accountId);
+    this.db.prepare('UPDATE accounts SET role = ?, updated_at = ? WHERE account_id = ?').run(role, now, accountId);
+    if (role !== 'admin') this.revokeAllSessions(accountId, now);
+    this.audit(actorAccountId, 'user.role', accountId, { from: target.role, to: role }, now);
+    return { accountId, role, changed: true };
+  }
+
+  adminResetPassword({ accountId, passwordHash, actorAccountId, now }) {
+    const target = this.findAccountById(accountId);
+    if (!target) throw authError('ACCOUNT_NOT_FOUND', 'Account not found');
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      this.db.prepare(`UPDATE accounts SET password_hash = ?, force_password_change = 1, updated_at = ?
+        WHERE account_id = ?`).run(passwordHash, now, accountId);
+      this.db.prepare('DELETE FROM recovery_codes WHERE account_id = ?').run(accountId);
+      this.revokeAllSessions(accountId, now);
+      this.audit(actorAccountId, 'user.password_reset', accountId, {}, now);
+      this.db.exec('COMMIT');
+      return { accountId };
+    } catch (error) { this.db.exec('ROLLBACK'); throw error; }
+  }
+
+  completeForcedPasswordChange({ accountId, currentTokenHash, passwordHash, recoveryCodeHashes, now }) {
+    const target = this.findAccountById(accountId);
+    if (!target || !target.force_password_change) throw authError('PASSWORD_CHANGE_NOT_REQUIRED', 'Password change is not required');
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      this.db.prepare(`UPDATE accounts SET password_hash = ?, force_password_change = 0, updated_at = ?
+        WHERE account_id = ?`).run(passwordHash, now, accountId);
+      this.db.prepare('DELETE FROM recovery_codes WHERE account_id = ?').run(accountId);
+      const insert = this.db.prepare('INSERT INTO recovery_codes(account_id, code_hash, created_at) VALUES (?, ?, ?)');
+      for (const codeHash of recoveryCodeHashes) insert.run(accountId, codeHash, now);
+      this.db.prepare(`UPDATE sessions SET revoked_at = ? WHERE account_id = ? AND token_hash <> ? AND revoked_at IS NULL`)
+        .run(now, accountId, currentTokenHash);
+      this.db.exec('COMMIT');
+    } catch (error) { this.db.exec('ROLLBACK'); throw error; }
+  }
+
+  adminDeleteAccount({ accountId, actorAccountId, now }) {
+    if (accountId === actorAccountId) throw authError('ADMIN_SELF_DELETE', 'You cannot delete your own account');
+    const target = this.findAccountById(accountId);
+    if (!target) throw authError('ACCOUNT_NOT_FOUND', 'Account not found');
+    if (target.role === 'admin') this.#requireAnotherAdmin(accountId);
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      this.audit(actorAccountId, 'user.delete', accountId, { username: target.username_display }, now);
+      this.db.prepare('DELETE FROM profiles WHERE account_id = ?').run(accountId);
+      this.db.prepare('DELETE FROM accounts WHERE account_id = ?').run(accountId);
+      this.db.exec('COMMIT');
+      return { accountId };
+    } catch (error) { this.db.exec('ROLLBACK'); throw error; }
+  }
+
+  adminAudit({ actorAccountId, action, targetAccountId = null, details = {}, now }) {
+    this.audit(actorAccountId, action, targetAccountId, details, now);
+    return true;
+  }
+
+  audit(actorAccountId, action, targetAccountId, details, now) {
+    this.db.prepare(`INSERT INTO admin_audit_log
+      (actor_account_id, action, target_account_id, details_json, created_at) VALUES (?, ?, ?, ?, ?)`)
+      .run(actorAccountId ?? null, action, targetAccountId ?? null, JSON.stringify(details ?? {}), now);
+  }
+
+  setNextProfileId(profileId) {
+    this.db.prepare(`INSERT INTO schema_meta(key, value) VALUES ('next_profile_id', ?)
+      ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run(String(profileId));
+  }
+
+  #requireAnotherAdmin(excludedAccountId) {
+    const count = Number(this.db.prepare(`SELECT count(*) AS count FROM accounts
+      WHERE role = 'admin' AND account_id <> ?`).get(excludedAccountId).count);
+    if (!count) throw authError('LAST_ADMIN', 'The last admin cannot be removed');
   }
 
   #synchronizeExistingAccountNames() {

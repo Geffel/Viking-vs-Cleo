@@ -13,6 +13,7 @@ import { claimRoundRegistration, clearRoundRegistration } from './round-registra
 import { SqliteProfileStore } from './sqlite-profile-store.js';
 import { AccountService } from './account-service.js';
 import { installAuthRoutes, readSessionCookie } from './auth-http.js';
+import { installAdminRoutes } from './admin-http.js';
 import { hashLegacyClientId } from './profile-snapshot.js';
 import {
   ProfileStatistics,
@@ -131,6 +132,10 @@ if (existsSync(path.join(DATA_DIR, 'profiles.json')) && !existsSync(profileStore
 await profileStore.open();
 await accountService.open();
 await accountService.cleanupAuthData();
+if (process.env.VVC_BOOTSTRAP_ADMIN) {
+  const promoted = await accountService.bootstrapAdmin(process.env.VVC_BOOTSTRAP_ADMIN);
+  console.log(`[AUTH] Bootstrap admin enabled for ${promoted.username} (#${promoted.accountId}).`);
+}
 await loadProfiles();
 
 installAuthRoutes(app, accountService, {
@@ -161,6 +166,19 @@ installAuthRoutes(app, accountService, {
   },
 });
 
+installAdminRoutes(app, accountService, {
+  overview: adminOverview,
+  users: adminUsers,
+  user: adminUser,
+  legacyUser: adminLegacyUser,
+  userCreated: adminUserCreated,
+  sessionsRevoked: closeAccountSockets,
+  beforeUserDeleted: prepareAdminUserDeletion,
+  userDeleted: finishAdminUserDeletion,
+  resetUserStat: adminResetUserStat,
+  resetGlobalStat: adminResetGlobalStat,
+});
+
 server.on('upgrade', async (request, socket, head) => {
   socket.on('error', () => {});
   if (!isAllowedWebSocketOrigin(request)) {
@@ -181,7 +199,8 @@ server.on('upgrade', async (request, socket, head) => {
   if (sessionToken) {
     try { authSession = await accountService.verifySession(sessionToken); } catch { authSession = null; }
   }
-  if (!performanceGuest && (!authSession?.accountId || !authSession?.profileId || !getProfileById(authSession.profileId))) {
+  if (!performanceGuest && (!authSession?.accountId || !authSession?.profileId || authSession.mustChangePassword
+    || !getProfileById(authSession.profileId))) {
     rejectWebSocketUpgrade(socket, 401, 'Authentication required');
     return;
   }
@@ -1351,6 +1370,224 @@ function saveProfiles() {
   } catch (err) {
     console.warn('Kunde inte spara profiler:', err.message);
   }
+}
+
+async function adminOverview(users, legacyProfiles, session) {
+  const enriched = users.map(adminUserSummary);
+  return {
+    session,
+    globalStats,
+    summary: {
+      accounts: users.length,
+      admins: users.filter((user) => user.role === 'admin').length,
+      migrated: users.filter((user) => user.migrated).length,
+      pendingMigration: legacyProfiles.filter((profile) => profile.migrationStatus === 'pending').length,
+      native: users.filter((user) => user.migrationStatus === 'native').length,
+      achievements: enriched.reduce((sum, user) => sum + user.achievementCount, 0),
+    },
+  };
+}
+
+function adminUserSummary(user) {
+  const profile = user.profileId ? getProfileById(user.profileId) : null;
+  return {
+    ...user, kind: 'account',
+    online: !!profile?.active,
+    lastSeenAt: Math.max(0, Number(profile?.lastSeenAt) || 0),
+    statTotal: profile ? adminStatEntries(profile).length : 0,
+    achievementCount: Object.keys(profile?.achievements?.unlocked ?? {}).length,
+  };
+}
+
+async function adminUsers(users, legacyProfiles, query = {}) {
+  const search = String(query.search ?? '').trim().toLocaleLowerCase();
+  const role = ['player', 'admin'].includes(query.role) ? query.role : '';
+  const migration = ['migrated', 'native', 'pending', 'blocked'].includes(query.migration) ? query.migration : '';
+  const password = query.password === 'required' ? 'required' : '';
+  const status = ['online', 'offline'].includes(query.status) ? query.status : '';
+  const pageSize = Math.min(100, Math.max(10, Number.parseInt(query.pageSize, 10) || 25));
+  let page = Math.max(1, Number.parseInt(query.page, 10) || 1);
+  let result = [
+    ...users.map(adminUserSummary),
+    ...legacyProfiles.map(adminLegacySummary),
+  ].filter((user) => (
+    (!search || user.username.toLocaleLowerCase().includes(search))
+    && (!role || user.role === role)
+    && (!migration || user.migrationStatus === migration)
+    && (!password || user.mustChangePassword)
+    && (!status || user.online === (status === 'online'))
+  ));
+  const sort = ['username', 'role', 'lastSeenAt', 'createdAt'].includes(query.sort) ? query.sort : 'username';
+  const direction = query.direction === 'desc' ? -1 : 1;
+  result.sort((left, right) => {
+    if (sort === 'username' || sort === 'role') return String(left[sort] ?? '').localeCompare(String(right[sort] ?? '')) * direction;
+    return ((Number(left[sort]) || 0) - (Number(right[sort]) || 0)) * direction;
+  });
+  const total = result.length;
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  page = Math.min(page, pages);
+  return { users: result.slice((page - 1) * pageSize, page * pageSize), page, pageSize, pages, total };
+}
+
+function adminLegacySummary(legacy) {
+  const profile = getProfileById(legacy.profileId);
+  return {
+    ...legacy, kind: 'legacy', accountId: null, role: null, status: 'legacy',
+    mustChangePassword: false, migrated: false, online: !!profile?.active,
+    lastSeenAt: Math.max(legacy.lastSeenAt, Number(profile?.lastSeenAt) || 0),
+    statTotal: profile ? adminStatEntries(profile).length : 0,
+    achievementCount: Object.keys(profile?.achievements?.unlocked ?? {}).length,
+  };
+}
+
+async function adminUser(users, accountId) {
+  const user = users.find((entry) => entry.accountId === accountId);
+  if (!user) throw adminError('ACCOUNT_NOT_FOUND', 'Account not found');
+  const profile = user.profileId ? getProfileById(user.profileId) : null;
+  if (!profile) throw adminError('ACCOUNT_NOT_FOUND', 'Account profile not found');
+  const unlocked = profile.achievements?.unlocked ?? {};
+  return {
+    ...adminUserSummary(user), kind: 'account',
+    stats: adminStatEntries(profile),
+    achievements: ACHIEVEMENTS.map((definition) => ({
+      id: definition.id, title: definition.title, description: definition.desc,
+      category: definition.cat, unlockedAt: Math.max(0, Number(unlocked[definition.id]) || 0),
+    })),
+  };
+}
+
+async function adminLegacyUser(legacyProfiles, profileId) {
+  const legacy = legacyProfiles.find((entry) => entry.profileId === profileId);
+  const profile = legacy ? getProfileById(profileId) : null;
+  if (!legacy || !profile) throw adminError('ACCOUNT_NOT_FOUND', 'Legacy profile not found');
+  const unlocked = profile.achievements?.unlocked ?? {};
+  return {
+    ...adminLegacySummary(legacy), stats: adminStatEntries(profile),
+    achievements: ACHIEVEMENTS.map((definition) => ({
+      id: definition.id, title: definition.title, description: definition.desc,
+      category: definition.cat, unlockedAt: Math.max(0, Number(unlocked[definition.id]) || 0),
+    })),
+  };
+}
+
+async function adminUserCreated(result) {
+  const profile = createProfile(result.profileId, result.username);
+  profiles.set(`account:${result.profileId}`, profile);
+  nextProfileId = Math.max(nextProfileId, result.profileId + 1);
+  saveProfiles();
+  await profileStore.flush();
+}
+
+async function closeAccountSockets(accountId, reason) {
+  for (const ws of wss.clients) {
+    if (ws.accountId !== accountId) continue;
+    if (ws.playerId) removePlayerSession(ws);
+    closeUnauthenticatedSocket(ws, reason);
+  }
+}
+
+async function prepareAdminUserDeletion(accountId) {
+  const users = await accountService.listAdminUsers();
+  const user = users.find((entry) => entry.accountId === accountId);
+  if (!user) return;
+  await closeAccountSockets(accountId, 'Account deleted');
+  if (user.profileId) {
+    for (const [key, profile] of profiles) {
+      if (profile.profileId === user.profileId) profiles.delete(key);
+    }
+  }
+  // Drain every older absolute snapshot before the account worker removes the
+  // row. Subsequent snapshots no longer contain this profile.
+  saveProfiles();
+  await profileStore.flush();
+}
+
+async function finishAdminUserDeletion() {
+  broadcastLeaderboard();
+}
+
+async function adminResetUserStat(accountId, path) {
+  const users = await accountService.listAdminUsers();
+  const user = users.find((entry) => entry.accountId === accountId);
+  const profile = user?.profileId ? getProfileById(user.profileId) : null;
+  if (!profile) throw adminError('ACCOUNT_NOT_FOUND', 'Account profile not found');
+  if (profile.active) throw adminError('PLAYER_ACTIVE', 'Statistics cannot be reset while the player is in a match');
+  if (path === 'all') {
+    profile.points = 0;
+    profile.playMs = 0;
+    profile.seen = 0;
+    profile.killsAgainst = {};
+    profile.deathsBy = {};
+    profile.teamPlayMs = { cleo: 0, viking: 0 };
+    profile.stats = makeProfileStats();
+    profile.achievements = makeProfileAchievements();
+  } else {
+    const allowed = adminStatEntries(profile).map((entry) => entry.path);
+    if (String(path).startsWith('group:')) {
+      const prefix = String(path).slice(6);
+      const matching = allowed.filter((entry) => entry === prefix || entry.startsWith(`${prefix}.`));
+      if (!matching.length) throw adminError('INVALID_STAT_PATH', 'Unknown statistic group');
+      for (const entry of matching) setAdminStat(profile, entry, 0);
+    } else {
+      if (!allowed.includes(path)) throw adminError('INVALID_STAT_PATH', 'Unknown statistic');
+      setAdminStat(profile, path, 0);
+    }
+  }
+  saveProfiles();
+  await profileStore.flush();
+  broadcastLeaderboard();
+  return { accountId, path };
+}
+
+async function adminResetGlobalStat(path) {
+  if (path === 'all') globalStats.factionWins = { cleo: 0, viking: 0 };
+  else if (path === 'factionWins.cleo') globalStats.factionWins.cleo = 0;
+  else if (path === 'factionWins.viking') globalStats.factionWins.viking = 0;
+  else throw adminError('INVALID_STAT_PATH', 'Unknown global statistic');
+  saveProfiles();
+  await profileStore.flush();
+  broadcastLeaderboard();
+  return { path, globalStats };
+}
+
+function adminStatEntries(profile) {
+  const root = {
+    points: profile.points,
+    playMs: profile.playMs,
+    seen: profile.seen,
+    teamPlayMs: profile.teamPlayMs,
+    killsAgainst: profile.killsAgainst,
+    deathsBy: profile.deathsBy,
+    stats: profile.stats,
+    achievements: profile.achievements,
+  };
+  const entries = [];
+  flattenAdminStats(root, '', entries);
+  return entries;
+}
+
+function flattenAdminStats(value, prefix, entries) {
+  if (typeof value === 'number') {
+    entries.push({ path: prefix, value });
+    return;
+  }
+  for (const [key, child] of Object.entries(value ?? {})) {
+    flattenAdminStats(child, prefix ? `${prefix}.${key}` : key, entries);
+  }
+}
+
+function setAdminStat(profile, path, value) {
+  const segments = path.split('.');
+  let target = profile;
+  for (const segment of segments.slice(0, -1)) target = target[segment];
+  if (path.startsWith('achievements.unlocked.') && value === 0) delete target[segments.at(-1)];
+  else target[segments.at(-1)] = value;
+}
+
+function adminError(code, message) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
 }
 
 async function shutdown() {

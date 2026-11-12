@@ -55,6 +55,7 @@ export async function verifyPassword(password, encoded) {
 }
 
 export function generateSessionToken() { return randomBytes(32).toString('base64url'); }
+export function generateTemporaryPassword() { return randomBytes(15).toString('base64url'); }
 export function hashSessionToken(token) { return sha256(requireToken(token)); }
 export function generateRecoveryCodes(count = 10) {
   return Array.from({ length: count }, () => randomBytes(16).toString('hex'));

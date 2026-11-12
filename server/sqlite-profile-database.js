@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
-import { PROFILE_DATABASE_VERSION, PROFILE_SCHEMA_SQL } from './profile-schema.js';
+import { migrateProfileSchema, PROFILE_DATABASE_VERSION, PROFILE_SCHEMA_SQL } from './profile-schema.js';
 import { hashLegacyClientId, snapshotTotals, validateLegacySnapshot } from './profile-snapshot.js';
 
 export class SqliteProfileDatabase {
@@ -10,6 +10,7 @@ export class SqliteProfileDatabase {
 
   initialize() {
     this.db.exec(PROFILE_SCHEMA_SQL);
+    migrateProfileSchema(this.db);
     this.db.prepare(`INSERT INTO schema_meta(key, value) VALUES ('schema_version', ?)
       ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run(String(PROFILE_DATABASE_VERSION));
   }

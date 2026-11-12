@@ -2,7 +2,7 @@ import { parentPort, workerData } from 'node:worker_threads';
 import { AccountDatabase } from './account-database.js';
 import {
   accountLogKey, authError, generateRecoveryCodes, generateSessionToken, hashPassword,
-  hashRecoveryCode, hashSessionToken, normalizeUsername, validatePassword, verifyPassword,
+  generateTemporaryPassword, hashRecoveryCode, hashSessionToken, normalizeUsername, validatePassword, verifyPassword,
 } from './auth-crypto.js';
 import { hashLegacyClientId } from './profile-snapshot.js';
 
@@ -36,6 +36,16 @@ async function handle({ id, type, payload = {} }) {
       loginCutoff: payload.now - LOGIN_WINDOW_MS,
       recoveryCutoff: payload.now - RECOVERY_WINDOW_MS,
     });
+    else if (type === 'bootstrapAdmin') result = bootstrapAdmin(payload);
+    else if (type === 'listAdminUsers') result = database.listAdminUsers();
+    else if (type === 'listAdminLegacyProfiles') result = database.listAdminLegacyProfiles();
+    else if (type === 'listAdminAudit') result = database.listAdminAudit(payload);
+    else if (type === 'adminCreateUser') result = await adminCreateUser(payload);
+    else if (type === 'adminSetRole') result = database.adminSetRole(payload);
+    else if (type === 'adminResetPassword') result = await adminResetPassword(payload);
+    else if (type === 'changeForcedPassword') result = await changeForcedPassword(payload);
+    else if (type === 'adminDeleteUser') result = database.adminDeleteAccount(payload);
+    else if (type === 'adminAudit') result = database.adminAudit(payload);
     else if (type === 'close') { database.close(); result = true; }
     else throw authError('UNKNOWN_COMMAND', `Unknown account worker command: ${type}`);
     parentPort.postMessage({ id, result });
@@ -137,6 +147,38 @@ async function regenerateRecoveryCodes({ accountId, currentPassword, now }) {
   const recoveryCodes = generateRecoveryCodes();
   database.replaceRecoveryCodes({ accountId, recoveryCodeHashes: recoveryCodes.map(hashRecoveryCode), now });
   return recoveryCodes;
+}
+
+function bootstrapAdmin({ username, now }) {
+  return database.bootstrapAdmin(normalizeUsername(username).normalized, now);
+}
+
+async function adminCreateUser({ name, actorAccountId, now }) {
+  const names = normalizeUsername(name);
+  const temporaryPassword = generateTemporaryPassword();
+  const result = database.adminCreateAccount({
+    usernameNormalized: names.normalized, usernameDisplay: names.display,
+    passwordHash: await hashPassword(temporaryPassword), actorAccountId, now,
+  });
+  return { ...result, temporaryPassword };
+}
+
+async function adminResetPassword({ accountId, actorAccountId, now }) {
+  const temporaryPassword = generateTemporaryPassword();
+  const result = database.adminResetPassword({
+    accountId, actorAccountId, now, passwordHash: await hashPassword(temporaryPassword),
+  });
+  return { ...result, temporaryPassword };
+}
+
+async function changeForcedPassword({ accountId, token, newPassword, now }) {
+  validatePassword(newPassword);
+  const recoveryCodes = generateRecoveryCodes();
+  database.completeForcedPasswordChange({
+    accountId, currentTokenHash: hashSessionToken(token), passwordHash: await hashPassword(newPassword),
+    recoveryCodeHashes: recoveryCodes.map(hashRecoveryCode), now,
+  });
+  return { recoveryCodes };
 }
 
 // Unknown accounts still perform the same scrypt work. The digest deliberately
