@@ -10,11 +10,17 @@ export const WORLD = { w: 1600, h: 900 };
 export const PLAYER = {
   w: 30,
   h: 44,
-  accel: 1.6,
+  // Movement prototype: building speed and turning should have visible weight.
+  // These values are deliberately centralized so the feel can be tuned without
+  // touching the server simulation.
+  accel: 0.75,
+  airAccel: 0.42,
+  reverseAccelMul: 0.75,
   maxSpeed: 5.0,
-  groundFriction: 0.78,
-  airFriction: 0.92,
+  groundFriction: 0.84,
+  airFriction: 0.97,
   jumpVel: -16.5,
+  jumpRecoveryMs: 70,
   dropThroughVel: 3.2,
   dropThroughMs: 260,
   gravity: 0.68,

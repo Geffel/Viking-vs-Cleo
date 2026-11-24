@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Anton&family=Oswald:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/css/style.css?v=7" />
+    <link rel="stylesheet" href="/css/style.css?v=8" />
   </head>
   <body>
     <div id="stage">
@@ -32,6 +32,13 @@
 
         <div id="fight-overlay" hidden>
           <div id="fight-copy">5</div>
+        </div>
+
+        <div id="sprite-loading" role="status" aria-live="polite" hidden>
+          <div class="sprite-loading-card">
+            <span class="sprite-loading-mark" aria-hidden="true"></span>
+            <b id="sprite-loading-copy">Loading fighters...</b>
+          </div>
         </div>
 
         <button id="game-instructions" class="instructions-open training-only" type="button" title="How to fight - movelist and combos" aria-haspopup="dialog" aria-controls="instructions-overlay" hidden>
@@ -500,6 +507,6 @@
 
     <div id="conn" hidden>Connecting...</div>
 
-    <script type="module" src="/js/main.js?v=7"></script>
+    <script type="module" src="/js/main.js?v=8"></script>
   </body>
 </html>

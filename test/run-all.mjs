@@ -10,6 +10,7 @@ const logicTests = [
   ['abilities', 'test/abilities.mjs'],
   ['powerup', 'test/powerup.mjs'],
   ['platforms', 'test/platforms.mjs'],
+  ['movement', 'test/movement.mjs'],
   ['maps', 'test/maps.mjs'],
   ['matches', 'test/matches.mjs'],
   ['round-results', 'test/round-results.mjs'],

@@ -1,5 +1,5 @@
 import { Net } from '/js/net.js';
-import { Renderer } from '/js/render.js';
+import { Renderer } from '/js/render.js?v=8';
 import { AudioManager } from '/js/audio.js';
 import { Hud } from '/js/hud.js';
 import { AchievementsUi } from '/js/achievements.js';
@@ -131,6 +131,8 @@ const viewAchievementsResultBtn = document.getElementById('view-achievements-res
 const leaveMatchFallback = document.getElementById('leave-match-fallback');
 const fightOverlay = document.getElementById('fight-overlay');
 const fightCopy = document.getElementById('fight-copy');
+const spriteLoading = document.getElementById('sprite-loading');
+const spriteLoadingCopy = document.getElementById('sprite-loading-copy');
 const connEl = document.getElementById('conn');
 const leaveBtn = document.getElementById('leave');
 const matchClock = document.getElementById('match-clock');
@@ -227,6 +229,8 @@ let screenPromptTimer = 0;
 let screenPromptKey = '';
 let activeWipeSwap = null;
 let activeWipeHasSwapped = false;
+let fighterSpritesReady = false;
+let fighterSpriteLoadError = null;
 let renderedMatchIds = null;
 let renderedMapVoteScope = '';
 let renderedMapVoteKeys = new Set();
@@ -242,6 +246,20 @@ const sharedSeatInput = {
   pendingGamepads: new Set(),
   pendingConnections: new Set(),
 };
+
+renderer.ready
+  .then(() => {
+    fighterSpritesReady = true;
+    syncSpriteLoading();
+    if (currentView !== 'game') return;
+    if (net.match) syncGameAccess(net.match);
+    else input.enable(); // stod for den aldre direkta join-vagen
+  })
+  .catch((error) => {
+    fighterSpriteLoadError = error;
+    console.error('Fighter graphics failed to load:', error);
+    syncSpriteLoading();
+  });
 
 const achievementsUi = new AchievementsUi({
   playerName: () => currentName,
@@ -477,7 +495,7 @@ net.on('joined', ({ team, profileId }) => {
   setView('game');
   hud.setTeam(team);
   leaveBtn.hidden = false;
-  input.enable();
+  if (fighterSpritesReady) input.enable();
   document.activeElement?.blur();
 });
 
@@ -539,6 +557,15 @@ function frame(now) {
       updatePhaseTimers();
       netDebug.update(now);
     }
+    requestAnimationFrame(frame);
+    return;
+  }
+
+  // Visa aldrig spelare innan bada lagens riktiga idle-sprites finns. Det ar
+  // just i detta korta fonster som den gamla reservfiguren tidigare blinkade.
+  if (!fighterSpritesReady) {
+    updatePhaseTimers();
+    netDebug.update(now);
     requestAnimationFrame(frame);
     return;
   }
@@ -934,9 +961,21 @@ function setView(view) {
     syncSharedSeatScanner(null);
   }
 
+  syncSpriteLoading();
   syncTrainingOverlay();
   if (changedView) markViewEntry(view);
   syncGamepadCursor();
+}
+
+function syncSpriteLoading() {
+  if (!spriteLoading) return;
+  const show = currentView === 'game' && !fighterSpritesReady;
+  spriteLoading.hidden = !show;
+  spriteLoading.classList.toggle('error', !!fighterSpriteLoadError);
+  if (!show || !spriteLoadingCopy) return;
+  spriteLoadingCopy.textContent = fighterSpriteLoadError
+    ? 'Fighter graphics could not load. Return to the menu and reload the page.'
+    : 'Loading fighters...';
 }
 
 function openAchievements() {
@@ -1626,7 +1665,7 @@ function screenPromptFor(match) {
 
 function syncGameAccess(match = net.match) {
   const overlayOpen = !!instructionsOverlay && !instructionsOverlay.hidden;
-  if (match?.phase === MATCH_PHASES.playing && net.localPlayerIds().length && !overlayOpen) input.enable();
+  if (fighterSpritesReady && match?.phase === MATCH_PHASES.playing && net.localPlayerIds().length && !overlayOpen) input.enable();
   else input.disable();
 
   syncTrainingOverlay(match);

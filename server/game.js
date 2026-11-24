@@ -138,6 +138,7 @@ export class Game {
       vy: 0,
       facing: team === 'cleo' ? 1 : -1,
       onGround: false,
+      nextJumpAt: 0,
       dropThroughPlatform: null,
       dropThroughUntil: 0,
       hp: PLAYER.maxHp,
@@ -396,6 +397,7 @@ export class Game {
     p.hp = PLAYER.maxHp;
     p.dead = false;
     p.onGround = false;
+    p.nextJumpAt = 0;
     p.dropThroughPlatform = null;
     p.dropThroughUntil = 0;
     p.slamming = false;
@@ -451,7 +453,7 @@ export class Game {
     const breaksStun = actionAbility?.id === 'blink' || actionAbility?.id === 'shieldCharge';
     if ((t < p.stunnedUntil && !breaksStun) || t < p.uppercutLaunchUntil) return;
     if (kind === 'jump') {
-      if (p.onGround) {
+      if (p.onGround && t >= p.nextJumpAt) {
         p.vy = PLAYER.jumpVel;
         p.onGround = false;
         this.fx.push({ k: 'jump', id: p.id, x: p.x + PLAYER.w / 2, y: p.y + PLAYER.h });
@@ -1402,6 +1404,7 @@ export class Game {
   }
 
   movePlayer(p, t) {
+    const wasOnGround = p.onGround;
     const dashing = t < p.dashUntil;
     const charging = t < p.chargeUntil;
     const stunned = t < p.stunnedUntil;
@@ -1421,7 +1424,10 @@ export class Game {
       const speedMul = channelMul * iceSlowMul * colaMul * (p.speedMul ?? 1);
       const maxSpeed = PLAYER.maxSpeed * speedMul;
       if (dir !== 0) {
-        p.vx += dir * PLAYER.accel * speedMul;
+        const baseAccel = p.onGround ? PLAYER.accel : PLAYER.airAccel;
+        const reversing = p.vx !== 0 && Math.sign(p.vx) !== dir;
+        const turnMul = reversing ? PLAYER.reverseAccelMul : 1;
+        p.vx += dir * baseAccel * turnMul * speedMul;
         p.vx = Math.max(-maxSpeed, Math.min(maxSpeed, p.vx));
         p.facing = dir;
       } else {
@@ -1481,6 +1487,7 @@ export class Game {
           p.y = pl.y - PLAYER.h;
           p.vy = 0;
           p.onGround = true;
+          if (!wasOnGround) p.nextJumpAt = t + PLAYER.jumpRecoveryMs;
           this.clearDropThrough(p);
           if (p.slamming) this.landSlam(p, t);
           break;

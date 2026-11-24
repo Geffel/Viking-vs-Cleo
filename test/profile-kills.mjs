@@ -121,6 +121,10 @@ try {
   attacker.send({ t: 'move', l: false, r: true });
   victim.send({ t: 'move', l: true, r: false });
   assert.ok(await until(() => Math.abs(attacker.me.x - victim.me.x) < 40, 8000), 'players meet');
+  // This test verifies profile persistence, not pursuit. Stop the victim once
+  // the fighters meet so movement tuning cannot turn the kill into a race
+  // against the deliberately short, time-scaled test deadline.
+  victim.send({ t: 'move', l: false, r: false });
 
   const deadline = Date.now() + scaled(15000, 3000);
   while (Date.now() < deadline && !victim.me.d) {

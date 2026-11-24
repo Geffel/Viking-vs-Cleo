@@ -23,6 +23,12 @@ try {
   browser = await chromium.launch({ executablePath: browserPath, headless: true });
   const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   await context.addCookies([{ name: 'vvc_session', value: sessionCookie(server.authCookies[0]), url: server.origin }]);
+  let releaseIdleSprites;
+  const idleSpritesBlocked = new Promise((resolve) => { releaseIdleSprites = resolve; });
+  await context.route(/\/assets\/(?:cleo|viking)\/idle\.png(?:\?.*)?$/, async (route) => {
+    await idleSpritesBlocked;
+    await route.continue();
+  });
   const page = await context.newPage();
   await page.addInitScript(() => {
     const nativeSend = WebSocket.prototype.send;
@@ -41,6 +47,17 @@ try {
   // Training starts map selection immediately when a fighter is chosen.
   await page.locator('#map-vote').waitFor({ state: 'visible', timeout: 5_000 });
   await page.locator('[data-map-id]').first().click();
+
+  // Hall core-sprites artificiellt blockerade tills spelvyn oppnas. Den ska da
+  // visa laddningslaget, aldrig den borttagna primitiva reservfiguren.
+  await page.locator('#sprite-loading').waitFor({ state: 'visible', timeout: 10_000 });
+  assert.equal(await page.evaluate(() => typeof window.vvc.renderer.drawFigure), 'undefined');
+  releaseIdleSprites();
+  await page.locator('#sprite-loading').waitFor({ state: 'hidden', timeout: 10_000 });
+  await page.waitForFunction(() => window.vvc.renderer.sprites.cleo?.idle && window.vvc.renderer.sprites.viking?.idle);
+  await page.evaluate(() => window.vvc.renderer.animationsReady);
+  assert.deepEqual(await page.evaluate(() => window.vvc.renderer.spriteErrors), []);
+
   await page.locator('#hud').waitFor({ state: 'visible', timeout: 10_000 });
   // The game view is entered through a short transition before input activates.
   await page.waitForTimeout(1_500);

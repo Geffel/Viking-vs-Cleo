@@ -68,12 +68,13 @@ check('landar igen', await until(() => a.me.g === 1, 2500));
 const xBefore = a.me.x;
 a.send({ t: 'move', l: false, r: true });
 await wait(400);
-check('D gar hoger', a.me.x > xBefore + 100, `x ${xBefore} -> ${a.me.x}`);
+check('D gar hoger', a.me.x > xBefore + 60 && a.me.vx > 0, `x ${xBefore} -> ${a.me.x}, vx ${a.me.vx}`);
 a.send({ t: 'move', l: true, r: false });
 const xTurn = a.me.x;
 await wait(400);
-// Kortare stracka an at hoger: halva tiden gar at till att bromsa in.
-check('A gar vanster', a.me.x < xTurn - 60, `x ${xTurn} -> ${a.me.x}`);
+// Kortare stracka an at hoger: den nya trogheten bevarar hogerfarten medan
+// spelaren bromsar in, innan vx och position borjar rora sig at vanster.
+check('A gar vanster', a.me.x < xTurn - 20 && a.me.vx < 0, `x ${xTurn} -> ${a.me.x}, vx ${a.me.vx}`);
 a.send({ t: 'move', l: false, r: false });
 
 // --- 1: sand blast (cleo)

@@ -118,6 +118,58 @@ a.gamepad-hover,
   pointer-events: none;
 }
 
+#sprite-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 95;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(circle at 50% 45%, rgba(77, 195, 255, 0.12), transparent 34%),
+    rgba(5, 7, 15, 0.94);
+}
+
+#sprite-loading[hidden] {
+  display: none;
+}
+
+.sprite-loading-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 22px;
+  border: 1px solid rgba(77, 195, 255, 0.28);
+  background: rgba(10, 15, 30, 0.92);
+  box-shadow: 0 16px 50px rgba(0, 0, 0, 0.48);
+  color: var(--text);
+  font-family: "Oswald", sans-serif;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.sprite-loading-mark {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(77, 195, 255, 0.22);
+  border-top-color: var(--viking);
+  border-right-color: var(--cleo);
+  border-radius: 50%;
+  animation: sprite-loading-spin 0.75s linear infinite;
+}
+
+#sprite-loading.error .sprite-loading-card {
+  border-color: rgba(255, 90, 90, 0.52);
+}
+
+#sprite-loading.error .sprite-loading-mark {
+  border-color: #ff6b6b;
+  animation: none;
+}
+
+@keyframes sprite-loading-spin {
+  to { transform: rotate(360deg); }
+}
+
 /* ------------------------------------------------------- tillbaka-knappen */
 
 #leave {

@@ -13,8 +13,10 @@ import {
   ABILITY_TUNING,
 } from '/shared/constants.js';
 
-// Lag som har riktig sprite-grafik. Ovriga ritas med de inbyggda figurerna.
 const SPRITE_SETS = { viking: '/assets/viking', cleo: '/assets/cleo' };
+// Filnamnen ar stabila mellan releaser. Versionsparametern hindrar en gammal
+// manifest-/bildkombination fran att leva kvar i webblasar- eller proxycache.
+const SPRITE_ASSET_VERSION = 2;
 const DEFAULT_ARENA_ASSET = '/assets/arena_nordic.png';
 
 // Namnskylten: namnet overst, halsomataren under. Matten ar ~30 % storre an
@@ -253,6 +255,7 @@ export class Renderer {
       nazgul: { active: null, nextAt: Infinity },
     };
     this.sprites = {};
+    this.spriteErrors = [];
     this.attackAnims = new Map(); // spelar-id -> { started, slot } for attackanimationen
     this.iceSpikeCasts = new Map(); // spelar-id -> starttid for den korta bla kastarglodden
     this.hpTrails = new Map(); // spelar-id -> eftersladdning pa halsomataren
@@ -282,7 +285,10 @@ export class Renderer {
     this.resize();
     window.addEventListener('resize', () => this.resize());
     window.visualViewport?.addEventListener('resize', () => this.resize());
-    this.loadSprites();
+    // Bara manifest + idle ar ett startkrav. Resten laddas separat efterat, sa
+    // en trasig animationsruta aldrig tar bort en redan fungerande fighter.
+    this.ready = this.loadCoreSprites();
+    this.animationsReady = this.ready.then(() => this.loadSpriteAnimations(), () => undefined);
     this.setArena(DEFAULT_ARENA_ASSET, 'nordic');
     for (const kind of Object.values(POWERUP_KINDS)) {
       loadImage(kind.sprite)
@@ -397,50 +403,88 @@ export class Renderer {
     return canvas;
   }
 
-  async loadSprites() {
-    for (const [team, dir] of Object.entries(SPRITE_SETS)) {
+  async loadCoreSprites() {
+    const entries = await Promise.all(
+      Object.entries(SPRITE_SETS).map(async ([team, dir]) => {
+        try {
+          const response = await fetch(spriteAssetUrl(`${dir}/manifest.json`), { cache: 'no-cache' });
+          if (!response.ok) throw new Error(`manifest HTTP ${response.status}`);
+          const manifest = await response.json();
+          if (!manifest?.idle) throw new Error('manifestet saknar idle');
+          const idle = await loadImage(spriteAssetUrl(`${dir}/${manifest.idle}`));
+          return [team, {
+            manifest,
+            idle,
+            attackSets: {},
+            run: { frames: [], meta: null },
+            stunned: null,
+            stunnedAboveHead: null,
+            shieldCharge: null,
+          }];
+        } catch (error) {
+          throw new Error(`Kunde inte ladda grundsprite for ${team}: ${error.message}`, { cause: error });
+        }
+      }),
+    );
+    this.sprites = Object.fromEntries(entries);
+  }
+
+  async loadSpriteAnimations() {
+    await Promise.all(
+      Object.entries(this.sprites).map(([team, sprite]) => this.loadTeamSpriteAnimations(team, sprite)),
+    );
+  }
+
+  async loadTeamSpriteAnimations(team, sprite) {
+    const dir = SPRITE_SETS[team];
+    const manifest = sprite.manifest;
+    const attackSpec = manifest.attack;
+    const attackEntries = (Array.isArray(attackSpec) ? [['default', attackSpec]] : Object.entries(attackSpec ?? {})).map(
+      ([slot, spec]) => [slot, Array.isArray(spec) ? { files: spec, meta: null } : { files: spec.files, meta: spec }],
+    );
+    const attackJobs = attackEntries.map(async ([slot, { files, meta }]) => {
       try {
-        const manifest = await fetch(`${dir}/manifest.json`).then((r) => {
-          if (!r.ok) throw new Error(`${r.status}`);
-          return r.json();
-        });
-        // En melee-plats ar antingen bara en lista med rutor, eller en lista
-        // plus egna matt for just de rutorna. Skoldsmallen behover det senare:
-        // skolden skjuts langre fram an yxan nar och far inte plats pa samma duk.
-        const attackSpec = manifest.attack;
-        const attackEntries = (Array.isArray(attackSpec) ? [['default', attackSpec]] : Object.entries(attackSpec ?? {})).map(
-          ([slot, spec]) => [slot, Array.isArray(spec) ? { files: spec, meta: null } : { files: spec.files, meta: spec }],
-        );
-        const runSpec = manifest.run;
-        const runFiles = Array.isArray(runSpec) ? runSpec : runSpec?.files;
-        const runMeta = Array.isArray(runSpec) ? null : runSpec;
-        const [idle, attackSets, runFrames, stunned, stunnedAboveHead, shieldCharge] = await Promise.all([
-          loadImage(`${dir}/${manifest.idle}`),
-          Promise.all(
-            attackEntries.map(async ([slot, { files, meta }]) => [
-              slot,
-              { frames: await Promise.all(files.map((f) => loadImage(`${dir}/${f}`))), meta },
-            ]),
-          ),
-          runFiles?.length ? Promise.all(runFiles.map((file) => loadImage(`${dir}/${file}`))) : Promise.resolve([]),
-          manifest.stunned ? loadImage(`${dir}/${manifest.stunned.file}`) : Promise.resolve(null),
-          manifest.stunnedAboveHead ? loadImage(`${dir}/${manifest.stunnedAboveHead}`) : Promise.resolve(null),
-          manifest.shieldCharge ? loadImage(`${dir}/${manifest.shieldCharge.file}`) : Promise.resolve(null),
-        ]);
-        this.sprites[team] = {
-          manifest,
-          idle,
-          attackSets: Object.fromEntries(attackSets),
-          run: { frames: runFrames, meta: runMeta },
-          stunned,
-          stunnedAboveHead,
-          shieldCharge,
-        };
-      } catch (err) {
-        // Utan sprites faller laget tillbaka pa den ritade figuren.
-        console.warn(`Kunde inte ladda sprites for ${team}:`, err.message);
+        const frames = await Promise.all((files ?? []).map((file) => loadImage(spriteAssetUrl(`${dir}/${file}`))));
+        if (frames.length) sprite.attackSets[slot] = { frames, meta };
+      } catch (error) {
+        this.reportSpriteError(team, `attack ${slot}`, error);
       }
-    }
+    });
+
+    const runSpec = manifest.run;
+    const runFiles = Array.isArray(runSpec) ? runSpec : runSpec?.files;
+    const runJob = (async () => {
+      if (!runFiles?.length) return;
+      try {
+        sprite.run = {
+          frames: await Promise.all(runFiles.map((file) => loadImage(spriteAssetUrl(`${dir}/${file}`)))),
+          meta: Array.isArray(runSpec) ? null : runSpec,
+        };
+      } catch (error) {
+        this.reportSpriteError(team, 'run', error);
+      }
+    })();
+
+    const optionalJobs = [
+      ['stunned', manifest.stunned?.file],
+      ['stunnedAboveHead', manifest.stunnedAboveHead],
+      ['shieldCharge', manifest.shieldCharge?.file],
+    ].map(async ([property, file]) => {
+      if (!file) return;
+      try {
+        sprite[property] = await loadImage(spriteAssetUrl(`${dir}/${file}`));
+      } catch (error) {
+        this.reportSpriteError(team, property, error);
+      }
+    });
+
+    await Promise.all([...attackJobs, runJob, ...optionalJobs]);
+  }
+
+  reportSpriteError(team, part, error) {
+    const message = `Kunde inte ladda ${team} ${part}: ${error.message}`;
+    this.spriteErrors.push({ team, part, message });
+    console.error(message);
   }
 
   resize() {
@@ -2283,6 +2327,9 @@ export class Renderer {
     const cx = p.x + PLAYER.w / 2;
     const feetY = p.y + PLAYER.h;
     const sprite = this.sprites[p.tm];
+    // Renderer.ready garanterar bada lagens grundsprites innan spelvyn ritas.
+    // Ett okant lag hoppas over i stallet for att maskeras av gammal reservgrafik.
+    if (!team || !sprite) return;
 
     ctx.save();
 
@@ -2350,7 +2397,7 @@ export class Renderer {
     }
 
     // Flugsvampen: figuren vaxer och far ett rasande sken. Skenet ligger under
-    // figuren, sjalva hinnan laggs ovanpa inne i drawSprite/drawFigure.
+    // figuren, sjalva hinnan laggs ovanpa inne i drawSprite.
     const rage = ABILITY_TUNING.mushrooms;
     const berserk = p.bz > 0;
     if (berserk) {
@@ -2363,11 +2410,7 @@ export class Renderer {
     const iceCastAlpha = this.iceSpikeCasterAlpha(p.i);
     if (iceCastAlpha > 0) this.drawIceSpikeCasterAura(ctx, cx, feetY, iceCastAlpha);
 
-    // Returnerar var namnskylten ska borja, som skiljer sig mellan sprite och
-    // ritad figur.
-    let plateTop = sprite
-      ? this.drawSprite(ctx, p, sprite, cx, feetY, iceCastAlpha)
-      : this.drawFigure(ctx, p, team, cx, iceCastAlpha);
+    let plateTop = this.drawSprite(ctx, p, sprite, cx, feetY, iceCastAlpha);
     if (p.br > 0) this.drawBurningTexture(ctx, p, cx, feetY);
     if (p.sf > 0) this.drawSunFireChannel(ctx, p, cx);
     // Skylten ritas utanfor transformen, sa den maste folja med uppforstoringen.
@@ -2863,89 +2906,6 @@ export class Renderer {
     return top - PLATE.height - PLATE.gap;
   }
 
-  /** Inbyggd figur for lag som annu saknar grafik. */
-  drawFigure(ctx, p, team, cx, iceCastAlpha = 0) {
-    const x = p.x;
-    const y = p.y;
-
-    // Kropp
-    ctx.fillStyle = team.dark;
-    roundRect(ctx, x, y + 14, PLAYER.w, PLAYER.h - 14, 6);
-    ctx.fill();
-
-    ctx.fillStyle = team.color;
-    roundRect(ctx, x + 2, y + 16, PLAYER.w - 4, PLAYER.h - 18, 5);
-    ctx.fill();
-
-    // Balte
-    ctx.fillStyle = 'rgba(0,0,0,0.35)';
-    ctx.fillRect(x + 2, y + 32, PLAYER.w - 4, 4);
-
-    // Huvud
-    const hy = y + 10;
-    ctx.fillStyle = '#f6dcc0';
-    ctx.beginPath();
-    ctx.arc(cx, hy, 10, 0, Math.PI * 2);
-    ctx.fill();
-
-    if (p.tm === 'cleo') this.drawCatEars(ctx, cx, hy, team);
-    else this.drawHelmet(ctx, cx, hy, team);
-
-    // Oga i blickriktningen
-    ctx.fillStyle = '#241a2c';
-    ctx.beginPath();
-    ctx.arc(cx + p.f * 4, hy + 1, 1.8, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Vapenhand
-    ctx.fillStyle = team.accent;
-    ctx.fillRect(cx + p.f * (PLAYER.w / 2 - 1) - (p.f > 0 ? 0 : 5), y + 24, 5, 9);
-
-    // Samma roda hinna som spriten far, men mot den ritade kroppen.
-    if (p.bz > 0) {
-      const cfg = ABILITY_TUNING.mushrooms;
-      ctx.save();
-      ctx.globalAlpha *= this.rageTintAlpha(p, cfg);
-      ctx.fillStyle = cfg.tint;
-      roundRect(ctx, x, y + 14, PLAYER.w, PLAYER.h - 14, 6);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(cx, y + 10, 10, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-    }
-
-    if (p.br > 0) {
-      const pulse = 0.2 + (Math.sin((performance.now() / CHILI_BUFF.blinkMs) * Math.PI * 2) + 1) * 0.2;
-      ctx.save();
-      ctx.globalAlpha *= pulse;
-      ctx.fillStyle = '#ff2d1f';
-      roundRect(ctx, x, y + 14, PLAYER.w, PLAYER.h - 14, 6);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(cx, y + 10, 10, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-    }
-
-    if (iceCastAlpha > 0) {
-      ctx.save();
-      ctx.globalCompositeOperation = 'screen';
-      ctx.globalAlpha *= iceCastAlpha;
-      ctx.fillStyle = ICE_SPIKE_FX.outline;
-      ctx.shadowColor = ICE_SPIKE_FX.outline;
-      ctx.shadowBlur = 9;
-      roundRect(ctx, x, y + 14, PLAYER.w, PLAYER.h - 14, 6);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(cx, y + 10, 10, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-    }
-
-    return y - PLATE.height - PLATE.gap;
-  }
-
   /** Animerade eldflisor ritas over kroppen, sa branden laser som en textur och inte bara en aura. */
   drawBurningTexture(ctx, p, cx, feetY) {
     const t = performance.now();
@@ -2974,36 +2934,6 @@ export class Renderer {
       ctx.globalAlpha = pulse;
     }
     ctx.restore();
-  }
-
-  drawCatEars(ctx, cx, hy, team) {
-    ctx.fillStyle = team.color;
-    for (const s of [-1, 1]) {
-      ctx.beginPath();
-      ctx.moveTo(cx + s * 3, hy - 8);
-      ctx.lineTo(cx + s * 9, hy - 17);
-      ctx.lineTo(cx + s * 10, hy - 5);
-      ctx.closePath();
-      ctx.fill();
-    }
-  }
-
-  drawHelmet(ctx, cx, hy, team) {
-    ctx.fillStyle = '#8b93a8';
-    ctx.beginPath();
-    ctx.arc(cx, hy - 1, 10.5, Math.PI, 0);
-    ctx.fill();
-    ctx.fillRect(cx - 10.5, hy - 2, 21, 4);
-
-    ctx.fillStyle = team.accent;
-    for (const s of [-1, 1]) {
-      ctx.beginPath();
-      ctx.moveTo(cx + s * 9, hy - 6);
-      ctx.quadraticCurveTo(cx + s * 18, hy - 12, cx + s * 15, hy - 20);
-      ctx.quadraticCurveTo(cx + s * 15, hy - 10, cx + s * 8, hy - 2);
-      ctx.closePath();
-      ctx.fill();
-    }
   }
 
   drawNameplate(ctx, p, team, cx, top, isSelf) {
@@ -4379,6 +4309,11 @@ function loadImage(src) {
     img.onerror = () => reject(new Error(`kunde inte ladda ${src}`));
     img.src = src;
   });
+}
+
+function spriteAssetUrl(path) {
+  const separator = path.includes('?') ? '&' : '?';
+  return `${path}${separator}v=${SPRITE_ASSET_VERSION}`;
 }
 
 function makeStars(n) {
